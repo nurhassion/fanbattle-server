@@ -160,7 +160,7 @@ app.get('/', (req, res) => {
 
 // ====== Serve the live overlay itself — accessible from ANY device via this URL ======
 app.get('/overlay', (req, res) => {
-  res.sendFile(path.join(__dirname, 'fan-battle-live-demo.html'));
+  res.sendFile(path.join(__dirname, 'fan-battle-live-demo (3).html'));
 });
 
 // ====== Password-protected dashboard: /dashboard ======
