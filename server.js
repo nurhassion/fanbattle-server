@@ -158,8 +158,41 @@ app.get('/', (req, res) => {
   res.send('Fan Battle Live automation server is running. <a href="/overlay">Open the live overlay</a>');
 });
 
+// ====== Generic Basic-Auth middleware factory ======
+// Lets us protect different routes with different username/password pairs.
+function makeAuthMiddleware(realmName, envUserVar, envPassVar, defaultUser, defaultPass) {
+  const USER = process.env[envUserVar] || defaultUser;
+  const PASS = process.env[envPassVar] || defaultPass;
+  return function requireAuth(req, res, next) {
+    const authHeader = req.headers.authorization || '';
+    const [scheme, encoded] = authHeader.split(' ');
+    if (scheme === 'Basic' && encoded) {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+      const [user, pass] = decoded.split(':');
+      if (user === USER && pass === PASS) {
+        return next();
+      }
+    }
+    res.set('WWW-Authenticate', `Basic realm="${realmName}"`);
+    return res.status(401).send('Authentication required.');
+  };
+}
+
+// ====== Password-protect the live overlay itself ======
+// IMPORTANT: set OVERLAY_USER and OVERLAY_PASS as environment variables in
+// Render (Settings → Environment) — do not leave the fallback defaults below
+// in place for a real, live event. Use DIFFERENT credentials than the
+// dashboard, so you can share overlay access without exposing donor data.
+const requireOverlayAuth = makeAuthMiddleware(
+  'Fan Battle Overlay',
+  'OVERLAY_USER',
+  'OVERLAY_PASS',
+  'liveadmin',
+  'changeme456'
+);
+
 // ====== Serve the live overlay itself — accessible from ANY device via this URL ======
-app.get('/overlay', (req, res) => {
+app.get('/overlay', requireOverlayAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'fan-battle-live-demo (3).html'));
 });
 
@@ -167,22 +200,13 @@ app.get('/overlay', (req, res) => {
 // Uses HTTP Basic Auth. IMPORTANT: set DASHBOARD_USER and DASHBOARD_PASS
 // as environment variables in Render (Settings → Environment) — do not
 // leave the fallback defaults below in place for a real, live event.
-const DASHBOARD_USER = process.env.DASHBOARD_USER || 'admin';
-const DASHBOARD_PASS = process.env.DASHBOARD_PASS || 'changeme123';
-
-function requireDashboardAuth(req, res, next) {
-  const authHeader = req.headers.authorization || '';
-  const [scheme, encoded] = authHeader.split(' ');
-  if (scheme === 'Basic' && encoded) {
-    const decoded = Buffer.from(encoded, 'base64').toString('utf8');
-    const [user, pass] = decoded.split(':');
-    if (user === DASHBOARD_USER && pass === DASHBOARD_PASS) {
-      return next();
-    }
-  }
-  res.set('WWW-Authenticate', 'Basic realm="Fan Battle Dashboard"');
-  return res.status(401).send('Authentication required.');
-}
+const requireDashboardAuth = makeAuthMiddleware(
+  'Fan Battle Dashboard',
+  'DASHBOARD_USER',
+  'DASHBOARD_PASS',
+  'admin',
+  'changeme123'
+);
 
 app.get('/dashboard', requireDashboardAuth, (req, res) => {
   const records = loadRecords();
