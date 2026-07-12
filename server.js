@@ -46,30 +46,30 @@ async function fetchRecentPayments() {
         });
         console.log('✅ API connection working — your test payment should appear above if it was ₹9.');
       }
-      // Mark everything that already exists as "seen" so we don't re-announce old payments
       payments.forEach(p => seenPaymentIds.add(p.payment_id));
       isFirstRun = false;
       return;
     }
 
-    // Look for brand-new, successful payments we haven't processed yet
     for (const p of payments) {
       if (p.status === 'Credit' && !seenPaymentIds.has(p.payment_id)) {
         seenPaymentIds.add(p.payment_id);
 
-        // Determine which side (Left/Right) based on which Smart Page purpose/page it came from
-        const purposeText = (p.purpose || '').toLowerCase();
-        // NOTE: adjust this matching logic once we confirm exactly how "purpose" or
-        // page reference appears in the payment data for Smart Pages
-        let side = 'left';
-        if (purposeText.includes('right')) side = 'right';
-        if (purposeText.includes('left')) side = 'left';
+        const purposeRaw = p.purpose || '';
+        let side = null;
+        if (/^R:/i.test(purposeRaw.trim())) side = 'right';
+        else if (/^L:/i.test(purposeRaw.trim())) side = 'left';
+
+        if (!side) {
+          console.log('⚠️ Could not determine side for payment, skipping:', purposeRaw);
+          continue;
+        }
 
         const event = {
           name: p.buyer_name || 'Anonymous',
           side: side,
           amount: parseFloat(p.amount),
-          purpose: p.purpose
+          purpose: purposeRaw
         };
 
         latestEvents.push(event);
@@ -81,15 +81,12 @@ async function fetchRecentPayments() {
   }
 }
 
-// Start polling
 setInterval(fetchRecentPayments, POLL_INTERVAL_MS);
-fetchRecentPayments(); // run once immediately on startup
+fetchRecentPayments();
 
-// The browser overlay (HTML file) will call this endpoint every couple of seconds
-// to check "did anything new happen?"
 app.get('/events', (req, res) => {
   const eventsToSend = [...latestEvents];
-  latestEvents = []; // clear after sending
+  latestEvents = [];
   res.json({ events: eventsToSend });
 });
 
