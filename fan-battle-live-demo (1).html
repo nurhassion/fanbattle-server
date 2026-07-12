@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Fan Battle — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<style>
+  :root{
+    --bg: #0B0F19;
+    --bg-soft: #121728;
+    --line: rgba(245,247,250,0.10);
+    --white: #F5F7FA;
+    --dim: #8B93A7;
+    --left: #2E6FF2;
+    --left-glow: #6C9BFF;
+    --right: #FF4B3E;
+    --right-glow: #FF8A7A;
+    --gold: #FFC53D;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html, body{
+    background:#000;
+    min-height:100%;
+  }
+  body{
+    display:flex; flex-direction:column; align-items:center;
+    color: var(--white);
+    font-family: 'Inter', sans-serif;
+    padding-top:24px;
+  }
+  /* ---- Fixed 9:16 vertical stage — designed once at 480x853,
+         then scaled (via JS) to fit whatever window/OBS crop is capturing it.
+         This guarantees the whole thing always fits one mobile screen,
+         with no scrolling, at any laptop window size. ---- */
+  #stageFrame{
+    width:480px; height:853px;
+    position:relative;
+    overflow:hidden;
+    background: radial-gradient(ellipse at 50% -10%, #1a2140 0%, var(--bg) 55%);
+    transform-origin: center center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  }
+  .stadium-lines{
+    position:absolute; inset:0; pointer-events:none; z-index:0; opacity:0.35;
+    background:
+      repeating-linear-gradient(100deg, transparent 0 120px, rgba(255,255,255,0.02) 120px 122px);
+  }
+  .wrap{ position:relative; z-index:1; height:100%; margin:0 auto; padding: 18px 16px 0; display:flex; flex-direction:column; }
+
+  .eyebrow{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size:11px; letter-spacing:2px; color:var(--dim); text-transform:uppercase;
+  }
+  .dot{width:6px;height:6px;border-radius:50%; background:#FF4B3E; box-shadow:0 0 10px #FF4B3E; animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1} 50%{opacity:0.25}}
+  h1{
+    font-family:'Bebas Neue', sans-serif;
+    text-align:center;
+    font-size: 32px;
+    letter-spacing:1px;
+    margin-top:4px;
+    background: linear-gradient(90deg, var(--left-glow), var(--white) 50%, var(--right-glow));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{ text-align:center; color:var(--dim); font-size:11.5px; margin-top:2px; margin-bottom:6px;}
+  .legal-note{
+    text-align:center; margin-bottom:12px; letter-spacing:0.2px;
+    font-size:12.5px; font-weight:700; color:var(--gold);
+    background: rgba(255,197,61,0.10); border:1px solid rgba(255,197,61,0.35);
+    border-radius:8px; padding:6px 10px;
+  }
+
+  /* ---- Rotating facts bar ---- */
+  .fact-bar{
+    background: var(--bg-soft); border:1px solid var(--line); border-radius:10px;
+    padding:6px 14px; margin-bottom:10px; text-align:center; flex-shrink:0;
+    font-size:12px; min-height:30px; display:flex; align-items:center; justify-content:center;
+  }
+  .fact-bar span{
+    display:inline-block; opacity:1; transition: opacity 400ms ease;
+  }
+  .fact-bar span.fading{ opacity:0; }
+
+  /* ---- Compact clip player ---- */
+  .clip-player{
+    position:relative; margin-top:10px; border-radius:14px; overflow:hidden;
+    border:1px solid var(--line); flex-shrink:0; background:#000;
+    width:100%; height:170px;
+  }
+  .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
+  .clip-tag{
+    position:absolute; left:10px; bottom:10px; font-family:'Bebas Neue', sans-serif;
+    font-size:16px; letter-spacing:1px; background:rgba(11,15,25,0.8);
+    padding:4px 12px; border-radius:8px;
+  }
+
+  /* ---- Tug of war meter (signature element) ---- */
+  .meter-shell{
+    position:relative;
+    height:34px;
+    border-radius:12px;
+    background: var(--bg-soft);
+    border:1px solid var(--line);
+    overflow:hidden;
+    display:flex;
+    flex-shrink:0;
+    box-shadow: inset 0 2px 12px rgba(0,0,0,0.4);
+  }
+  .fill-left, .fill-right{
+    height:100%;
+    transition: width 700ms cubic-bezier(.22,.9,.3,1);
+    display:flex; align-items:center;
+    font-family:'Bebas Neue', sans-serif;
+    font-size:16px; letter-spacing:1px;
+  }
+  .fill-left{
+    background: linear-gradient(90deg, #1a4bc7, var(--left));
+    justify-content:flex-end;
+    padding-right:10px;
+  }
+  .fill-right{
+    background: linear-gradient(90deg, var(--right), #c72e22);
+    justify-content:flex-start;
+    padding-left:10px;
+  }
+  .vs-pin{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:34px; height:34px; border-radius:50%;
+    background: var(--bg);
+    border:2px solid var(--gold);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Bebas Neue', sans-serif; font-size:12px; color:var(--gold);
+    z-index:3;
+    box-shadow: 0 0 18px rgba(255,197,61,0.5);
+  }
+
+  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; flex-shrink:0; }
+  .card{
+    background: var(--bg-soft);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px;
+    position:relative;
+  }
+  .card.leader{ border-color: var(--gold); box-shadow:0 0 0 1px rgba(255,197,61,0.25), 0 0 24px rgba(255,197,61,0.08); }
+  .crown{ position:absolute; top:-9px; right:12px; font-size:16px; }
+  .name-row{ display:flex; align-items:center; gap:6px; }
+  .avatar{
+    width:28px; height:28px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Bebas Neue', sans-serif; font-size:13px;
+    flex-shrink:0;
+  }
+  .avatar.l{ background: rgba(46,111,242,0.18); color:var(--left-glow); border:1px solid rgba(46,111,242,0.4); background-size:cover; background-position:center; overflow:hidden;}
+  .avatar.r{ background: rgba(255,75,62,0.18); color:var(--right-glow); border:1px solid rgba(255,75,62,0.4); background-size:cover; background-position:center; overflow:hidden;}
+  .avatar img{ width:100%; height:100%; object-fit:cover; border-radius:9px; }
+  .name{ font-weight:700; font-size:13px; }
+  .name-edit{
+    background:transparent; border:none; color:var(--white); font-weight:700; font-size:13px;
+    border-bottom:1px dashed transparent; width:100px;
+  }
+  .name-edit:focus{ outline:none; border-bottom:1px dashed var(--dim); }
+  .amount{
+    font-family:'Bebas Neue', sans-serif;
+    font-size:23px;
+    margin-top:5px;
+    letter-spacing:1px;
+  }
+  .amount.l{ color:var(--left-glow); }
+  .amount.r{ color:var(--right-glow); }
+  .amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px;}
+  .pct{ font-size:10.5px; color:var(--dim); margin-top:1px; }
+
+  /* ticker */
+  .ticker-title{ margin-top:14px; font-size:10.5px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; flex-shrink:0; }
+  .ticker{
+    margin-top:8px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background: var(--bg-soft);
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
+  }
+  .ticker-item{
+    display:flex; align-items:center; gap:8px;
+    padding:7px 12px;
+    border-bottom:1px solid var(--line);
+    font-size:11.5px;
+    animation: slideIn 400ms ease;
+  }
+  .ticker-item:last-child{ border-bottom:none; }
+  @keyframes slideIn{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);} }
+  .tag{
+    font-size:11px; padding:3px 8px; border-radius:20px; font-weight:700; letter-spacing:0.5px;
+    flex-shrink:0;
+  }
+  .tag.l{ background:rgba(46,111,242,0.18); color:var(--left-glow); }
+  .tag.r{ background:rgba(255,75,62,0.18); color:var(--right-glow); }
+  .ticker-item b{ color:var(--white); }
+  .ticker-item .amt{ margin-left:auto; font-family:'Bebas Neue'; font-size:16px; color:var(--gold); flex-shrink:0; }
+
+  /* control panel (demo only) */
+  .panel{
+    margin-top:34px;
+    border-top:1px dashed var(--line);
+    padding-top:24px;
+  }
+  .panel-label{ font-size:12px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:12px;}
+  .panel-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  input[type=text], input[type=number]{
+    background:var(--bg-soft); border:1px solid var(--line); color:var(--white);
+    padding:10px 12px; border-radius:10px; font-size:14px; font-family:'Inter';
+  }
+  select{
+    background:var(--bg-soft); border:1px solid var(--line); color:var(--white);
+    padding:10px 12px; border-radius:10px; font-size:14px; font-family:'Inter';
+  }
+  button{
+    background: var(--white); color:#0B0F19; border:none; font-weight:700;
+    padding:10px 18px; border-radius:10px; cursor:pointer; font-size:14px;
+    transition: transform 120ms ease;
+  }
+  button:hover{ transform: translateY(-1px); }
+  button.ghost{ background:transparent; color:var(--dim); border:1px solid var(--line); }
+  .note{ font-size:12.5px; color:var(--dim); line-height:1.6; margin-top:14px; }
+  .note code{ background:var(--bg-soft); padding:2px 6px; border-radius:6px; color:var(--gold); }
+
+  /* ---- Celebration overlay ---- */
+  #confettiCanvas{
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none; z-index:998;
+  }
+  .celebration{
+    position:absolute; inset:0; z-index:999;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
+    opacity:0;
+  }
+  .celebration.show{
+    animation: celebFade 3000ms ease forwards;
+  }
+  @keyframes celebFade{
+    0%   { opacity:0; }
+    8%   { opacity:1; }
+    82%  { opacity:1; }
+    100% { opacity:0; }
+  }
+  .celeb-flash{
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse at 50% 50%, rgba(255,197,61,0.35) 0%, rgba(11,15,25,0) 65%);
+  }
+  .celeb-card{
+    position:relative;
+    text-align:center;
+    padding: 34px 52px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(18,23,40,0.92), rgba(11,15,25,0.96));
+    border: 1px solid rgba(255,197,61,0.4);
+    box-shadow: 0 0 60px rgba(255,197,61,0.25), 0 20px 60px rgba(0,0,0,0.5);
+    transform: scale(0.7);
+  }
+  .celebration.show .celeb-card{
+    animation: celebPop 3000ms cubic-bezier(.2,1.4,.3,1) forwards;
+  }
+  @keyframes celebPop{
+    0%   { transform:scale(0.6) translateY(10px); }
+    12%  { transform:scale(1.06); }
+    20%  { transform:scale(1); }
+    85%  { transform:scale(1); }
+    100% { transform:scale(0.96); }
+  }
+  .celeb-tag{
+    font-size:12px; letter-spacing:3px; color:var(--gold); text-transform:uppercase; font-weight:700;
+  }
+  .celeb-name{
+    font-family:'Bebas Neue', sans-serif;
+    font-size: clamp(36px, 6vw, 58px);
+    letter-spacing:1px;
+    margin-top:6px;
+    color: var(--white);
+  }
+  .celeb-line{
+    font-size:16px; color:var(--dim); margin-top:6px;
+  }
+  .celeb-line b{ color:var(--white); }
+  .celeb-amount{
+    font-family:'Bebas Neue', sans-serif;
+    font-size: clamp(48px, 9vw, 84px);
+    margin-top:10px;
+    letter-spacing:1px;
+  }
+  .celeb-amount.side-left{ color: var(--left-glow); text-shadow: 0 0 30px rgba(46,111,242,0.6); }
+  .celeb-amount.side-right{ color: var(--right-glow); text-shadow: 0 0 30px rgba(255,75,62,0.6); }
+
+  /* ---- QR scan cards ---- */
+  .qr-title{ margin-top:10px; font-size:11px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; text-align:center; flex-shrink:0; }
+  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; flex-shrink:0; }
+  .qr-card{
+    background: var(--bg-soft); border:1px solid var(--line); border-radius:12px;
+    padding:10px; text-align:center;
+  }
+  .qr-card.l{ border-color: rgba(46,111,242,0.35); }
+  .qr-card.r{ border-color: rgba(255,75,62,0.35); }
+  .qr-card canvas{ background:#fff; border-radius:8px; padding:5px; max-width:100%; height:auto; width:100px !important; }
+  .qr-label{ font-family:'Bebas Neue', sans-serif; font-size:14px; letter-spacing:1px; margin-top:6px; }
+  .qr-card.l .qr-label{ color:var(--left-glow); }
+  .qr-card.r .qr-label{ color:var(--right-glow); }
+  .qr-hint{ font-size:9.5px; color:var(--dim); margin-top:2px; line-height:1.25; }
+
+  /* ---- Pre-live setup screen ---- */
+  #setupScreen{
+    position:fixed; inset:0; z-index:1000;
+    background: radial-gradient(ellipse at 50% -10%, #1a2140 0%, var(--bg) 55%);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:20px; overflow-y:auto;
+  }
+  .setup-box{
+    width:100%; max-width:440px; margin: 4vh auto;
+    background: var(--bg-soft); border:1px solid var(--line); border-radius:20px;
+    padding:32px 28px; text-align:center;
+  }
+  .setup-box h2{
+    font-family:'Bebas Neue', sans-serif; font-size:30px; letter-spacing:1px; margin-bottom:6px;
+  }
+  .setup-box p{ font-size:13.5px; color:var(--dim); margin-bottom:24px; }
+  .setup-field{ text-align:left; margin-bottom:16px; }
+  .setup-field label{ font-size:12px; color:var(--dim); letter-spacing:1px; text-transform:uppercase; }
+  .setup-field input{
+    width:100%; margin-top:6px; padding:12px 14px; font-size:16px;
+    background:var(--bg); border:1px solid var(--line); border-radius:10px; color:var(--white);
+  }
+  .setup-field input:focus{ outline:none; border-color:var(--gold); }
+  #setupStart{
+    width:100%; margin-top:8px; padding:14px; font-size:16px;
+    background: linear-gradient(90deg, var(--left-glow), var(--gold), var(--right-glow));
+    color:#0B0F19; border:none; border-radius:10px; font-weight:800; cursor:pointer;
+  }
+  #setupStart:hover{ transform:translateY(-1px); }
+
+  /* ---- Photo upload in setup screen ---- */
+  .setup-photo-row{ display:flex; align-items:center; gap:12px; margin-top:6px; }
+  .setup-photo-preview{
+    width:52px; height:52px; border-radius:12px; flex-shrink:0;
+    background: var(--bg); border:1px dashed var(--line);
+    background-size:cover; background-position:center;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; color:var(--dim); text-align:center;
+  }
+  .setup-photo-btn{
+    flex:1; background:var(--bg); border:1px solid var(--line); color:var(--white);
+    padding:10px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-align:left;
+  }
+  .setup-photo-btn:hover{ border-color:var(--gold); }
+
+  /* ---- Area outside the mobile stage frame — your own testing controls,
+         not part of what OBS should capture ---- */
+  .panel-outside{
+    width:100%; max-width:480px; margin:16px auto 40px; padding:0 16px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Pre-live setup screen: change today's topic in 5 seconds ===== -->
+<div id="setupScreen">
+  <div class="setup-box">
+    <h2>Set Today's Battle</h2>
+    <p>এই দুটো নাম বদলে দিন প্রতিবার নতুন টপিকের জন্য (যেমন Messi/Ronaldo, India/Pakistan, Real Madrid/Barcelona) — QR কোড ও পেমেন্ট লিংক একই থাকবে, শুধু নাম বদলাবে।</p>
+    <div class="setup-field">
+      <label>Left side name</label>
+      <input type="text" id="setupLeft" value="Messi" placeholder="e.g. Messi">
+      <div class="setup-photo-row">
+        <div class="setup-photo-preview" id="previewLeft">No photo</div>
+        <label class="setup-photo-btn">
+          📷 Upload photo (optional)
+          <input type="file" accept="image/*" id="photoLeft" style="display:none">
+        </label>
+      </div>
+    </div>
+    <div class="setup-field">
+      <label>Right side name</label>
+      <input type="text" id="setupRight" value="Ronaldo" placeholder="e.g. Ronaldo">
+      <div class="setup-photo-row">
+        <div class="setup-photo-preview" id="previewRight">No photo</div>
+        <label class="setup-photo-btn">
+          📷 Upload photo (optional)
+          <input type="file" accept="image/*" id="photoRight" style="display:none">
+        </label>
+      </div>
+    </div>
+    <div class="setup-field">
+      <label>Background music (optional)</label>
+      <div class="setup-photo-row">
+        <div class="setup-photo-preview" id="previewMusic" style="font-size:20px;">🎵</div>
+        <label class="setup-photo-btn">
+          <span id="musicFileName">Upload music file (mp3/wav)</span>
+          <input type="file" accept="audio/*" id="musicFile" style="display:none">
+        </label>
+      </div>
+    </div>
+    <div class="setup-field">
+      <label>Intro voice message (optional — plays once when you go live)</label>
+      <div class="setup-photo-row">
+        <div class="setup-photo-preview" id="previewVoice" style="font-size:20px;">🎙️</div>
+        <label class="setup-photo-btn">
+          <span id="voiceFileName">Upload your recorded voice (any language)</span>
+          <input type="file" accept="audio/*" id="introVoiceFile" style="display:none">
+        </label>
+      </div>
+    </div>
+
+    <div class="setup-field">
+      <label>Video clips — Left side (optional, multiple allowed)</label>
+      <div class="setup-photo-row">
+        <div class="setup-photo-preview" id="previewClipLeft" style="font-size:18px;">🎬</div>
+        <label class="setup-photo-btn">
+          <span id="clipLeftFileName">Upload clip(s) — only footage you own or have rights to</span>
+          <input type="file" accept="video/*" id="clipLeft" multiple style="display:none">
+        </label>
+      </div>
+    </div>
+    <div class="setup-field">
+      <label>Video clips — Right side (optional, multiple allowed)</label>
+      <div class="setup-photo-row">
+        <div class="setup-photo-preview" id="previewClipRight" style="font-size:18px;">🎬</div>
+        <label class="setup-photo-btn">
+          <span id="clipRightFileName">Upload clip(s) — only footage you own or have rights to</span>
+          <input type="file" accept="video/*" id="clipRight" multiple style="display:none">
+        </label>
+      </div>
+    </div>
+
+    <div class="setup-field">
+      <label>Fun facts — Left side (one per line — no limit, add as many as you like, e.g. up to 20)</label>
+      <textarea id="factsLeft" rows="6" placeholder="e.g.&#10;8 Ballon d'Or wins&#10;35 hat-tricks in career&#10;Started at a youth academy at age 13&#10;Never received a red card in La Liga&#10;(add up to ~20 lines — each shows for 5 seconds)" style="width:100%; margin-top:6px; padding:10px 12px; font-size:13px; background:var(--bg); border:1px solid var(--line); border-radius:10px; color:var(--white); font-family:inherit; resize:vertical;"></textarea>
+    </div>
+    <div class="setup-field">
+      <label>Fun facts — Right side (one per line — no limit, add as many as you like, e.g. up to 20)</label>
+      <textarea id="factsRight" rows="6" placeholder="e.g.&#10;5 Champions League titles&#10;900+ career goals&#10;First player to score in 5 different World Cups&#10;Known for the 'Siu' celebration&#10;(add up to ~20 lines — each shows for 5 seconds)" style="width:100%; margin-top:6px; padding:10px 12px; font-size:13px; background:var(--bg); border:1px solid var(--line); border-radius:10px; color:var(--white); font-family:inherit; resize:vertical;"></textarea>
+      <div style="font-size:11.5px; color:var(--dim); margin-top:6px; text-align:left;">
+        💡 টিপ: প্রতিটা তথ্য ৫ সেকেন্ড করে দেখাবে। দুই পক্ষ মিলিয়ে মোট ৩৬টা তথ্য দিলে (১৮+১৮) প্রায় ৩ মিনিট কেউ একই তথ্য দ্বিতীয়বার দেখবে না।
+      </div>
+    </div>
+
+    <button id="setupStart" onclick="startLive()">Start Live ▶</button>
+  </div>
+</div>
+<audio id="bgMusic" loop></audio>
+<audio id="introVoice"></audio>
+
+<div id="stageFrame">
+<canvas id="confettiCanvas"></canvas>
+<div class="celebration" id="celebration">
+  <div class="celeb-flash"></div>
+  <div class="celeb-card">
+    <div class="celeb-tag">New Supporter</div>
+    <div id="celebAvatarWrap" style="display:none; margin:0 auto 8px; width:64px; height:64px; border-radius:14px; overflow:hidden; border:2px solid var(--gold);">
+      <img id="celebAvatarImg" style="width:100%; height:100%; object-fit:cover;">
+    </div>
+    <div class="celeb-name" id="celebName">Rahul</div>
+    <div class="celeb-line">backed <b id="celebSide">Messi</b></div>
+    <div class="celeb-amount" id="celebAmount">₹100</div>
+  </div>
+</div>
+<div class="stadium-lines"></div>
+<button id="muteBtn" onclick="toggleMusicMute()" style="position:absolute; top:12px; right:12px; z-index:1000; width:34px; height:34px; border-radius:50%; background:rgba(18,23,40,0.8); border:1px solid var(--line); color:var(--white); font-size:15px; padding:0; cursor:pointer;">🔊</button>
+<div class="wrap">
+  <div class="eyebrow"><span class="dot"></span> LIVE NOW</div>
+  <h1 id="titleText">MESSI &nbsp;VS&nbsp; RONALDO</h1>
+  <div class="sub">Scan your side's code to back your favourite — totals update live</div>
+  <div class="legal-note">Voluntary fan tips only — no returns, rewards, or prizes. Just love for your side 💙🧡</div>
+
+  <div class="fact-bar" id="factBar" style="display:none;">
+    <span id="factText">Fact goes here</span>
+  </div>
+
+  <div class="meter-shell">
+    <div class="fill-left" id="fillLeft" style="width:50%"><span id="fillLeftPct">50%</span></div>
+    <div class="fill-right" id="fillRight" style="width:50%"><span id="fillRightPct">50%</span></div>
+    <div class="vs-pin">VS</div>
+  </div>
+
+  <div class="cards">
+    <div class="card" id="cardLeft">
+      <span class="crown" id="crownLeft" style="display:none">👑</span>
+      <div class="name-row">
+        <div class="avatar l">L</div>
+        <input class="name-edit" id="nameLeft" value="Messi" />
+      </div>
+      <div class="amount l">₹<span id="amtLeft">0</span></div>
+      <div class="pct" id="countLeft">0 supporters</div>
+    </div>
+    <div class="card" id="cardRight">
+      <span class="crown" id="crownRight" style="display:none">👑</span>
+      <div class="name-row">
+        <div class="avatar r">R</div>
+        <input class="name-edit" id="nameRight" value="Ronaldo" />
+      </div>
+      <div class="amount r">₹<span id="amtRight">0</span></div>
+      <div class="pct" id="countRight">0 supporters</div>
+    </div>
+  </div>
+
+  <div class="qr-title">Scan your side's code to support</div>
+  <div class="qr-cards">
+    <div class="qr-card l">
+      <canvas id="qrLeft"></canvas>
+      <div class="qr-label" id="qrLeftLabel">Messi</div>
+      <div class="qr-hint">Opens payment page — pick any amount</div>
+    </div>
+    <div class="qr-card r">
+      <canvas id="qrRight"></canvas>
+      <div class="qr-label" id="qrRightLabel">Ronaldo</div>
+      <div class="qr-hint">Opens payment page — pick any amount</div>
+    </div>
+  </div>
+
+  <div class="clip-player" id="clipPlayer" style="display:none;">
+    <video id="clipVideo" playsinline autoplay></video>
+    <div class="clip-tag" id="clipTag">Messi</div>
+  </div>
+
+  <div class="ticker-title">Live activity</div>
+  <div class="ticker" id="ticker">
+    <div class="ticker-item" style="color:var(--dim)">Waiting for the first supporter…</div>
+  </div>
+</div>
+</div>
+<!-- ===== stageFrame ends here — everything above is exactly what OBS should capture.
+     Everything below (test panel) is OUTSIDE the frame and only for your own testing;
+     it will not appear in the mobile-shaped area you point OBS at. ===== -->
+
+<div class="panel-outside">
+  <div class="panel">
+    <div class="panel-label">⚙ Demo control panel (simulates a payment webhook) — for your testing only, not part of the live frame above</div>
+    <div class="panel-row">
+      <input type="text" id="donorName" placeholder="Donor name" value="Rahul">
+      <input type="number" id="donorAmt" placeholder="Amount ₹" value="100" style="width:100px">
+      <select id="donorSide">
+        <option value="left">Left side</option>
+        <option value="right">Right side</option>
+      </select>
+      <button onclick="simulateDonation()">Simulate payment received</button>
+      <button class="ghost" onclick="randomBurst()">Random burst ×5</button>
+      <button class="ghost" onclick="resetAll()">Reset</button>
+    </div>
+    <label style="font-size:13px; color:var(--dim); display:flex; align-items:center; gap:8px;">
+      <input type="checkbox" id="voiceToggle" checked style="width:auto;"> Voice announcement (Web Speech API)
+    </label>
+    <div class="panel-row" style="margin-top:10px;">
+      <select id="voiceSelect" style="min-width:220px;"></select>
+      <button class="ghost" onclick="testVoice()">Test voice</button>
+    </div>
+    <div class="note">
+      এটা একটা <b>ডেমো</b> — এখানে "Simulate payment received" বাটন সেই কাজটা করছে যেটা বাস্তবে আপনার
+      পেমেন্ট গেটওয়ে (Razorpay / Paytm / PhonePe / UPI) থেকে <code>webhook</code>-এর মাধ্যমে অটোমেটিক আসবে।
+      বাস্তব সিস্টেমে এই বাটনের বদলে আপনার সার্ভার পেমেন্ট গেটওয়ের কনফার্মেশন পেয়ে ঠিক এই একই ফাংশনটা
+      (<code>addDonation()</code>) নিজে থেকে কল করবে — তখন এই স্ক্রিনটা স্টেজে/OBS-এ সত্যিকারের লাইভ হয়ে যাবে।
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Payment links — these stay the SAME every time you go live.
+// Only the names above change per topic; the QR codes always point here. =====
+const PAYMENT_LINK_LEFT  = "https://fanbattleslive.mojo.page/fan-battle-live";
+const PAYMENT_LINK_RIGHT = "https://fanbattleslive.mojo.page/fan-battle-live-right";
+
+new QRious({ element: document.getElementById('qrLeft'),  value: PAYMENT_LINK_LEFT,  size: 100, background:'#fff', foreground:'#0B0F19' });
+new QRious({ element: document.getElementById('qrRight'), value: PAYMENT_LINK_RIGHT, size: 100, background:'#fff', foreground:'#0B0F19' });
+
+// ---- Photo upload handling (setup screen) ----
+let photoDataLeft = null;
+let photoDataRight = null;
+
+function wirePhotoInput(inputId, previewId, storeKey){
+  document.getElementById(inputId).addEventListener('change', function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      if(storeKey === 'left') photoDataLeft = ev.target.result;
+      else photoDataRight = ev.target.result;
+      const preview = document.getElementById(previewId);
+      preview.style.backgroundImage = `url(${ev.target.result})`;
+      preview.textContent = '';
+    };
+    reader.readAsDataURL(file);
+  });
+}
+wirePhotoInput('photoLeft', 'previewLeft', 'left');
+wirePhotoInput('photoRight', 'previewRight', 'right');
+
+// ---- Background music upload ----
+let musicObjectUrl = null;
+document.getElementById('musicFile').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  if(musicObjectUrl) URL.revokeObjectURL(musicObjectUrl);
+  musicObjectUrl = URL.createObjectURL(file);
+  document.getElementById('musicFileName').textContent = '🎵 ' + file.name;
+});
+
+// ---- Intro voice message upload (plays once, not looped) ----
+let introVoiceUrl = null;
+document.getElementById('introVoiceFile').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  if(introVoiceUrl) URL.revokeObjectURL(introVoiceUrl);
+  introVoiceUrl = URL.createObjectURL(file);
+  document.getElementById('voiceFileName').textContent = '🎙️ ' + file.name;
+});
+
+// ---- Video clip uploads (multiple per side) ----
+let clipUrlsLeft = [];
+let clipUrlsRight = [];
+document.getElementById('clipLeft').addEventListener('change', function(e){
+  clipUrlsLeft = Array.from(e.target.files).map(f => URL.createObjectURL(f));
+  document.getElementById('clipLeftFileName').textContent = `🎬 ${e.target.files.length} clip(s) selected`;
+});
+document.getElementById('clipRight').addEventListener('change', function(e){
+  clipUrlsRight = Array.from(e.target.files).map(f => URL.createObjectURL(f));
+  document.getElementById('clipRightFileName').textContent = `🎬 ${e.target.files.length} clip(s) selected`;
+});
+
+// ---- Clip player: alternates Left/Right clips automatically ----
+let clipPlaylist = [];
+let clipIndex = 0;
+function buildClipPlaylist(leftName, rightName){
+  const playlist = [];
+  const max = Math.max(clipUrlsLeft.length, clipUrlsRight.length);
+  for(let i = 0; i < max; i++){
+    if(clipUrlsLeft[i])  playlist.push({ url: clipUrlsLeft[i],  tag: leftName });
+    if(clipUrlsRight[i]) playlist.push({ url: clipUrlsRight[i], tag: rightName });
+  }
+  return playlist;
+}
+function playClipAt(index){
+  if(clipPlaylist.length === 0) return;
+  const item = clipPlaylist[index % clipPlaylist.length];
+  const video = document.getElementById('clipVideo');
+  video.src = item.url;
+  document.getElementById('clipTag').textContent = item.tag;
+  video.play().catch(() => {});
+}
+function startClipPlayer(leftName, rightName){
+  clipPlaylist = buildClipPlaylist(leftName, rightName);
+  if(clipPlaylist.length === 0){
+    document.getElementById('clipPlayer').style.display = 'none';
+    return;
+  }
+  document.getElementById('clipPlayer').style.display = 'block';
+  clipIndex = 0;
+  playClipAt(clipIndex);
+  const video = document.getElementById('clipVideo');
+  video.onended = function(){
+    clipIndex++;
+    playClipAt(clipIndex);
+  };
+}
+
+// ---- Rotating facts bar ----
+let factList = [];
+let factIndex = 0;
+let factTimer = null;
+function buildFactList(){
+  const leftLines = document.getElementById('factsLeft').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const rightLines = document.getElementById('factsRight').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const combined = [];
+  const max = Math.max(leftLines.length, rightLines.length);
+  for(let i = 0; i < max; i++){
+    if(leftLines[i])  combined.push(leftLines[i]);
+    if(rightLines[i]) combined.push(rightLines[i]);
+  }
+  return combined;
+}
+function startFactRotation(){
+  factList = buildFactList();
+  const bar = document.getElementById('factBar');
+  const textEl = document.getElementById('factText');
+  if(factList.length === 0){
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  factIndex = 0;
+  textEl.textContent = factList[0];
+  if(factTimer) clearInterval(factTimer);
+  factTimer = setInterval(() => {
+    textEl.classList.add('fading');
+    setTimeout(() => {
+      factIndex = (factIndex + 1) % factList.length;
+      textEl.textContent = factList[factIndex];
+      textEl.classList.remove('fading');
+    }, 400);
+  }, 5000);
+}
+
+function applyAvatarPhoto(side, dataUrl){
+  const avatarEl = document.querySelector(side === 'left' ? '.avatar.l' : '.avatar.r');
+  if(dataUrl){
+    avatarEl.style.backgroundImage = `url(${dataUrl})`;
+    avatarEl.textContent = '';
+  }
+}
+
+// ---- Live connection to the automation server ----
+// This is what makes REAL Instamojo payments show up automatically —
+// without this, the overlay only reacts to the manual "Simulate" button.
+const SERVER_URL = 'https://fanbattle-server-yqo5.onrender.com';
+let serverPollTimer = null;
+
+async function pollServerEvents(){
+  try{
+    const res = await fetch(SERVER_URL + '/events');
+    const data = await res.json();
+    (data.events || []).forEach(e => addDonation(e.name, e.side, e.amount));
+  }catch(err){
+    console.error('Could not reach the automation server:', err.message);
+  }
+}
+
+function startServerPolling(){
+  if(serverPollTimer) return; // don't start twice
+  pollServerEvents();
+  serverPollTimer = setInterval(pollServerEvents, 4000);
+}
+
+function startLive(){
+  const leftName = document.getElementById('setupLeft').value.trim() || 'Left';
+  const rightName = document.getElementById('setupRight').value.trim() || 'Right';
+
+  const nameLeftInput = document.getElementById('nameLeft');
+  const nameRightInput = document.getElementById('nameRight');
+  nameLeftInput.value = leftName;
+  nameRightInput.value = rightName;
+  nameLeftInput.dispatchEvent(new Event('input'));
+  nameRightInput.dispatchEvent(new Event('input'));
+
+  document.getElementById('qrLeftLabel').textContent = leftName;
+  document.getElementById('qrRightLabel').textContent = rightName;
+
+  applyAvatarPhoto('left', photoDataLeft);
+  applyAvatarPhoto('right', photoDataRight);
+
+  startClipPlayer(leftName, rightName);
+  startFactRotation();
+
+  // Start background music if one was uploaded — this runs from a real click
+  // (the Start Live button), so browsers allow audio to autoplay with sound.
+  if(musicObjectUrl){
+    const bg = document.getElementById('bgMusic');
+    bg.src = musicObjectUrl;
+    bg.volume = 0.35;
+    bg.play().catch(() => {});
+  }
+
+  // Play the intro voice message once (not looped) — ducks the background
+  // music briefly so the voice is easy to hear over it.
+  if(introVoiceUrl){
+    const bg = document.getElementById('bgMusic');
+    const voice = document.getElementById('introVoice');
+    voice.src = introVoiceUrl;
+    voice.volume = 1.0;
+    const hadMusic = musicObjectUrl && !bg.paused;
+    if(hadMusic) bg.volume = 0.12;
+    voice.play().catch(() => {});
+    voice.onended = function(){
+      if(hadMusic) bg.volume = 0.35;
+    };
+  }
+
+  document.getElementById('setupScreen').style.display = 'none';
+  startServerPolling();
+}
+
+function toggleMusicMute(){
+  const bg = document.getElementById('bgMusic');
+  bg.muted = !bg.muted;
+  document.getElementById('muteBtn').textContent = bg.muted ? '🔇' : '🔊';
+}
+
+let totals = { left: 0, right: 0 };
+let counts = { left: 0, right: 0 };
+let selectedVoice = null;
+let availableVoices = [];
+
+// ---- Voice selection: pick the most natural-sounding voice available,
+// and let the user override via dropdown ----
+function scoreVoice(v){
+  const name = v.name.toLowerCase();
+  let score = 0;
+  // Prefer premium/neural/natural engines (much less robotic than default)
+  if(name.includes('neural')) score += 50;
+  if(name.includes('natural')) score += 45;
+  if(name.includes('online')) score += 20;
+  if(name.includes('microsoft')) score += 15;
+  if(name.includes('google')) score += 10;
+  // Slight preference for a warm-sounding common voice
+  if(name.includes('ravi') || name.includes('heera') || name.includes('aria') ||
+     name.includes('jenny') || name.includes('guy')) score += 10;
+  if(v.lang === 'en-IN') score += 8;
+  if(v.lang && v.lang.startsWith('en')) score += 5;
+  if(v.localService === false) score += 5; // cloud voices often sound better
+  return score;
+}
+
+function populateVoices(){
+  availableVoices = window.speechSynthesis.getVoices().filter(v => v.lang && v.lang.startsWith('en'));
+  if(availableVoices.length === 0){
+    availableVoices = window.speechSynthesis.getVoices();
+  }
+  const sel = document.getElementById('voiceSelect');
+  sel.innerHTML = '';
+  const sorted = [...availableVoices].sort((a,b) => scoreVoice(b) - scoreVoice(a));
+  sorted.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = `${v.name} (${v.lang})`;
+    sel.appendChild(opt);
+  });
+  if(sorted.length > 0){
+    selectedVoice = sorted[0];
+    sel.value = selectedVoice.name;
+  }
+}
+if('speechSynthesis' in window){
+  populateVoices();
+  window.speechSynthesis.onvoiceschanged = populateVoices;
+}
+document.getElementById('voiceSelect').addEventListener('change', e => {
+  selectedVoice = availableVoices.find(v => v.name === e.target.value) || null;
+});
+function testVoice(){
+  speak("Rahul donated 100 rupees loving Messi");
+}
+
+function speak(text){
+  if(!document.getElementById('voiceToggle').checked) return;
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel(); // avoid overlapping/queued robotic stutter on rapid donations
+  const u = new SpeechSynthesisUtterance(text);
+  if(selectedVoice) u.voice = selectedVoice;
+  u.rate = 1.02;   // natural pace, not clipped
+  u.pitch = 1.0;   // neutral pitch avoids the "chipmunk"/robotic edge
+  u.volume = 1;
+  window.speechSynthesis.speak(u);
+}
+
+function updateUI(){
+  const total = totals.left + totals.right;
+  const leftPct = total === 0 ? 50 : Math.round((totals.left/total)*100);
+  const rightPct = 100 - leftPct;
+
+  document.getElementById('fillLeft').style.width = leftPct + '%';
+  document.getElementById('fillRight').style.width = rightPct + '%';
+  document.getElementById('fillLeftPct').textContent = leftPct + '%';
+  document.getElementById('fillRightPct').textContent = rightPct + '%';
+
+  document.getElementById('amtLeft').textContent = totals.left.toLocaleString('en-IN');
+  document.getElementById('amtRight').textContent = totals.right.toLocaleString('en-IN');
+  document.getElementById('countLeft').textContent = counts.left + ' supporters';
+  document.getElementById('countRight').textContent = counts.right + ' supporters';
+
+  document.getElementById('crownLeft').style.display = totals.left > totals.right ? 'block' : 'none';
+  document.getElementById('crownRight').style.display = totals.right > totals.left ? 'block' : 'none';
+  document.getElementById('cardLeft').classList.toggle('leader', totals.left > totals.right);
+  document.getElementById('cardRight').classList.toggle('leader', totals.right > totals.left);
+}
+
+function addTickerItem(name, side, amount){
+  const ticker = document.getElementById('ticker');
+  if(ticker.children.length === 1 && ticker.children[0].style.color === 'var(--dim)'){
+    ticker.innerHTML = '';
+  }
+  const sideName = side === 'left' ? document.getElementById('nameLeft').value : document.getElementById('nameRight').value;
+  const el = document.createElement('div');
+  el.className = 'ticker-item';
+  el.innerHTML = `<span class="tag ${side==='left'?'l':'r'}">${side==='left'?'LEFT':'RIGHT'}</span>
+    <span><b>${name}</b> backed <b>${sideName}</b></span>
+    <span class="amt">₹${amount}</span>`;
+  ticker.insertBefore(el, ticker.firstChild);
+}
+
+// ---- Celebration: confetti burst ----
+const confettiCanvas = document.getElementById('confettiCanvas');
+const ctx = confettiCanvas.getContext('2d');
+function resizeCanvas(){
+  // The canvas lives inside the fixed 480x853 stage frame, not the raw window —
+  // this keeps confetti aligned correctly regardless of how the frame is scaled to fit.
+  confettiCanvas.width = 480;
+  confettiCanvas.height = 853;
+}
+resizeCanvas();
+
+// ---- Scale the whole stage to fit the current window/OBS crop, always keeping
+//      the full 480x853 mobile-shaped frame visible with no cropping ----
+function scaleStage(){
+  const stage = document.getElementById('stageFrame');
+  const availW = window.innerWidth - 24;
+  const availH = window.innerHeight - 48;
+  const scale = Math.min(1, availW / 480, availH / 853);
+  stage.style.transform = `scale(${scale})`;
+  stage.style.marginBottom = (853 * (scale - 1)) + 'px';
+}
+window.addEventListener('resize', scaleStage);
+window.addEventListener('load', scaleStage);
+scaleStage();
+
+let confettiParticles = [];
+function launchConfetti(side){
+  const colors = side === 'left'
+    ? ['#2E6FF2','#6C9BFF','#FFC53D','#F5F7FA']
+    : ['#FF4B3E','#FF8A7A','#FFC53D','#F5F7FA'];
+  const originX = confettiCanvas.width / 2;
+  const count = 90;
+  for(let i=0; i<count; i++){
+    const angle = (Math.random() * Math.PI) - Math.PI/2 - Math.PI/2;
+    const speed = 4 + Math.random()*9;
+    confettiParticles.push({
+      x: originX + (Math.random()*160-80),
+      y: confettiCanvas.height * 0.42,
+      vx: Math.cos(angle) * speed * (Math.random()>0.5?1:-1),
+      vy: -(4 + Math.random()*10),
+      size: 5 + Math.random()*6,
+      color: colors[Math.floor(Math.random()*colors.length)],
+      rotation: Math.random()*360,
+      rotSpeed: (Math.random()-0.5) * 14,
+      life: 0,
+      maxLife: 90 + Math.random()*40,
+      shape: Math.random() > 0.5 ? 'rect' : 'circle'
+    });
+  }
+}
+
+function animateConfetti(){
+  ctx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height);
+  confettiParticles.forEach(p => {
+    p.vy += 0.18; // gravity
+    p.x += p.vx;
+    p.y += p.vy;
+    p.rotation += p.rotSpeed;
+    p.life++;
+    const fade = Math.max(0, 1 - (p.life / p.maxLife));
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation * Math.PI/180);
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = p.color;
+    if(p.shape === 'rect'){
+      ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.6);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0,0,p.size/2,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+  confettiParticles = confettiParticles.filter(p => p.life < p.maxLife);
+  requestAnimationFrame(animateConfetti);
+}
+requestAnimationFrame(animateConfetti);
+
+// ---- Celebration: name/amount reveal card ----
+let celebTimeout = null;
+function triggerCelebration(name, side, amount){
+  const sideName = side === 'left' ? document.getElementById('nameLeft').value : document.getElementById('nameRight').value;
+  const celeb = document.getElementById('celebration');
+  const amtEl = document.getElementById('celebAmount');
+
+  document.getElementById('celebName').textContent = name;
+  document.getElementById('celebSide').textContent = sideName;
+  amtEl.textContent = '₹' + amount.toLocaleString('en-IN');
+  amtEl.className = 'celeb-amount ' + (side === 'left' ? 'side-left' : 'side-right');
+
+  const photo = side === 'left' ? photoDataLeft : photoDataRight;
+  const avatarWrap = document.getElementById('celebAvatarWrap');
+  const avatarImg = document.getElementById('celebAvatarImg');
+  if(photo){
+    avatarImg.src = photo;
+    avatarWrap.style.display = 'block';
+  } else {
+    avatarWrap.style.display = 'none';
+  }
+
+  // restart animation cleanly even on rapid repeated donations
+  celeb.classList.remove('show');
+  void celeb.offsetWidth; // force reflow to restart CSS animation
+  celeb.classList.add('show');
+  launchConfetti(side);
+
+  clearTimeout(celebTimeout);
+  celebTimeout = setTimeout(() => celeb.classList.remove('show'), 3000);
+}
+
+// This is the single integration point: call this function whenever a real
+// payment webhook confirms money received, with the donor name, side, and amount.
+function addDonation(name, side, amount){
+  totals[side] += amount;
+  counts[side] += 1;
+  updateUI();
+  addTickerItem(name, side, amount);
+  triggerCelebration(name, side, amount);
+  const sideName = side === 'left' ? document.getElementById('nameLeft').value : document.getElementById('nameRight').value;
+  speak(`${name} donated ${amount} rupees loving ${sideName}`);
+}
+
+function simulateDonation(){
+  const name = document.getElementById('donorName').value || 'Anonymous';
+  const amount = parseInt(document.getElementById('donorAmt').value) || 0;
+  const side = document.getElementById('donorSide').value;
+  if(amount <= 0) return;
+  addDonation(name, side, amount);
+}
+
+const sampleNames = ['Aman','Priya','Rohit','Sneha','Vikram','Ananya','Karan','Divya','Suresh','Meera'];
+function randomBurst(){
+  let i = 0;
+  const interval = setInterval(() => {
+    const name = sampleNames[Math.floor(Math.random()*sampleNames.length)];
+    const amount = [50,100,150,200,250,500][Math.floor(Math.random()*6)];
+    const side = Math.random() > 0.5 ? 'left' : 'right';
+    addDonation(name, side, amount);
+    i++;
+    if(i >= 5) clearInterval(interval);
+  }, 600);
+}
+
+function resetAll(){
+  totals = { left:0, right:0 };
+  counts = { left:0, right:0 };
+  updateUI();
+  document.getElementById('ticker').innerHTML = '<div class="ticker-item" style="color:var(--dim)">Waiting for the first supporter…</div>';
+}
+
+document.getElementById('nameLeft').addEventListener('input', e => {
+  document.getElementById('titleText').innerHTML = e.target.value.toUpperCase() + ' &nbsp;VS&nbsp; ' + document.getElementById('nameRight').value.toUpperCase();
+});
+document.getElementById('nameRight').addEventListener('input', e => {
+  document.getElementById('titleText').innerHTML = document.getElementById('nameLeft').value.toUpperCase() + ' &nbsp;VS&nbsp; ' + e.target.value.toUpperCase();
+});
+
+updateUI();
+</script>
+</body>
+</html>
