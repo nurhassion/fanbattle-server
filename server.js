@@ -68,12 +68,7 @@ async function fetchRecentPayments() {
     if (isFirstRun) {
       console.log(`Startup check: found ${payments.length} payment(s) on this account.`);
       if (payments.length > 0) {
-        console.log('Most recent payment:', {
-          id: payments[0].payment_id,
-          amount: payments[0].amount,
-          status: payments[0].status,
-          purpose: payments[0].purpose
-        });
+        console.log('Most recent payment (full object):', JSON.stringify(payments[0], null, 2));
         console.log('✅ API connection working — your test payment should appear above if it was ₹9.');
       }
       payments.forEach(p => seenPaymentIds.add(p.payment_id));
@@ -91,7 +86,8 @@ async function fetchRecentPayments() {
         else if (/^L:/i.test(purposeRaw.trim())) side = 'left';
 
         if (!side) {
-          console.log('⚠️ Could not determine side for payment, skipping:', purposeRaw);
+          console.log('⚠️ Could not determine side for payment, skipping. Purpose was:', purposeRaw);
+          console.log('🔍 DIAGNOSTIC — full raw payment object from Instamojo:', JSON.stringify(p, null, 2));
           continue;
         }
 
@@ -135,9 +131,6 @@ app.get('/', (req, res) => {
 });
 
 // ====== Password-protected dashboard: /dashboard ======
-// Uses HTTP Basic Auth. IMPORTANT: set DASHBOARD_USER and DASHBOARD_PASS
-// as environment variables in Render (Settings → Environment) — do not
-// leave the fallback defaults below in place for a real, live event.
 const DASHBOARD_USER = process.env.DASHBOARD_USER || 'admin';
 const DASHBOARD_PASS = process.env.DASHBOARD_PASS || 'changeme123';
 
@@ -158,7 +151,6 @@ function requireDashboardAuth(req, res, next) {
 app.get('/dashboard', requireDashboardAuth, (req, res) => {
   const records = loadRecords();
 
-  // Group by month (YYYY-MM) and by day (YYYY-MM-DD)
   const byMonth = {};
   const byDay = {};
   for (const r of records) {
@@ -245,7 +237,6 @@ app.get('/dashboard', requireDashboardAuth, (req, res) => {
   `);
 });
 
-// ====== Download all records as a CSV file — your own permanent backup ======
 app.get('/export', requireDashboardAuth, (req, res) => {
   const records = loadRecords();
   const header = 'timestamp,name,side,amount,email,phone,purpose,payment_id\n';
