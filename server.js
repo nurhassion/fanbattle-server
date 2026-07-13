@@ -13,10 +13,8 @@ app.use(cors());
 // ====== Persistent donor records (name, side, amount, date) ======
 // NOTE: On Render's FREE tier, the filesystem is not guaranteed to survive
 // every restart/redeploy — treat this as a convenience log, not a permanent
-// legal record. For records that must NEVER be lost, either (a) upgrade to
-// a Render paid plan with a Persistent Disk, or (b) also mirror each record
-// to an external store (Google Sheet, Airtable, or a free MongoDB Atlas
-// database) — ask if you'd like that added later.
+// legal record. Records are ALSO mirrored to a Google Sheet below, which is
+// the durable, permanent copy.
 const RECORDS_FILE = path.join(__dirname, 'records.json');
 
 function loadRecords() {
@@ -34,6 +32,30 @@ function saveRecord(record) {
     fs.writeFileSync(RECORDS_FILE, JSON.stringify(records, null, 2));
   } catch (e) {
     console.error('Could not save record to disk:', e.message);
+  }
+}
+
+// ====== Google Sheets permanent backup ======
+// Every new payment record is also sent to a Google Apps Script Web App,
+// which saves it into a monthly tab (e.g. "2026-07") in your own Google
+// Sheet. This survives even if Render's disk resets, because the data
+// lives in your Google account, not on this server.
+// Set these two as environment variables in Render (Settings → Environment):
+//   GSHEET_WEBHOOK_URL = the Web app URL from Apps Script "Deploy"
+//   GSHEET_SECRET       = the same SECRET value you put inside the Apps Script code
+const GSHEET_WEBHOOK_URL = process.env.GSHEET_WEBHOOK_URL || '';
+const GSHEET_SECRET = process.env.GSHEET_SECRET || '';
+
+async function backupToGoogleSheet(record) {
+  if (!GSHEET_WEBHOOK_URL) return; // not configured yet, skip silently
+  try {
+    await fetch(GSHEET_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...record, secret: GSHEET_SECRET })
+    });
+  } catch (e) {
+    console.error('Could not back up record to Google Sheet:', e.message);
   }
 }
 
@@ -127,7 +149,8 @@ async function fetchRecentPayments() {
         };
 
         latestEvents.push(event);
-        saveRecord({
+
+        const fullRecord = {
           id: p.payment_id,
           name: p.buyer_name || 'Anonymous',
           email: p.buyer || p.email || null,
@@ -136,7 +159,10 @@ async function fetchRecentPayments() {
           amount: parseFloat(p.amount),
           purpose: purposeRaw,
           timestamp: new Date().toISOString()
-        });
+        };
+
+        saveRecord(fullRecord);
+        backupToGoogleSheet(fullRecord); // fire-and-forget, doesn't block anything
         console.log('🎉 New payment detected:', event);
       }
     }
@@ -273,7 +299,7 @@ app.get('/dashboard', requireDashboardAuth, (req, res) => {
     </head>
     <body>
       <h1>📊 Fan Battle Live — Donation Records</h1>
-      <div class="warn">⚠️ Records are stored on this server's disk. On Render's free tier this is NOT guaranteed permanent across every restart/redeploy — export or screenshot this page periodically if you need long-term proof.</div>
+      <div class="warn">⚠️ Records are stored on this server's disk. On Render's free tier this is NOT guaranteed permanent across every restart/redeploy — export or screenshot this page periodically if you need long-term proof. (A permanent copy is also being saved to your Google Sheet.)</div>
 
       <h2>Monthly totals</h2>
       <table>
