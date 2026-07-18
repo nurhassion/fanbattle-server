@@ -40,8 +40,11 @@ function saveRecord(record) {
 }
 
 // ====== Donor photos — entirely optional, donor's own choice ======
-// Stored as { name: { photo: "data:image/...", timestamp } } so the streamer
-// can moderate (delete) any single one from the dashboard.
+// Stored as { name: { photo: "data:image/...", timestamp, driveLink } } so
+// the streamer can moderate (delete) any single one from the dashboard.
+// The local base64 copy is kept for instant dashboard display even if the
+// Google Drive upload is briefly slow/unreachable — driveLink (once we have
+// it) is the DURABLE copy that survives a Render restart/redeploy.
 function loadPhotos() {
   try { return JSON.parse(fs.readFileSync(PHOTOS_FILE, 'utf8')); } catch (e) { return {}; }
 }
@@ -63,6 +66,34 @@ async function backupToGoogleSheet(record) {
       body: JSON.stringify({ ...record, secret: GSHEET_SECRET })
     });
   } catch (e) { console.error('Could not back up record to Google Sheet:', e.message); }
+}
+
+// ====== STEP 3 (new): Donor photo -> Google Drive, link saved to Sheet ======
+// Uses the SAME Apps Script Web App as the donation-record backup above
+// (GSHEET_WEBHOOK_URL) — the script tells the two kinds of requests apart
+// by the presence of `type: 'photo'`. See DRIVE-PHOTO-SETUP.md for the exact
+// Apps Script code to paste in (it's an addition to your existing script,
+// not a replacement).
+async function uploadPhotoToDriveAndLog(name, photoDataUrl) {
+  if (!GSHEET_WEBHOOK_URL) return null;
+  try {
+    const res = await fetch(GSHEET_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'photo',
+        name,
+        photoDataUrl,
+        secret: GSHEET_SECRET,
+        timestamp: new Date().toISOString()
+      })
+    });
+    const data = await res.json().catch(() => null);
+    return (data && data.driveLink) ? data.driveLink : null;
+  } catch (e) {
+    console.error('Could not upload photo to Google Drive:', e.message);
+    return null;
+  }
 }
 
 // ====== Shared in-memory event queue the browser overlay polls every 4s ======
@@ -245,6 +276,9 @@ async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone
 
 // Our own small "choose an amount" page for domestic visitors — mirrors the
 // PayPal page's look/flow exactly, so the experience feels identical.
+// STEP 3: name + amount are REQUIRED (enforced both client-side below and
+// server-side in /instamojo-create-request); email is never asked at all;
+// phone stays optional.
 function instamojoAmountPageHtml(side, teamName) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -255,6 +289,7 @@ function instamojoAmountPageHtml(side, teamName) {
     input{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:200px; text-align:center;}
     input#amt{width:140px;}
     label.fieldLabel{display:block; font-size:11.5px; color:#8B93A7; margin-top:14px;}
+    label.fieldLabel .req{color:#FF8A7A;}
     button{padding:12px 28px; border-radius:10px; border:none; background:#FFC53D; color:#0B0F19; font-weight:bold; font-size:15px; margin-top:12px; cursor:pointer;}
     .presets{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px;}
     .preset-btn{background:#121728; border:1px solid #333; color:#F5F7FA; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer;}
@@ -263,11 +298,12 @@ function instamojoAmountPageHtml(side, teamName) {
   </style></head><body>
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a completely voluntary show of support, no goods or prizes are exchanged. Minimum ₹9.</p>
-    <label class="fieldLabel">Your name (shown on stream)</label>
+    <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
     <div><input type="text" id="donorName" placeholder="Your name" maxlength="40"></div>
     <label class="fieldLabel">Mobile number (optional)</label>
     <div><input type="tel" id="donorPhone" placeholder="Optional"></div>
-    <div style="margin-top:16px;"><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
+    <label class="fieldLabel">Amount <span class="req">*required</span></label>
+    <div style="margin-top:4px;"><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
     <div class="presets">
       <button class="preset-btn active" onclick="setAmt(9,this)">₹9 - Thanks!</button>
       <button class="preset-btn" onclick="setAmt(10,this)">₹10 - Nice One!</button>
@@ -291,11 +327,13 @@ function instamojoAmountPageHtml(side, teamName) {
         const donorName = document.getElementById('donorName').value.trim();
         const donorPhone = document.getElementById('donorPhone').value.trim();
         if(!donorName){
-          document.getElementById('status').textContent = 'Please enter your name.';
+          document.getElementById('status').textContent = 'Please enter your name — it\\'s required.';
+          document.getElementById('donorName').focus();
           return;
         }
-        if(!amt || amt < 9){
-          document.getElementById('status').textContent = 'Minimum amount is ₹9.';
+        if(!amt || isNaN(amt) || amt < 9){
+          document.getElementById('status').textContent = 'Please enter a valid amount (minimum ₹9).';
+          document.getElementById('amt').focus();
           return;
         }
         document.getElementById('status').textContent = 'Redirecting to payment...';
@@ -317,8 +355,12 @@ app.post('/instamojo-create-request', async (req, res) => {
   try {
     const { amount, side, donorName, donorPhone } = req.body;
     const amt = parseFloat(amount);
+    // STEP 3: name + amount are required — enforced here too, not just in
+    // the page's own JS, since this endpoint could in principle be called
+    // directly.
+    if (!donorName || !donorName.trim()) return res.status(400).json({ error: 'Name is required.' });
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
-    const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right', donorName, donorPhone);
+    const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right', donorName.trim(), donorPhone);
     res.json({ longurl });
   } catch (e) {
     console.error('instamojo-create-request failed:', e.message);
@@ -407,6 +449,9 @@ app.post('/paypal-capture-order', async (req, res) => {
   } catch (e) { console.error('paypal-capture-order failed:', e.message); res.status(500).json({ error: 'Could not capture PayPal payment' }); }
 });
 
+// STEP 3: name is REQUIRED (already enforced in createOrder below) and now
+// amount is also explicitly validated client-side before the PayPal button
+// flow even starts; email is never asked at all; phone stays optional.
 function paypalPageHtml(side, teamName) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -417,6 +462,7 @@ function paypalPageHtml(side, teamName) {
     h2{margin-bottom:6px;} p{color:#8B93A7; font-size:14px;}
     input, select{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:200px;}
     label.fieldLabel{display:block; font-size:11.5px; color:#8B93A7; margin-top:14px;}
+    label.fieldLabel .req{color:#FF8A7A;}
     #paypal-button-container{max-width:320px; margin:20px auto;}
     #status{margin-top:14px; font-weight:bold;}
     #photoSection{display:none; margin-top:22px; border-top:1px solid #333; padding-top:18px;}
@@ -426,11 +472,12 @@ function paypalPageHtml(side, teamName) {
     ${STREAM_BACK_URL ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a voluntary show of support, no goods or services are exchanged.</p>
-    <label class="fieldLabel">Your name (shown on stream)</label>
+    <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
     <div><input type="text" id="donorNameInput" placeholder="Your name" maxlength="40"></div>
     <label class="fieldLabel">Mobile number (optional)</label>
     <div><input type="tel" id="donorPhoneInput" placeholder="Optional"></div>
-    <div>
+    <label class="fieldLabel">Amount <span class="req">*required</span></label>
+    <div style="margin-top:4px;">
       <input type="number" id="amt" placeholder="Amount" min="1" value="5">
       <select id="cur">
         <option value="USD">USD $</option><option value="EUR">EUR €</option><option value="GBP">GBP £</option>
@@ -490,9 +537,16 @@ function paypalPageHtml(side, teamName) {
       paypal.Buttons({
         createOrder: function() {
           const donorNameVal = document.getElementById('donorNameInput').value.trim();
+          const amtVal = parseFloat(document.getElementById('amt').value);
           if(!donorNameVal){
-            document.getElementById('status').textContent = 'Please enter your name first.';
+            document.getElementById('status').textContent = 'Please enter your name — it\\'s required.';
+            document.getElementById('donorNameInput').focus();
             return Promise.reject(new Error('name required'));
+          }
+          if(!amtVal || isNaN(amtVal) || amtVal <= 0){
+            document.getElementById('status').textContent = 'Please enter a valid amount.';
+            document.getElementById('amt').focus();
+            return Promise.reject(new Error('amount required'));
           }
           return fetch('/paypal-create-order', {
             method: 'POST', headers: {'Content-Type':'application/json'},
@@ -691,22 +745,37 @@ app.post('/confirm-return', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/donor-photo', (req, res) => {
+// STEP 3 (updated): the local base64 copy is still saved instantly (so the
+// dashboard's moderation panel keeps working exactly as before, with zero
+// delay) — but we NOW ALSO upload the photo to Google Drive and store that
+// permanent link in the Google Sheet, so the photo survives even if this
+// server's disk is wiped on a Render restart/redeploy. If the Drive upload
+// fails for any reason (Sheet unreachable, quota, etc.), the donor is not
+// affected at all — the local copy and celebration flow proceed exactly as
+// before, this is purely an added safety net.
+app.post('/donor-photo', async (req, res) => {
   const { name, photoDataUrl, celebrationId } = req.body;
   if (!name || !photoDataUrl) return res.status(400).json({ error: 'Missing name or photo' });
+
   donorPhotoMap[name] = { photo: photoDataUrl, timestamp: new Date().toISOString() };
   savePhotos(donorPhotoMap);
-  // Extra safety net: log that a photo was uploaded (name + time only, not
-  // the image itself — keeps the Sheet lightweight) in case the photo file
-  // on disk is ever lost, at least there's a trace of who uploaded one.
+
+  // Fire the Drive upload but don't let a slow/failed upload delay the
+  // donor's redirect back to the stream more than necessary.
+  const driveLink = await uploadPhotoToDriveAndLog(name, photoDataUrl);
+  if (driveLink) donorPhotoMap[name].driveLink = driveLink;
+  savePhotos(donorPhotoMap);
+
   backupToGoogleSheet({
     id: 'photo-' + Date.now(), name, side: '', amount: '', currency: '', country: '',
-    purpose: 'PHOTO_UPLOADED', source: 'photo-log', timestamp: new Date().toISOString()
+    purpose: driveLink ? `PHOTO_UPLOADED: ${driveLink}` : 'PHOTO_UPLOADED (Drive upload failed — local copy only)',
+    source: 'photo-log', timestamp: new Date().toISOString()
   });
+
   // Confirming a photo IS the donor's "I'm heading back to the stream now"
   // moment — queue their celebration the same way Skip does.
   if (celebrationId) setTimeout(() => notifyOverlay(celebrationId), RETURN_TO_STREAM_BUFFER_MS);
-  res.json({ ok: true });
+  res.json({ ok: true, driveLink: driveLink || null });
 });
 
 // =====================================================================
@@ -814,6 +883,7 @@ app.get('/dashboard', requireDashboardAuth, (req, res) => {
     <div style="display:inline-block; margin:8px; text-align:center;">
       <img src="${v.photo}" style="width:90px; height:90px; object-fit:cover; border-radius:10px; display:block;">
       <div style="font-size:12px; margin-top:4px;">${name}</div>
+      ${v.driveLink ? `<div style="font-size:10px;"><a href="${v.driveLink}" target="_blank" style="color:#6C9BFF;">Drive backup ↗</a></div>` : `<div style="font-size:10px; color:#FF8A7A;">No Drive backup</div>`}
       <button onclick="fetch('/donor-photo?name=${encodeURIComponent(name)}', {method:'DELETE'}).then(()=>location.reload())"
         style="font-size:11px; background:#FF4B3E; color:#fff; border:none; padding:4px 8px; border-radius:6px; margin-top:4px; cursor:pointer;">Delete</button>
     </div>`).join('') || '<p style="color:#8B93A7;">No photos uploaded yet.</p>';
