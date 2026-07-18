@@ -215,13 +215,24 @@ fetchRecentPayments();
 // visitor chose on our own page, with OUR redirect_url baked in — this
 // works purely through the API and does not depend on any dashboard
 // "Post Purchase" configuration at all.
-async function createInstamojoPaymentRequest(amount, side) {
+async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone) {
   const purpose = (side === 'left' ? 'L: ' : 'R: ') + 'Fan Battle Live tip';
-  const redirectUrl = `${PUBLIC_BASE_URL}/thanks?via=instamojo`;
+  // Carry the donor's OWN name/phone (entered on our page, not Instamojo's
+  // hosted checkout) through the redirect, so /thanks can prefer it — this
+  // is what lets us skip requiring an email at all on our side.
+  const nameParam = donorName ? `&dn=${encodeURIComponent(donorName)}` : '';
+  const phoneParam = donorPhone ? `&dp=${encodeURIComponent(donorPhone)}` : '';
+  const redirectUrl = `${PUBLIC_BASE_URL}/thanks?via=instamojo${nameParam}${phoneParam}`;
   const body = new URLSearchParams({
     purpose, amount: String(amount), redirect_url: redirectUrl, send_email: 'False', send_sms: 'False',
     allow_repeated_payments: 'False'
   });
+  // Pre-fill Instamojo's own hosted checkout with the name we already have,
+  // so the donor isn't asked to type it twice. Note: Instamojo's hosted page
+  // may still show its own email field per their platform's own checkout
+  // requirements — that's on their side, outside what this API can remove.
+  if (donorName) body.set('buyer_name', donorName);
+  if (donorPhone) body.set('phone', donorPhone);
   const res = await fetch('https://www.instamojo.com/api/1.1/payment-requests/', {
     method: 'POST',
     headers: { 'X-Api-Key': API_KEY, 'X-Auth-Token': AUTH_TOKEN, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -241,7 +252,9 @@ function instamojoAmountPageHtml(side, teamName) {
   <style>
     body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; text-align:center; padding:32px 16px;}
     h2{margin-bottom:6px;} p{color:#8B93A7; font-size:14px;}
-    input{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:140px; text-align:center;}
+    input{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:200px; text-align:center;}
+    input#amt{width:140px;}
+    label.fieldLabel{display:block; font-size:11.5px; color:#8B93A7; margin-top:14px;}
     button{padding:12px 28px; border-radius:10px; border:none; background:#FFC53D; color:#0B0F19; font-weight:bold; font-size:15px; margin-top:12px; cursor:pointer;}
     .presets{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px;}
     .preset-btn{background:#121728; border:1px solid #333; color:#F5F7FA; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer;}
@@ -250,7 +263,11 @@ function instamojoAmountPageHtml(side, teamName) {
   </style></head><body>
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a completely voluntary show of support, no goods or prizes are exchanged. Minimum ₹9.</p>
-    <div><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
+    <label class="fieldLabel">Your name (shown on stream)</label>
+    <div><input type="text" id="donorName" placeholder="Your name" maxlength="40"></div>
+    <label class="fieldLabel">Mobile number (optional)</label>
+    <div><input type="tel" id="donorPhone" placeholder="Optional"></div>
+    <div style="margin-top:16px;"><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
     <div class="presets">
       <button class="preset-btn active" onclick="setAmt(9,this)">₹9 - Thanks!</button>
       <button class="preset-btn" onclick="setAmt(10,this)">₹10 - Nice One!</button>
@@ -271,6 +288,12 @@ function instamojoAmountPageHtml(side, teamName) {
       });
       function pay(){
         const amt = parseFloat(document.getElementById('amt').value);
+        const donorName = document.getElementById('donorName').value.trim();
+        const donorPhone = document.getElementById('donorPhone').value.trim();
+        if(!donorName){
+          document.getElementById('status').textContent = 'Please enter your name.';
+          return;
+        }
         if(!amt || amt < 9){
           document.getElementById('status').textContent = 'Minimum amount is ₹9.';
           return;
@@ -278,7 +301,7 @@ function instamojoAmountPageHtml(side, teamName) {
         document.getElementById('status').textContent = 'Redirecting to payment...';
         fetch('/instamojo-create-request', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ amount: amt, side: '${side}' })
+          body: JSON.stringify({ amount: amt, side: '${side}', donorName, donorPhone })
         }).then(r => r.json()).then(d => {
           if(d.longurl) window.location.href = d.longurl;
           else document.getElementById('status').textContent = 'Something went wrong: ' + (d.error || 'please try again.');
@@ -292,10 +315,10 @@ function instamojoAmountPageHtml(side, teamName) {
 
 app.post('/instamojo-create-request', async (req, res) => {
   try {
-    const { amount, side } = req.body;
+    const { amount, side, donorName, donorPhone } = req.body;
     const amt = parseFloat(amount);
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
-    const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right');
+    const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right', donorName, donorPhone);
     res.json({ longurl });
   } catch (e) {
     console.error('instamojo-create-request failed:', e.message);
@@ -351,7 +374,7 @@ app.post('/paypal-create-order', async (req, res) => {
 
 app.post('/paypal-capture-order', async (req, res) => {
   try {
-    const { orderID } = req.body;
+    const { orderID, donorName, donorPhone } = req.body;
     const token = await getPaypalAccessToken();
     const captureRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${orderID}/capture`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -360,7 +383,12 @@ app.post('/paypal-capture-order', async (req, res) => {
     const purchaseUnit = (capture.purchase_units || [])[0] || {};
     const captureObj = (purchaseUnit.payments && purchaseUnit.payments.captures && purchaseUnit.payments.captures[0]) || {};
     const payer = capture.payer || {};
-    const name = [payer.name && payer.name.given_name, payer.name && payer.name.surname].filter(Boolean).join(' ') || 'Anonymous';
+    // Prefer the name the donor typed on OUR OWN page over whatever their
+    // PayPal account name happens to be (some donors' PayPal accounts show
+    // an unrelated business/family name) — same reasoning as the Instamojo
+    // path above.
+    const paypalAccountName = [payer.name && payer.name.given_name, payer.name && payer.name.surname].filter(Boolean).join(' ') || 'Anonymous';
+    const name = (donorName && donorName.trim()) || paypalAccountName;
     const amount = captureObj.amount ? captureObj.amount.value : null;
     const currency = captureObj.amount ? captureObj.amount.currency_code : 'USD';
     const country = (payer.address && payer.address.country_code) || null;
@@ -368,7 +396,7 @@ app.post('/paypal-capture-order', async (req, res) => {
 
     let celebrationId = null;
     if (amount) {
-      const record = recordDonation({ id: captureObj.id || orderID, name, email: payer.email_address, country, side, amount, currency, purpose: 'PayPal donation', source: 'paypal' });
+      const record = recordDonation({ id: captureObj.id || orderID, name, email: payer.email_address, phone: donorPhone || null, country, side, amount, currency, purpose: 'PayPal donation', source: 'paypal' });
       celebrationId = record.id;
     }
     // Tell the client everything /thanks would need, so the PayPal page can
@@ -387,7 +415,8 @@ function paypalPageHtml(side, teamName) {
   <style>
     body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; text-align:center; padding:32px 16px;}
     h2{margin-bottom:6px;} p{color:#8B93A7; font-size:14px;}
-    input, select{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:140px;}
+    input, select{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:200px;}
+    label.fieldLabel{display:block; font-size:11.5px; color:#8B93A7; margin-top:14px;}
     #paypal-button-container{max-width:320px; margin:20px auto;}
     #status{margin-top:14px; font-weight:bold;}
     #photoSection{display:none; margin-top:22px; border-top:1px solid #333; padding-top:18px;}
@@ -397,6 +426,10 @@ function paypalPageHtml(side, teamName) {
     ${STREAM_BACK_URL ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a voluntary show of support, no goods or services are exchanged.</p>
+    <label class="fieldLabel">Your name (shown on stream)</label>
+    <div><input type="text" id="donorNameInput" placeholder="Your name" maxlength="40"></div>
+    <label class="fieldLabel">Mobile number (optional)</label>
+    <div><input type="tel" id="donorPhoneInput" placeholder="Optional"></div>
     <div>
       <input type="number" id="amt" placeholder="Amount" min="1" value="5">
       <select id="cur">
@@ -456,6 +489,11 @@ function paypalPageHtml(side, teamName) {
 
       paypal.Buttons({
         createOrder: function() {
+          const donorNameVal = document.getElementById('donorNameInput').value.trim();
+          if(!donorNameVal){
+            document.getElementById('status').textContent = 'Please enter your name first.';
+            return Promise.reject(new Error('name required'));
+          }
           return fetch('/paypal-create-order', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ amount: document.getElementById('amt').value, currency: document.getElementById('cur').value, side: '${side}' })
@@ -463,9 +501,11 @@ function paypalPageHtml(side, teamName) {
         },
         onApprove: function(data) {
           document.getElementById('status').textContent = 'Processing...';
+          const donorNameVal = document.getElementById('donorNameInput').value.trim();
+          const donorPhoneVal = document.getElementById('donorPhoneInput').value.trim();
           return fetch('/paypal-capture-order', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ orderID: data.orderID, side: '${side}' })
+            body: JSON.stringify({ orderID: data.orderID, side: '${side}', donorName: donorNameVal, donorPhone: donorPhoneVal })
           }).then(r => r.json()).then(d => {
             document.getElementById('status').textContent = 'Thank you! Your support will appear on stream shortly 🎉';
             donorName = d.name || 'Anonymous';
@@ -605,25 +645,31 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
 
 app.get('/thanks', async (req, res) => {
   try {
-    const { payment_id, payment_status } = req.query;
+    const { payment_id, payment_status, dn, dp } = req.query;
+    const donorProvidedName = dn ? decodeURIComponent(dn) : null;
+    const donorProvidedPhone = dp ? decodeURIComponent(dp) : null;
     let name = null, amount = null, currency = 'INR', side = null, celebrationId = null;
     if (payment_id && payment_status === 'Credit') {
       const payment = await fetchInstamojoPayment(payment_id);
       if (payment) {
-        name = payment.buyer_name; amount = payment.amount; currency = 'INR';
+        // Prefer the name/phone the donor typed on OUR OWN page (before being
+        // sent to Instamojo's hosted checkout) over whatever Instamojo itself
+        // returns — this is what our own donor form is for.
+        name = donorProvidedName || payment.buyer_name;
+        amount = payment.amount; currency = 'INR';
         const purpose = payment.purpose || '';
         side = /^L:/i.test(purpose.trim()) ? 'left' : (/^R:/i.test(purpose.trim()) ? 'right' : null);
         // Record now (recordDonation's built-in duplicate-guard makes this
         // safe even if the background poller also notices this same
         // payment_id around the same time) — celebration itself is queued
         // separately, only once the donor confirms/skips on this page.
-        // Phone number is captured here too (Instamojo provides it as
-        // buyer_phone), so the Google Sheet backup has name + amount +
-        // phone together for every domestic supporter.
+        // No email is required or requested on our own page at all; phone
+        // is optional and, if the donor left it blank, we fall back to
+        // whatever Instamojo itself captured on its hosted checkout.
         const record = recordDonation({
           id: payment_id, name, side, amount, currency, purpose, source: 'instamojo',
           email: payment.buyer || payment.email || null,
-          phone: payment.buyer_phone || null
+          phone: donorProvidedPhone || payment.buyer_phone || null
         });
         celebrationId = record.id;
       }
