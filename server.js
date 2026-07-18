@@ -982,6 +982,242 @@ app.get('/overlay', requireOverlayAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'fan-battle-live-demo.html'));
 });
 
+// ====== Unified App: JSON data API (same data as /dashboard, machine-readable) ======
+app.get('/api/dashboard-data', requireDashboardAuth, (req, res) => {
+  const records = loadRecords();
+  const byMonth = {}, byDay = {};
+  for (const r of records) {
+    const month = r.timestamp.slice(0, 7), day = r.timestamp.slice(0, 10), cur = r.currency || 'INR';
+    if (!byMonth[month]) byMonth[month] = { byCurrency: {}, count: 0 };
+    byMonth[month].byCurrency[cur] = (byMonth[month].byCurrency[cur] || 0) + r.amount;
+    byMonth[month].count += 1;
+    if (!byDay[day]) byDay[day] = { byCurrency: {}, count: 0 };
+    byDay[day].byCurrency[cur] = (byDay[day].byCurrency[cur] || 0) + r.amount;
+    byDay[day].count += 1;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const photosOut = Object.entries(donorPhotoMap).map(([name, v]) => ({ name, photo: v.photo, driveLink: v.driveLink || null, timestamp: v.timestamp }));
+  res.json({
+    todayTotals: byDay[today] || { byCurrency: {}, count: 0 },
+    monthTotals: byMonth[thisMonth] || { byCurrency: {}, count: 0 },
+    recentRecords: [...records].reverse().slice(0, 50),
+    photos: photosOut,
+    gatewaySettings: loadGatewaySettings()
+  });
+});
+
+// ====== Unified App: one professional, app-like control panel ======
+// Single page, bottom tab navigation (Home / Gateways / Photos / Records) —
+// looks and feels like a native Android app. Works in any mobile browser;
+// visiting it once and choosing "Add to Home Screen" makes it open full-
+// screen with its own icon, exactly like an installed app, with zero extra
+// setup. A true native/Electron app remains the later, more complete step —
+// this is the professional, unified interface available right now.
+app.get('/app', requireDashboardAuth, (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#0B0F19">
+<title>Fan Battle Live — Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F19; --bg-soft:#121728; --card:#161C2E; --line:rgba(245,247,250,0.08);
+    --white:#F5F7FA; --dim:#8B93A7; --left:#6C9BFF; --right:#FF6B5E; --gold:#FFC53D; --green:#4ADE80;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg); color:var(--white); font-family:'Inter',sans-serif;
+    max-width:480px; margin:0 auto; min-height:100vh; position:relative;
+    padding-bottom:82px; overflow-x:hidden;
+  }
+  header{
+    padding:20px 18px 14px; position:sticky; top:0; background:var(--bg); z-index:5;
+    border-bottom:1px solid var(--line);
+  }
+  .brand{ font-family:'Manrope',sans-serif; font-weight:800; font-size:19px; letter-spacing:-0.2px; }
+  .brand span.dot{ color:var(--gold); }
+  .split-bar{ height:3px; border-radius:3px; margin-top:10px; background:linear-gradient(90deg, var(--left) 0%, var(--left) 48%, var(--gold) 50%, var(--right) 52%, var(--right) 100%); }
+  main{ padding:18px; }
+  .tab-panel{ display:none; animation:fadeIn .25s ease; }
+  .tab-panel.active{ display:block; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat-card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; }
+  .stat-label{ font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:0.6px; font-weight:600; }
+  .stat-value{ font-family:'Manrope',sans-serif; font-size:22px; font-weight:800; margin-top:6px; }
+  .stat-sub{ font-size:11.5px; color:var(--dim); margin-top:2px; }
+
+  .section-title{ font-size:13px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:0.6px; margin:22px 0 10px; }
+  .quick-links{ display:flex; gap:10px; margin-top:14px; }
+  .quick-link{ flex:1; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 10px; text-align:center; text-decoration:none; color:var(--white); font-size:12.5px; font-weight:600; }
+  .quick-link .emoji{ font-size:20px; display:block; margin-bottom:6px; }
+
+  .gw-row{ display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin-top:12px; }
+  .gw-name{ font-size:15px; font-weight:700; }
+  .gw-status{ font-size:12px; margin-top:3px; }
+  .gw-status.on{ color:var(--green); } .gw-status.off{ color:var(--right); }
+  .switch{ position:relative; width:52px; height:30px; flex-shrink:0; }
+  .switch input{ display:none; }
+  .slider{ position:absolute; cursor:pointer; inset:0; background:#2A3350; border-radius:30px; transition:.2s; }
+  .slider:before{ content:""; position:absolute; width:24px; height:24px; left:3px; top:3px; background:white; border-radius:50%; transition:.2s; }
+  input:checked + .slider{ background:var(--green); }
+  input:checked + .slider:before{ transform:translateX(22px); }
+
+  .photo-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:6px; }
+  .photo-card{ background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; text-align:center; }
+  .photo-card img{ width:100%; aspect-ratio:1; object-fit:cover; display:block; }
+  .photo-card .pname{ font-size:11px; padding:6px 4px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .photo-card .pdel{ display:block; width:100%; background:none; border:none; color:var(--right); font-size:10.5px; padding:2px 0 6px; cursor:pointer; }
+  .empty{ color:var(--dim); font-size:13px; text-align:center; padding:40px 10px; }
+
+  table{ width:100%; border-collapse:collapse; margin-top:8px; font-size:12.5px; }
+  th,td{ padding:8px 6px; text-align:left; border-bottom:1px solid var(--line); }
+  th{ color:var(--dim); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .amt-pos{ color:var(--green); font-weight:600; }
+  .export-btn{ display:block; text-align:center; background:var(--gold); color:#0B0F19; font-weight:700; padding:12px; border-radius:12px; text-decoration:none; margin-top:14px; font-size:13.5px; }
+
+  nav.bottom{
+    position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px;
+    background:var(--bg-soft); border-top:1px solid var(--line); display:flex; padding:8px 6px 10px;
+    z-index:10;
+  }
+  nav.bottom button{
+    flex:1; background:none; border:none; color:var(--dim); font-family:'Inter',sans-serif;
+    display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 2px; border-radius:12px; cursor:pointer;
+  }
+  nav.bottom button .icon{ font-size:19px; }
+  nav.bottom button .lbl{ font-size:10.5px; font-weight:600; }
+  nav.bottom button.active{ color:var(--gold); background:rgba(255,197,61,0.08); }
+</style>
+</head><body>
+
+<header>
+  <div class="brand">Fan Battle Live <span class="dot">●</span> Control</div>
+  <div class="split-bar"></div>
+</header>
+
+<main>
+  <!-- HOME -->
+  <section class="tab-panel active" id="tab-home">
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value" id="todayValue">—</div><div class="stat-sub" id="todayCount">—</div></div>
+      <div class="stat-card"><div class="stat-label">This month</div><div class="stat-value" id="monthValue">—</div><div class="stat-sub" id="monthCount">—</div></div>
+    </div>
+    <div class="section-title">Quick access</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/overlay" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/pay-left" target="_blank"><span class="emoji">🔵</span>Left pay</a>
+      <a class="quick-link" href="/pay-right" target="_blank"><span class="emoji">🔴</span>Right pay</a>
+    </div>
+  </section>
+
+  <!-- GATEWAYS -->
+  <section class="tab-panel" id="tab-gateways">
+    <div class="section-title">Payment gateways</div>
+    <div class="gw-row">
+      <div><div class="gw-name">🇮🇳 Domestic (Instamojo)</div><div class="gw-status" id="domesticStatus">—</div></div>
+      <label class="switch"><input type="checkbox" id="domesticToggle" onchange="toggleGateway('domestic', this.checked)"><span class="slider"></span></label>
+    </div>
+    <div class="gw-row">
+      <div><div class="gw-name">🌍 International (PayPal)</div><div class="gw-status" id="internationalStatus">—</div></div>
+      <label class="switch"><input type="checkbox" id="internationalToggle" onchange="toggleGateway('international', this.checked)"><span class="slider"></span></label>
+    </div>
+  </section>
+
+  <!-- PHOTOS -->
+  <section class="tab-panel" id="tab-photos">
+    <div class="section-title">Donor photos — moderate here</div>
+    <div class="photo-grid" id="photoGrid"></div>
+  </section>
+
+  <!-- RECORDS -->
+  <section class="tab-panel" id="tab-records">
+    <div class="section-title">Recent donations (latest 50)</div>
+    <table>
+      <tr><th>Name</th><th>Side</th><th>Amount</th></tr>
+      <tbody id="recordsBody"></tbody>
+    </table>
+    <a class="export-btn" href="/export">⬇ Download full CSV backup</a>
+  </section>
+</main>
+
+<nav class="bottom">
+  <button class="active" data-tab="home" onclick="showTab('home')"><span class="icon">🏠</span><span class="lbl">Home</span></button>
+  <button data-tab="gateways" onclick="showTab('gateways')"><span class="icon">🎛️</span><span class="lbl">Gateways</span></button>
+  <button data-tab="photos" onclick="showTab('photos')"><span class="icon">🖼️</span><span class="lbl">Photos</span></button>
+  <button data-tab="records" onclick="showTab('records')"><span class="icon">📊</span><span class="lbl">Records</span></button>
+</nav>
+
+<script>
+  function showTab(name){
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    document.querySelectorAll('nav.bottom button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  }
+
+  function fmtCurrencies(byCurrency){
+    const entries = Object.entries(byCurrency || {});
+    if(!entries.length) return '—';
+    return entries.map(([cur, amt]) => cur + ' ' + amt.toLocaleString('en-IN')).join(' · ');
+  }
+
+  async function loadData(){
+    try {
+      const res = await fetch('/api/dashboard-data');
+      const d = await res.json();
+
+      document.getElementById('todayValue').textContent = fmtCurrencies(d.todayTotals.byCurrency);
+      document.getElementById('todayCount').textContent = d.todayTotals.count + ' tip' + (d.todayTotals.count === 1 ? '' : 's');
+      document.getElementById('monthValue').textContent = fmtCurrencies(d.monthTotals.byCurrency);
+      document.getElementById('monthCount').textContent = d.monthTotals.count + ' tip' + (d.monthTotals.count === 1 ? '' : 's');
+
+      document.getElementById('domesticToggle').checked = d.gatewaySettings.domesticEnabled;
+      document.getElementById('domesticStatus').textContent = d.gatewaySettings.domesticEnabled ? 'Active — accepting tips' : 'Paused';
+      document.getElementById('domesticStatus').className = 'gw-status ' + (d.gatewaySettings.domesticEnabled ? 'on' : 'off');
+      document.getElementById('internationalToggle').checked = d.gatewaySettings.internationalEnabled;
+      document.getElementById('internationalStatus').textContent = d.gatewaySettings.internationalEnabled ? 'Active — accepting tips' : 'Paused';
+      document.getElementById('internationalStatus').className = 'gw-status ' + (d.gatewaySettings.internationalEnabled ? 'on' : 'off');
+
+      const photoGrid = document.getElementById('photoGrid');
+      photoGrid.innerHTML = d.photos.length ? d.photos.map(p => \`
+        <div class="photo-card">
+          <img src="\${p.photo}">
+          <div class="pname">\${p.name}</div>
+          <button class="pdel" onclick="deletePhoto('\${encodeURIComponent(p.name)}')">Delete</button>
+        </div>\`).join('') : '<div class="empty" style="grid-column:1/-1;">No photos uploaded yet.</div>';
+
+      const recordsBody = document.getElementById('recordsBody');
+      recordsBody.innerHTML = d.recentRecords.length ? d.recentRecords.map(r => \`
+        <tr><td>\${r.name}</td><td>\${r.side || '-'}</td><td class="amt-pos">\${r.currency || 'INR'} \${r.amount.toLocaleString('en-IN')}</td></tr>\`).join('') : '<tr><td colspan="3" style="color:var(--dim);">No records yet</td></tr>';
+    } catch(e){ console.error('Could not load dashboard data:', e); }
+  }
+
+  function toggleGateway(gateway, enabled){
+    const statusEl = document.getElementById(gateway + 'Status');
+    statusEl.textContent = 'Saving...';
+    fetch('/gateway-settings/toggle', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ gateway, enabled })
+    }).then(r => r.json()).then(d => {
+      statusEl.textContent = enabled ? 'Active — accepting tips' : 'Paused';
+      statusEl.className = 'gw-status ' + (enabled ? 'on' : 'off');
+    }).catch(() => { statusEl.textContent = 'Network error'; });
+  }
+
+  function deletePhoto(encodedName){
+    fetch('/donor-photo?name=' + encodedName, { method:'DELETE' }).then(loadData);
+  }
+
+  loadData();
+  setInterval(loadData, 10000); // keep stats fresh while the app is open
+</script>
+</body></html>`);
+});
+
 app.get('/dashboard', requireDashboardAuth, (req, res) => {
   const records = loadRecords();
   const byMonth = {}, byDay = {};
