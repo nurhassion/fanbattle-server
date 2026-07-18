@@ -80,7 +80,7 @@ let latestEvents = [];
 // tip "wasn't counted" just because they hadn't scrolled back to the stream
 // yet. See notifyOverlay() and the /confirm-return route below.
 let pendingCelebrations = {}; // { id: { name, side, amount, currency, country } }
-const RETURN_TO_STREAM_BUFFER_MS = 9000;  // used when the donor explicitly confirms/skips — see /confirm-return
+const RETURN_TO_STREAM_BUFFER_MS = 6000;  // used when the donor explicitly confirms/skips — see /confirm-return
 const FALLBACK_CELEBRATION_BUFFER_MS = 30000; // safety-net only, in case the donor never interacts with /thanks at all
 
 function recordDonation({ name, side, amount, currency, email, phone, country, purpose, source, id }) {
@@ -241,24 +241,49 @@ function instamojoAmountPageHtml(side, teamName) {
   <style>
     body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; text-align:center; padding:32px 16px;}
     h2{margin-bottom:6px;} p{color:#8B93A7; font-size:14px;}
-    input{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:140px;}
-    button{padding:12px 28px; border-radius:10px; border:none; background:#FFC53D; color:#0B0F19; font-weight:bold; font-size:15px; margin-top:12px;}
+    input{padding:10px; border-radius:8px; border:1px solid #333; font-size:16px; margin:6px; width:140px; text-align:center;}
+    button{padding:12px 28px; border-radius:10px; border:none; background:#FFC53D; color:#0B0F19; font-weight:bold; font-size:15px; margin-top:12px; cursor:pointer;}
+    .presets{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px;}
+    .preset-btn{background:#121728; border:1px solid #333; color:#F5F7FA; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer;}
+    .preset-btn.active{background:#FFC53D; color:#0B0F19; border-color:#FFC53D;}
     #status{margin-top:14px; font-weight:bold;}
   </style></head><body>
     <h2>Support ${teamName} 🔥</h2>
-    <p>যেকোনো অ্যামাউন্ট বসান — এটা সম্পূর্ণ স্বেচ্ছায় দেওয়া টিপস, কোনো পণ্য/পুরস্কার নেই।</p>
-    <div><input type="number" id="amt" placeholder="₹ Amount" min="1" value="10"></div>
-    <button onclick="pay()">Pay Now</button>
+    <p>Enter any amount you'd like to tip — this is a completely voluntary show of support, no goods or prizes are exchanged. Minimum ₹9.</p>
+    <div><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
+    <div class="presets">
+      <button class="preset-btn active" onclick="setAmt(9,this)">₹9 - Thanks!</button>
+      <button class="preset-btn" onclick="setAmt(10,this)">₹10 - Nice One!</button>
+      <button class="preset-btn" onclick="setAmt(20,this)">₹20 - Super!</button>
+      <button class="preset-btn" onclick="setAmt(50,this)">₹50 - Great!</button>
+      <button class="preset-btn" onclick="setAmt(100,this)">₹100 - Awesome!</button>
+    </div>
+    <br><button onclick="pay()">Pay Now</button>
     <div id="status"></div>
     <script>
+      function setAmt(v, btn){
+        document.getElementById('amt').value = v;
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      document.getElementById('amt').addEventListener('input', () => {
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      });
       function pay(){
+        const amt = parseFloat(document.getElementById('amt').value);
+        if(!amt || amt < 9){
+          document.getElementById('status').textContent = 'Minimum amount is ₹9.';
+          return;
+        }
         document.getElementById('status').textContent = 'Redirecting to payment...';
         fetch('/instamojo-create-request', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ amount: document.getElementById('amt').value, side: '${side}' })
+          body: JSON.stringify({ amount: amt, side: '${side}' })
         }).then(r => r.json()).then(d => {
           if(d.longurl) window.location.href = d.longurl;
-          else document.getElementById('status').textContent = 'Something went wrong, please try again.';
+          else document.getElementById('status').textContent = 'Something went wrong: ' + (d.error || 'please try again.');
+        }).catch(err => {
+          document.getElementById('status').textContent = 'Network error: ' + err.message;
         });
       }
     </script>
@@ -269,12 +294,15 @@ app.post('/instamojo-create-request', async (req, res) => {
   try {
     const { amount, side } = req.body;
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) return res.status(400).json({ error: 'Invalid amount' });
+    if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
     const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right');
     res.json({ longurl });
   } catch (e) {
     console.error('instamojo-create-request failed:', e.message);
-    res.status(500).json({ error: 'Could not create Instamojo payment request' });
+    // Surface the real reason (e.g. bad/missing API key, Instamojo-side
+    // validation error) instead of a generic message — makes debugging the
+    // "Something went wrong" case on the phone actually possible.
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -379,22 +407,40 @@ function paypalPageHtml(side, teamName) {
     <div id="paypal-button-container"></div>
     <div id="status"></div>
     <div id="photoSection">
-      <p><b>Want to show your photo on the live stream?</b><br>Totally optional — skip if you'd rather not.</p>
-      <input type="file" id="photoInput" accept="image/*">
+      <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">Totally optional — skip if you'd rather not.</span></p>
+      <input type="file" id="photoInput" accept="image/*" capture="environment">
       <div id="photoPreviewWrap"><img id="photoPreview" style="display:none;"></div>
-      <br><button onclick="uploadPhoto()">Add my photo</button>
-      ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;">Skip — back to stream</a>` : ''}
+      <br><button onclick="uploadPhoto()"><span id="addPhotoText">Add my photo</span></button>
+      ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
     </div>
     <script>
       let donorName = '';
       let celebrationId = null;
+      let returnAlreadyTriggered = false; // guards against firing twice (e.g. button click AND pagehide both firing)
 
-      // Whether the donor confirms a photo or taps Skip, this is the ONE
-      // moment that matters: it tells the server "I'm heading back to the
-      // stream now", which is when the buffered celebration timer starts —
-      // NOT at the instant the payment was captured. fetch(..., {keepalive:true})
-      // lets the request finish sending even as the page navigates away.
+      // ---- Auto-detect the visitor's OWN device/browser language and show
+      // it ALONGSIDE English (never replacing it) — based on navigator.language.
+      (function applyLocalLanguage(){
+        const translations = ${JSON.stringify(THANKS_TRANSLATIONS)};
+        const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+        const t = translations[browserLang];
+        if (!t) return;
+        const addBilingual = (el, translated) => { if (el && translated) el.innerHTML = el.innerHTML + '<br><span style="opacity:0.8;">' + translated + '</span>'; };
+        addBilingual(document.getElementById('photoQuestionText'), t.photoQuestion);
+        addBilingual(document.getElementById('photoNoteText'), t.photoNote);
+        addBilingual(document.getElementById('addPhotoText'), t.addPhoto);
+        addBilingual(document.getElementById('skipText'), t.skip);
+      })();
+
+      // Whether the donor confirms a photo, taps Skip, presses their phone's
+      // back button/gesture, or just closes the tab — ANY of these mean
+      // "I'm heading back to the stream now", which is the ONE moment that
+      // should start the buffered celebration timer — not the instant the
+      // payment was captured. fetch(..., {keepalive:true}) lets the request
+      // finish sending even as the page is actively navigating away.
       function confirmReturnAndGo(){
+        if(returnAlreadyTriggered) return;
+        returnAlreadyTriggered = true;
         if(celebrationId){
           fetch('/confirm-return', {
             method:'POST', headers:{'Content-Type':'application/json'}, keepalive:true,
@@ -404,6 +450,9 @@ function paypalPageHtml(side, teamName) {
         ${STREAM_BACK_URL ? `window.location.href = '${STREAM_BACK_URL}';` : ''}
       }
       function skipToStream(){ confirmReturnAndGo(); }
+      // Catches the phone's back button/swipe, or the tab/browser being
+      // closed — pagehide fires reliably in all of these cases on mobile.
+      window.addEventListener('pagehide', confirmReturnAndGo);
 
       paypal.Buttons({
         createOrder: function() {
@@ -453,6 +502,20 @@ function paypalPageHtml(side, teamName) {
 // =====================================================================
 // ==============  UNIVERSAL "/thanks" PAGE (Instamojo lands here) ======
 // =====================================================================
+// ---- Lightweight translation table for the donor-facing thank-you page. ----
+// Detected from the visitor's own device/browser language (navigator.language)
+// — NOT their location/IP. Falls back to English-only for any language not
+// listed here. Each entry is [thankYou(name), tipReceived(amount,currency),
+// photoQuestion, photoNote, addPhotoBtn, skipLink].
+const THANKS_TRANSLATIONS = {
+  hi: { thankYou: 'धन्यवाद', tipReceived: 'आपका टिप प्राप्त हो गया है।', photoQuestion: 'क्या आप अपनी फोटो लाइव स्ट्रीम पर दिखाना चाहेंगे?', photoNote: 'यह पूरी तरह वैकल्पिक है — चाहें तो स्किप करें।', addPhoto: 'मेरी फोटो जोड़ें', skip: 'स्किप करें — स्ट्रीम पर वापस जाएं' },
+  bn: { thankYou: 'ধন্যবাদ', tipReceived: 'আপনার টিপ পাওয়া গেছে।', photoQuestion: 'আপনি কি আপনার ছবি লাইভ স্ট্রিমে দেখাতে চান?', photoNote: 'এটা সম্পূর্ণ ঐচ্ছিক — না চাইলে স্কিপ করুন।', addPhoto: 'আমার ছবি যোগ করুন', skip: 'স্কিপ করুন — স্ট্রিমে ফিরে যান' },
+  ur: { thankYou: 'شکریہ', tipReceived: 'آپ کا ٹپ موصول ہو گیا ہے۔', photoQuestion: 'کیا آپ اپنی تصویر لائیو اسٹریم پر دکھانا چاہیں گے؟', photoNote: 'یہ مکمل طور پر اختیاری ہے — چاہیں تو چھوڑ دیں۔', addPhoto: 'میری تصویر شامل کریں', skip: 'چھوڑیں — اسٹریم پر واپس جائیں' },
+  es: { thankYou: 'Gracias', tipReceived: 'Tu propina ha sido recibida.', photoQuestion: '¿Quieres mostrar tu foto en la transmisión en vivo?', photoNote: 'Esto es completamente opcional — omite si prefieres.', addPhoto: 'Añadir mi foto', skip: 'Omitir — volver a la transmisión' },
+  ar: { thankYou: 'شكراً لك', tipReceived: 'تم استلام إكراميتك.', photoQuestion: 'هل ترغب في عرض صورتك على البث المباشر؟', photoNote: 'هذا اختياري تماماً — تخطَّ إذا أردت.', addPhoto: 'أضف صورتي', skip: 'تخطَّ — العودة إلى البث' },
+  pt: { thankYou: 'Obrigado', tipReceived: 'Sua gorjeta foi recebida.', photoQuestion: 'Quer mostrar sua foto na transmissão ao vivo?', photoNote: 'Isso é totalmente opcional — pule se preferir.', addPhoto: 'Adicionar minha foto', skip: 'Pular — voltar para a transmissão' }
+};
+
 function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -464,24 +527,46 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
     button{padding:12px 28px; border-radius:10px; border:none; background:#FFC53D; color:#0B0F19; font-weight:bold; font-size:15px; margin-top:12px;}
     img{max-width:120px; border-radius:12px; margin-top:8px;}
     .skipBtn{position:fixed; top:14px; right:14px; background:#222; color:#fff; border:none; border-radius:50%; width:34px; height:34px; font-size:18px; cursor:pointer;}
+    .lang-note{ font-size:11px; color:#555; margin-top:2px; }
   </style></head><body>
-    ${STREAM_BACK_URL ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream / স্ট্রিমে ফিরে যান">✕</button>` : ''}
-    <h2>🎉 Thank you, ${name || 'friend'}!</h2>
-    <p>${amount ? `Your ${currency || '₹'} ${amount} tip has been received.` : 'Your support has been received.'}</p>
-    <p><b>Want to show your photo on the live stream?</b><br>এটা সম্পূর্ণ ঐচ্ছিক — না চাইলে স্কিপ করুন।</p>
-    <div><input type="file" id="photoInput" accept="image/*"></div>
+    ${STREAM_BACK_URL ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
+    <h2 id="thankYouHeading">🎉 Thank you, ${name || 'friend'}!</h2>
+    <p id="tipReceivedText">${amount ? `Your ${currency || '₹'} ${amount} tip has been received.` : 'Your support has been received.'}</p>
+    <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">This is completely optional — skip if you'd rather not.</span></p>
+    <div><input type="file" id="photoInput" accept="image/*" capture="environment"></div>
     <img id="photoPreview" style="display:none;">
-    <br><button onclick="uploadPhoto()">Add my photo / ছবি যোগ করুন</button>
-    ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;">Skip — back to stream / স্কিপ করুন</a>` : ''}
+    <br><button onclick="uploadPhoto()"><span id="addPhotoText">Add my photo</span></button>
+    ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
     <div id="doneMsg"></div>
     <script>
       const donorName = ${JSON.stringify(name || 'Anonymous')};
       const celebrationId = ${JSON.stringify(celebrationId || null)};
+      let returnAlreadyTriggered = false; // guards against firing twice (e.g. button click AND pagehide both firing)
+
+      // ---- Auto-detect the visitor's OWN device/browser language and show
+      // it ALONGSIDE English (never replacing it) — based on navigator.language,
+      // which reflects the phone/browser's language setting, not location/GPS.
+      (function applyLocalLanguage(){
+        const translations = ${JSON.stringify(THANKS_TRANSLATIONS)};
+        const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+        const t = translations[browserLang];
+        if (!t) return; // no match — English-only stays as-is, which is a safe fallback
+        const addBilingual = (el, translated) => { if (el && translated) el.innerHTML = el.innerHTML + '<br><span style="opacity:0.8;">' + translated + '</span>'; };
+        addBilingual(document.getElementById('tipReceivedText'), t.tipReceived);
+        addBilingual(document.getElementById('photoQuestionText'), t.photoQuestion);
+        addBilingual(document.getElementById('photoNoteText'), t.photoNote);
+        addBilingual(document.getElementById('addPhotoText'), t.addPhoto);
+        addBilingual(document.getElementById('skipText'), t.skip);
+      })();
 
       // This is the moment that matters — not when the payment happened,
       // but when the donor is actually about to be watching the stream
-      // again. keepalive lets the request finish even mid-navigation.
+      // again (confirming a photo, tapping Skip, pressing the phone's back
+      // button, or just closing the tab). keepalive lets the request finish
+      // even mid-navigation.
       function confirmReturnAndGo(){
+        if(returnAlreadyTriggered) return;
+        returnAlreadyTriggered = true;
         if(celebrationId){
           fetch('/confirm-return', {
             method:'POST', headers:{'Content-Type':'application/json'}, keepalive:true,
@@ -491,6 +576,9 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
         ${STREAM_BACK_URL ? `window.location.href = '${STREAM_BACK_URL}';` : ''}
       }
       function skipToStream(){ confirmReturnAndGo(); }
+      // Catches the phone's back button/swipe, or the tab/browser being
+      // closed — pagehide fires reliably in all of these cases on mobile.
+      window.addEventListener('pagehide', confirmReturnAndGo);
 
       document.getElementById('photoInput').addEventListener('change', function(e){
         const file = e.target.files[0];
@@ -529,7 +617,14 @@ app.get('/thanks', async (req, res) => {
         // safe even if the background poller also notices this same
         // payment_id around the same time) — celebration itself is queued
         // separately, only once the donor confirms/skips on this page.
-        const record = recordDonation({ id: payment_id, name, side, amount, currency, purpose, source: 'instamojo' });
+        // Phone number is captured here too (Instamojo provides it as
+        // buyer_phone), so the Google Sheet backup has name + amount +
+        // phone together for every domestic supporter.
+        const record = recordDonation({
+          id: payment_id, name, side, amount, currency, purpose, source: 'instamojo',
+          email: payment.buyer || payment.email || null,
+          phone: payment.buyer_phone || null
+        });
         celebrationId = record.id;
       }
     }
@@ -584,11 +679,18 @@ function getVisitorIp(req) {
 }
 
 app.get('/pay-left', async (req, res) => {
+  // Manual override for testing — e.g. /pay-left?force=paypal lets you see
+  // the PayPal page even from India, and /pay-left?force=instamojo forces
+  // the domestic page from anywhere. Real visitors never use this param.
+  if (req.query.force === 'paypal') return res.send(paypalPageHtml('left', 'the Left side'));
+  if (req.query.force === 'instamojo') return res.send(instamojoAmountPageHtml('left', 'the Left side'));
   const country = await lookupCountry(getVisitorIp(req));
   if (country === 'IN') return res.send(instamojoAmountPageHtml('left', 'the Left side'));
   res.send(paypalPageHtml('left', 'the Left side'));
 });
 app.get('/pay-right', async (req, res) => {
+  if (req.query.force === 'paypal') return res.send(paypalPageHtml('right', 'the Right side'));
+  if (req.query.force === 'instamojo') return res.send(instamojoAmountPageHtml('right', 'the Right side'));
   const country = await lookupCountry(getVisitorIp(req));
   if (country === 'IN') return res.send(instamojoAmountPageHtml('right', 'the Right side'));
   res.send(paypalPageHtml('right', 'the Right side'));
@@ -708,4 +810,37 @@ app.get('/export', requireDashboardAuth, (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// =====================================================================
+// =====================  CONTENT CALENDAR (STEP 2)  ====================
+// =====================================================================
+// A separate Google Apps Script Web App (deployed from a "Calendar" Google
+// Sheet — see CALENDAR-SHEET-SETUP.md for the exact script to paste) reads
+// today's row and returns it as JSON. This server just proxies that, with a
+// short cache so the overlay's periodic checks don't hammer the Sheet.
+const CALENDAR_WEBHOOK_URL = process.env.CALENDAR_WEBHOOK_URL || '';
+let calendarCache = { date: null, data: null, fetchedAt: 0 };
+const CALENDAR_CACHE_MS = 60000; // re-check the Sheet at most once a minute
+
+app.get('/calendar-today', async (req, res) => {
+  if (!CALENDAR_WEBHOOK_URL) return res.json({ found: false, reason: 'not_configured' });
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, server's own clock
+  const now = Date.now();
+  if (calendarCache.date === today && (now - calendarCache.fetchedAt) < CALENDAR_CACHE_MS) {
+    return res.json(calendarCache.data);
+  }
+  try {
+    const sheetRes = await fetch(`${CALENDAR_WEBHOOK_URL}?date=${today}`);
+    const sheetData = await sheetRes.json();
+    calendarCache = { date: today, data: sheetData, fetchedAt: now };
+    res.json(sheetData);
+  } catch (e) {
+    console.error('Could not reach Content Calendar Sheet:', e.message);
+    // If the Sheet is briefly unreachable but we have a same-day cached
+    // answer, prefer that over failing the overlay outright.
+    if (calendarCache.date === today && calendarCache.data) return res.json(calendarCache.data);
+    res.json({ found: false, reason: 'fetch_error' });
+  }
+});
+
 app.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
