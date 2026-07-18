@@ -28,6 +28,22 @@ app.use(express.json({ limit: '6mb' })); // photo uploads are base64, need a bit
 // Google Sheet are convenience copies, not replacements.
 const RECORDS_FILE = path.join(__dirname, 'records.json');
 const PHOTOS_FILE = path.join(__dirname, 'donor-photos.json');
+const GATEWAY_SETTINGS_FILE = path.join(__dirname, 'gateway-settings.json');
+
+// ====== STEP 4: Payment Gateway On/Off — instant, one-click, no redeploy ======
+// Unlike an environment variable (which needs a Render redeploy, ~1 minute,
+// to take effect), this is read fresh on every single payment page request —
+// so flipping it from /gateway-settings takes effect for the very next
+// visitor, immediately. International tips default to ON, exactly as
+// requested, until you flip it off yourself.
+function loadGatewaySettings() {
+  try { return JSON.parse(fs.readFileSync(GATEWAY_SETTINGS_FILE, 'utf8')); }
+  catch (e) { return { domesticEnabled: true, internationalEnabled: true }; }
+}
+function saveGatewaySettings(settings) {
+  try { fs.writeFileSync(GATEWAY_SETTINGS_FILE, JSON.stringify(settings, null, 2)); }
+  catch (e) { console.error('Could not save gateway settings:', e.message); }
+}
 
 function loadRecords() {
   try { return JSON.parse(fs.readFileSync(RECORDS_FILE, 'utf8')); } catch (e) { return []; }
@@ -793,23 +809,62 @@ function getVisitorIp(req) {
   return (fwd ? fwd.split(',')[0].trim() : req.socket.remoteAddress);
 }
 
+function pausedPageHtml(teamName) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tips paused</title>
+  <style>
+    body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; text-align:center; padding:60px 20px;}
+    h2{margin-bottom:10px;} p{color:#8B93A7; font-size:15px;}
+  </style></head><body>
+    <h2>⏸️ Tips are temporarily paused</h2>
+    <p>Support for ${teamName} is not being accepted at this exact moment.<br>Please try again shortly.</p>
+  </body></html>`;
+}
+
 app.get('/pay-left', async (req, res) => {
+  const gw = loadGatewaySettings(); // read fresh EVERY request — toggle takes effect instantly
   // Manual override for testing — e.g. /pay-left?force=paypal lets you see
   // the PayPal page even from India, and /pay-left?force=instamojo forces
   // the domestic page from anywhere. Real visitors never use this param.
-  if (req.query.force === 'paypal') return res.send(paypalPageHtml('left', 'the Left side'));
-  if (req.query.force === 'instamojo') return res.send(instamojoAmountPageHtml('left', 'the Left side'));
+  if (req.query.force === 'paypal') {
+    if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Left side'));
+    return res.send(paypalPageHtml('left', 'the Left side'));
+  }
+  if (req.query.force === 'instamojo') {
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Left side'));
+    return res.send(instamojoAmountPageHtml('left', 'the Left side'));
+  }
   const country = await lookupCountry(getVisitorIp(req));
-  if (country === 'IN') return res.send(instamojoAmountPageHtml('left', 'the Left side'));
+  if (country === 'IN') {
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Left side'));
+    return res.send(instamojoAmountPageHtml('left', 'the Left side'));
+  }
+  if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Left side'));
   res.send(paypalPageHtml('left', 'the Left side'));
 });
 app.get('/pay-right', async (req, res) => {
-  if (req.query.force === 'paypal') return res.send(paypalPageHtml('right', 'the Right side'));
-  if (req.query.force === 'instamojo') return res.send(instamojoAmountPageHtml('right', 'the Right side'));
+  const gw = loadGatewaySettings();
+  if (req.query.force === 'paypal') {
+    if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Right side'));
+    return res.send(paypalPageHtml('right', 'the Right side'));
+  }
+  if (req.query.force === 'instamojo') {
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Right side'));
+    return res.send(instamojoAmountPageHtml('right', 'the Right side'));
+  }
   const country = await lookupCountry(getVisitorIp(req));
-  if (country === 'IN') return res.send(instamojoAmountPageHtml('right', 'the Right side'));
+  if (country === 'IN') {
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Right side'));
+    return res.send(instamojoAmountPageHtml('right', 'the Right side'));
+  }
+  if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Right side'));
   res.send(paypalPageHtml('right', 'the Right side'));
 });
+
+// NOTE: the /gateway-settings page and its toggle endpoint are registered
+// further below, right after requireDashboardAuth is defined (they need
+// that middleware to exist first).
 
 // =====================================================================
 // ===============================  ROUTES  =============================
@@ -841,6 +896,75 @@ function makeAuthMiddleware(realmName, envUserVar, envPassVar, defaultUser, defa
 }
 const requireOverlayAuth = makeAuthMiddleware('Fan Battle Overlay', 'OVERLAY_USER', 'OVERLAY_PASS', 'liveadmin', 'changeme456');
 const requireDashboardAuth = makeAuthMiddleware('Fan Battle Dashboard', 'DASHBOARD_USER', 'DASHBOARD_PASS', 'admin', 'changeme123');
+
+// ====== STEP 4: The one-click Payment Gateway switch page ======
+// Protected by the SAME login you already use for /dashboard — no new
+// username/password to remember. Flips take effect instantly (no redeploy),
+// since /pay-left and /pay-right both re-read gateway-settings.json fresh
+// on every single visitor.
+app.get('/gateway-settings', requireDashboardAuth, (req, res) => {
+  const gw = loadGatewaySettings();
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Gateway Switches</title>
+  <style>
+    body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; padding:28px 20px; max-width:480px; margin:0 auto;}
+    h2{margin-bottom:4px;} p.sub{color:#8B93A7; font-size:13px; margin-top:0;}
+    .row{ display:flex; align-items:center; justify-content:space-between; background:#121728; border:1px solid #333; border-radius:12px; padding:16px 18px; margin-top:16px; }
+    .label{ font-size:15px; font-weight:600; } .status{ font-size:12px; margin-top:3px; }
+    .status.on{ color:#4ADE80; } .status.off{ color:#FF8A7A; }
+    .switch{ position:relative; width:56px; height:30px; }
+    .switch input{ display:none; }
+    .slider{ position:absolute; cursor:pointer; inset:0; background:#333; border-radius:30px; transition:0.2s; }
+    .slider:before{ content:""; position:absolute; width:24px; height:24px; left:3px; top:3px; background:white; border-radius:50%; transition:0.2s; }
+    input:checked + .slider{ background:#4ADE80; }
+    input:checked + .slider:before{ transform:translateX(26px); }
+    a.back{ display:inline-block; margin-top:24px; color:#8B93A7; font-size:13px; text-decoration:none; }
+  </style></head><body>
+    <h2>🎛️ Payment Gateway Switches</h2>
+    <p class="sub">Flip instantly, no redeploy needed — takes effect on the very next visitor.</p>
+
+    <div class="row">
+      <div><div class="label">🇮🇳 Domestic (Instamojo)</div><div class="status ${gw.domesticEnabled ? 'on' : 'off'}" id="domesticStatus">${gw.domesticEnabled ? 'Active — accepting tips' : 'Paused'}</div></div>
+      <label class="switch"><input type="checkbox" id="domesticToggle" ${gw.domesticEnabled ? 'checked' : ''} onchange="toggle('domestic', this.checked)"><span class="slider"></span></label>
+    </div>
+
+    <div class="row">
+      <div><div class="label">🌍 International (PayPal)</div><div class="status ${gw.internationalEnabled ? 'on' : 'off'}" id="internationalStatus">${gw.internationalEnabled ? 'Active — accepting tips' : 'Paused'}</div></div>
+      <label class="switch"><input type="checkbox" id="internationalToggle" ${gw.internationalEnabled ? 'checked' : ''} onchange="toggle('international', this.checked)"><span class="slider"></span></label>
+    </div>
+
+    <a class="back" href="/dashboard">← Back to dashboard</a>
+    <script>
+      function toggle(gateway, enabled){
+        const statusEl = document.getElementById(gateway + 'Status');
+        statusEl.textContent = 'Saving...';
+        fetch('/gateway-settings/toggle', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ gateway, enabled })
+        }).then(r => r.json()).then(d => {
+          if(d.ok){
+            statusEl.textContent = enabled ? 'Active — accepting tips' : 'Paused';
+            statusEl.className = 'status ' + (enabled ? 'on' : 'off');
+          } else {
+            statusEl.textContent = 'Error saving — try again';
+          }
+        }).catch(() => { statusEl.textContent = 'Network error — try again'; });
+      }
+    </script>
+  </body></html>`);
+});
+
+app.post('/gateway-settings/toggle', requireDashboardAuth, (req, res) => {
+  const { gateway, enabled } = req.body;
+  if (gateway !== 'domestic' && gateway !== 'international') return res.status(400).json({ ok: false, error: 'unknown gateway' });
+  const gw = loadGatewaySettings();
+  if (gateway === 'domestic') gw.domesticEnabled = !!enabled;
+  if (gateway === 'international') gw.internationalEnabled = !!enabled;
+  saveGatewaySettings(gw);
+  console.log(`🎛️ Gateway toggle: ${gateway} -> ${enabled ? 'ON' : 'OFF'}`);
+  res.json({ ok: true, settings: gw });
+});
 
 // Streamer-only moderation: delete any photo they don't want shown.
 app.delete('/donor-photo', requireDashboardAuth, (req, res) => {
@@ -898,6 +1022,7 @@ app.get('/dashboard', requireDashboardAuth, (req, res) => {
       .warn{ background:#2a1f0a; border:1px solid #FFC53D; padding:10px 14px; border-radius:8px; font-size:12.5px; margin-top:8px; }
     </style></head><body>
       <h1>📊 Fan Battle Live — Donation Records</h1>
+      <p><a href="/gateway-settings" style="color:#FFC53D; font-size:13px;">🎛️ Payment Gateway Switches (turn tips on/off) →</a></p>
       <div class="warn">⚠️ This page and the Google Sheet are convenience copies. Instamojo's own dashboard is authoritative for domestic (₹) payments, and PayPal's own Activity/Reports page is authoritative for international payments.</div>
       <h2>Monthly totals (by currency)</h2>
       <table><tr><th>Month</th><th>Totals</th><th>Payments</th></tr>${monthRows || '<tr><td colspan="3">No records yet</td></tr>'}</table>
