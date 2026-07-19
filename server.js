@@ -1057,12 +1057,16 @@ app.get('/api/dashboard-data', requireDashboardAuth, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = new Date().toISOString().slice(0, 7);
   const photosOut = Object.entries(donorPhotoMap).map(([name, v]) => ({ name, photo: v.photo, driveLink: v.driveLink || null, timestamp: v.timestamp }));
+  const upcomingEvents = loadScheduledEvents()
+    .filter(e => new Date(e.scheduledTime).getTime() > Date.now() - 12 * 3600000) // keep for 12h after go-live too, in case they're late
+    .map(e => ({ title: e.title, scheduledTime: e.scheduledTime, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}` }));
   res.json({
     todayTotals: byDay[today] || { byCurrency: {}, count: 0 },
     monthTotals: byMonth[thisMonth] || { byCurrency: {}, count: 0 },
     recentRecords: [...records].reverse().slice(0, 50),
     photos: photosOut,
-    gatewaySettings: loadGatewaySettings()
+    gatewaySettings: loadGatewaySettings(),
+    upcomingEvents
   });
 });
 
@@ -1192,6 +1196,8 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <a class="quick-link" href="/pay-left" target="_blank"><span class="emoji">🔵</span>Left pay</a>
       <a class="quick-link" href="/pay-right" target="_blank"><span class="emoji">🔴</span>Right pay</a>
     </div>
+    <div class="section-title" style="margin-top:26px;">Upcoming Facebook publish links</div>
+    <div id="upcomingEventsList"></div>
   </section>
 
   <!-- GATEWAYS -->
@@ -1320,6 +1326,17 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('monthValue').textContent = fmtCurrencies(d.monthTotals.byCurrency);
       document.getElementById('monthCount').textContent = d.monthTotals.count + ' tip' + (d.monthTotals.count === 1 ? '' : 's');
 
+      const upcomingList = document.getElementById('upcomingEventsList');
+      if (upcomingList) {
+        upcomingList.innerHTML = (d.upcomingEvents && d.upcomingEvents.length)
+          ? d.upcomingEvents.map(e => {
+              const t = new Date(e.scheduledTime);
+              const timeStr = t.toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+              return '<div class="stat-card" style="margin-top:10px;"><div class="stat-label">' + timeStr + '</div><div style="font-weight:700; margin-top:4px;">' + e.title + '</div><a href="' + e.goLiveUrl + '" target="_blank" style="color:var(--gold); font-size:12.5px; display:inline-block; margin-top:6px;">📎 Open publish page →</a></div>';
+            }).join('')
+          : '<div class="empty">No upcoming scheduled lives.</div>';
+      }
+
       document.getElementById('domesticToggle').checked = d.gatewaySettings.domesticEnabled;
       document.getElementById('domesticStatus').textContent = d.gatewaySettings.domesticEnabled ? 'Active — accepting tips' : 'Paused';
       document.getElementById('domesticStatus').className = 'gw-status ' + (d.gatewaySettings.domesticEnabled ? 'on' : 'off');
@@ -1438,7 +1455,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
         ? '✅ YouTube scheduled — <a href="' + d.result.youtube.url + '" target="_blank" style="color:var(--gold);">view</a>'
         : '❌ YouTube: ' + d.result.youtube.error);
       if(d.result.facebook) lines.push(d.result.facebook.ok
-        ? '✅ Facebook reminder set — you will get WhatsApp/SMS/Email at go-live time with a publish link'
+        ? '✅ Facebook: <a href="' + d.result.facebook.reminderUrl + '" target="_blank" style="color:var(--gold); font-weight:700;">📎 Open your Facebook publish page</a> (bookmark this — works anytime, with or without the WhatsApp/SMS/Email reminder)'
         : '❌ Facebook: ' + d.result.facebook.error);
       statusEl.innerHTML = lines.join('<br>');
     }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
