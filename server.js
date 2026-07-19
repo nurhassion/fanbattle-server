@@ -17,7 +17,7 @@ const path = require('path');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '20mb' })); // content ideas can bundle a thumbnail + 2 side-photos as base64
+app.use(express.json({ limit: '60mb' })); // content ideas can now bundle photos + multiple voice/music audio clips as base64
 
 // ====== Persistent donor records (name, side, amount, currency, country, date) ======
 // NOTE: On Render's FREE tier, the filesystem is not guaranteed to survive
@@ -1313,7 +1313,17 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <input type="file" id="schRightPhoto" accept="image/*">
       <img id="schRightPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
 
-      <p class="form-hint" style="margin-top:14px;">Video clips and music still upload directly inside the overlay itself (in OBS) — not saved here yet, to keep things fast and reliable for tonight.</p>
+      <label class="f-label" style="margin-top:16px;">🎙️ Voice commentary (pick multiple — e.g. one per language, played back-to-back each cycle)</label>
+      <input type="file" id="schIntroVoice" accept="audio/*" multiple>
+      <div id="schIntroVoiceList" style="font-size:11.5px; color:var(--dim); margin-top:6px;"></div>
+      <label class="f-label">Repeat every (seconds)</label>
+      <input type="number" id="schVoiceRepeat" value="40" min="10" max="3600" style="width:90px;">
+
+      <label class="f-label" style="margin-top:16px;">🎵 Background music (pick multiple for a playlist, optional)</label>
+      <input type="file" id="schMusic" accept="audio/*" multiple>
+      <div id="schMusicList" style="font-size:11.5px; color:var(--dim); margin-top:6px;"></div>
+
+      <p class="form-hint" style="margin-top:14px;">Video clips still upload directly inside the overlay itself (in OBS) — not saved here yet, kept for a safe follow-up after tonight's match.</p>
       <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
     </div>
@@ -1476,12 +1486,33 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   setupPhotoPreview('schLeftPhoto', 'schLeftPhotoPreview', v => schLeftPhotoDataUrl = v);
   setupPhotoPreview('schRightPhoto', 'schRightPhotoPreview', v => schRightPhotoDataUrl = v);
 
+  // Reads every file picked in a multi-file input as base64, in order —
+  // used for voice-commentary clips and background-music tracks, both of
+  // which can be more than one file.
+  function readMultipleFilesAsDataUrls(fileList){
+    return Promise.all(Array.from(fileList).map(file => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve(ev.target.result);
+      reader.readAsDataURL(file);
+    })));
+  }
+  let schIntroVoiceUrls = [], schMusicUrls = [];
+  document.getElementById('schIntroVoice').addEventListener('change', async function(e){
+    schIntroVoiceUrls = await readMultipleFilesAsDataUrls(e.target.files);
+    document.getElementById('schIntroVoiceList').textContent = schIntroVoiceUrls.length + ' voice clip(s) selected';
+  });
+  document.getElementById('schMusic').addEventListener('change', async function(e){
+    schMusicUrls = await readMultipleFilesAsDataUrls(e.target.files);
+    document.getElementById('schMusicList').textContent = schMusicUrls.length + ' music track(s) selected';
+  });
+
   function submitSchedule(){
     const title = document.getElementById('schTitle').value.trim();
     const description = document.getElementById('schDescription').value.trim();
     const hashtags = document.getElementById('schHashtags').value.trim();
     const leftName = document.getElementById('schLeftName').value.trim();
     const rightName = document.getElementById('schRightName').value.trim();
+    const voiceRepeatSeconds = parseInt(document.getElementById('schVoiceRepeat').value, 10) || 40;
     const statusEl = document.getElementById('scheduleStatus');
 
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
@@ -1489,7 +1520,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     statusEl.textContent = 'Saving...';
     fetch('/schedule/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl })
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
       statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
@@ -1498,9 +1529,12 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('schHashtags').value = '';
       document.getElementById('schLeftName').value = '';
       document.getElementById('schRightName').value = '';
-      ['schThumbnail','schLeftPhoto','schRightPhoto'].forEach(id => document.getElementById(id).value = '');
+      ['schThumbnail','schLeftPhoto','schRightPhoto','schIntroVoice','schMusic'].forEach(id => document.getElementById(id).value = '');
       ['schThumbPreview','schLeftPhotoPreview','schRightPhotoPreview'].forEach(id => document.getElementById(id).style.display = 'none');
+      document.getElementById('schIntroVoiceList').textContent = '';
+      document.getElementById('schMusicList').textContent = '';
       schThumbDataUrl = schLeftPhotoDataUrl = schRightPhotoDataUrl = null;
+      schIntroVoiceUrls = []; schMusicUrls = [];
       loadIdeas();
     }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
   }
@@ -1775,7 +1809,7 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 const MAX_CONTENT_IDEAS = 20;
 
 app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
-  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl } = req.body;
+  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
 
   const hashtagLine = (hashtags || '')
@@ -1793,6 +1827,14 @@ app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
     thumbnailDataUrl: thumbnailDataUrl || null,
     leftName: leftName || '', rightName: rightName || '',
     leftPhotoDataUrl: leftPhotoDataUrl || null, rightPhotoDataUrl: rightPhotoDataUrl || null,
+    // Multiple intro-voice clips (e.g. one per language) played back-to-back
+    // every repeat cycle — same idea as the AI-generated bilingual clip
+    // discussed earlier, just via separate uploaded files instead.
+    introVoiceDataUrls: Array.isArray(introVoiceDataUrls) ? introVoiceDataUrls.slice(0, 5) : [],
+    voiceRepeatSeconds: Number(voiceRepeatSeconds) || 40,
+    // Multiple background music tracks — played as a playlist, looping
+    // through all of them instead of just one repeating track.
+    musicDataUrls: Array.isArray(musicDataUrls) ? musicDataUrls.slice(0, 5) : [],
     createdAt: new Date().toISOString()
   });
   saveScheduledEvents(events);
@@ -1837,6 +1879,27 @@ app.get('/api/content-ideas', requireDashboardAuth, (req, res) => {
   const gw = loadGatewaySettings();
   const events = loadScheduledEvents().map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}`, isLive: e.id === gw.activeIdeaId }));
   res.json({ ideas: events.reverse() });
+});
+
+// ====== Overlay auto-load: whichever idea is marked "live" right now ======
+// Intentionally public (no login) — the OBS Browser Source loading /overlay
+// has no way to authenticate as you, so this has to be readable without a
+// login, same as /events and /calendar-today already are. It only ever
+// exposes whatever YOU chose to mark live from the Schedule tab — nothing
+// donors/visitors submit ends up here.
+app.get('/api/active-idea', (req, res) => {
+  const gw = loadGatewaySettings();
+  if (!gw.activeIdeaId) return res.json({ found: false });
+  const evt = loadScheduledEvents().find(e => e.id === gw.activeIdeaId);
+  if (!evt) return res.json({ found: false });
+  res.json({
+    found: true,
+    leftName: evt.leftName, rightName: evt.rightName,
+    leftPhotoUrl: evt.leftPhotoDataUrl, rightPhotoUrl: evt.rightPhotoDataUrl,
+    introVoiceUrls: evt.introVoiceDataUrls || [],
+    voiceRepeatSeconds: evt.voiceRepeatSeconds,
+    musicUrls: evt.musicDataUrls || []
+  });
 });
 
 
