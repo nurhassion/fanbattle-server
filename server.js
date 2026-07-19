@@ -1090,7 +1090,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   body{
     background:var(--bg); color:var(--white); font-family:'Inter',sans-serif;
     max-width:480px; margin:0 auto; min-height:100vh; position:relative;
-    padding-bottom:82px; overflow-x:hidden;
+    padding-bottom:140px; overflow-x:hidden;
   }
   header{
     padding:20px 18px 14px; position:sticky; top:0; background:var(--bg); z-index:5;
