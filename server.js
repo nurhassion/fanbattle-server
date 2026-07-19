@@ -342,8 +342,8 @@ function instamojoAmountPageHtml(side, teamName) {
     <p>Enter any amount you'd like to tip — this is a completely voluntary show of support, no goods or prizes are exchanged. Minimum ₹9.</p>
     <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
     <div><input type="text" id="donorName" placeholder="Your name" maxlength="40"></div>
-    <label class="fieldLabel">Mobile number (optional)</label>
-    <div><input type="tel" id="donorPhone" placeholder="Optional"></div>
+    <label class="fieldLabel">Mobile number <span class="req">*required</span></label>
+    <div><input type="tel" id="donorPhone" placeholder="Your mobile number"></div>
     <label class="fieldLabel">Amount <span class="req">*required</span></label>
     <div style="margin-top:4px;"><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
     <div class="presets">
@@ -371,6 +371,11 @@ function instamojoAmountPageHtml(side, teamName) {
         if(!donorName){
           document.getElementById('status').textContent = 'Please enter your name — it\\'s required.';
           document.getElementById('donorName').focus();
+          return;
+        }
+        if(!donorPhone){
+          document.getElementById('status').textContent = 'Please enter your mobile number — it\\'s required.';
+          document.getElementById('donorPhone').focus();
           return;
         }
         if(!amt || isNaN(amt) || amt < 9){
@@ -401,6 +406,7 @@ app.post('/instamojo-create-request', async (req, res) => {
     // the page's own JS, since this endpoint could in principle be called
     // directly.
     if (!donorName || !donorName.trim()) return res.status(400).json({ error: 'Name is required.' });
+    if (!donorPhone || !donorPhone.trim()) return res.status(400).json({ error: 'Mobile number is required.' });
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
     const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right', donorName.trim(), donorPhone);
     res.json({ longurl });
@@ -458,7 +464,11 @@ app.post('/paypal-create-order', async (req, res) => {
 
 app.post('/paypal-capture-order', async (req, res) => {
   try {
-    const { orderID, donorName, donorPhone } = req.body;
+    const { orderID, donorName, donorPhone, donorEmail } = req.body;
+    // Legal/record-keeping requirement: an email is mandatory for every
+    // international donor, so there's always a way to identify who paid
+    // if a dispute or legal question ever comes up later.
+    if (!donorEmail || !donorEmail.includes('@')) return res.status(400).json({ error: 'A valid email is required.' });
     const token = await getPaypalAccessToken();
     const captureRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${orderID}/capture`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -473,6 +483,10 @@ app.post('/paypal-capture-order', async (req, res) => {
     // path above.
     const paypalAccountName = [payer.name && payer.name.given_name, payer.name && payer.name.surname].filter(Boolean).join(' ') || 'Anonymous';
     const name = (donorName && donorName.trim()) || paypalAccountName;
+    // Prefer the email the donor typed on our own page (guaranteed present,
+    // since it's required above) over PayPal's own account email — this is
+    // what we asked them for specifically for legal/dispute traceability.
+    const email = donorEmail.trim() || payer.email_address;
     const amount = captureObj.amount ? captureObj.amount.value : null;
     const currency = captureObj.amount ? captureObj.amount.currency_code : 'USD';
     const country = (payer.address && payer.address.country_code) || null;
@@ -480,7 +494,7 @@ app.post('/paypal-capture-order', async (req, res) => {
 
     let celebrationId = null;
     if (amount) {
-      const record = recordDonation({ id: captureObj.id || orderID, name, email: payer.email_address, phone: donorPhone || null, country, side, amount, currency, purpose: 'PayPal donation', source: 'paypal' });
+      const record = recordDonation({ id: captureObj.id || orderID, name, email, phone: donorPhone || null, country, side, amount, currency, purpose: 'PayPal donation', source: 'paypal' });
       celebrationId = record.id;
     }
     // Tell the client everything /thanks would need, so the PayPal page can
@@ -518,6 +532,8 @@ function paypalPageHtml(side, teamName) {
     <div><input type="text" id="donorNameInput" placeholder="Your name" maxlength="40"></div>
     <label class="fieldLabel">Mobile number (optional)</label>
     <div><input type="tel" id="donorPhoneInput" placeholder="Optional"></div>
+    <label class="fieldLabel">Email <span class="req">*required</span></label>
+    <div><input type="email" id="donorEmailInput" placeholder="you@example.com"></div>
     <label class="fieldLabel">Amount <span class="req">*required</span></label>
     <div style="margin-top:4px;">
       <input type="number" id="amt" placeholder="Amount" min="1" value="5">
@@ -579,11 +595,17 @@ function paypalPageHtml(side, teamName) {
       paypal.Buttons({
         createOrder: function() {
           const donorNameVal = document.getElementById('donorNameInput').value.trim();
+          const donorEmailVal = document.getElementById('donorEmailInput').value.trim();
           const amtVal = parseFloat(document.getElementById('amt').value);
           if(!donorNameVal){
             document.getElementById('status').textContent = 'Please enter your name — it\\'s required.';
             document.getElementById('donorNameInput').focus();
             return Promise.reject(new Error('name required'));
+          }
+          if(!donorEmailVal || !donorEmailVal.includes('@')){
+            document.getElementById('status').textContent = 'Please enter a valid email — it\\'s required.';
+            document.getElementById('donorEmailInput').focus();
+            return Promise.reject(new Error('email required'));
           }
           if(!amtVal || isNaN(amtVal) || amtVal <= 0){
             document.getElementById('status').textContent = 'Please enter a valid amount.';
@@ -599,9 +621,10 @@ function paypalPageHtml(side, teamName) {
           document.getElementById('status').textContent = 'Processing...';
           const donorNameVal = document.getElementById('donorNameInput').value.trim();
           const donorPhoneVal = document.getElementById('donorPhoneInput').value.trim();
+          const donorEmailVal = document.getElementById('donorEmailInput').value.trim();
           return fetch('/paypal-capture-order', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ orderID: data.orderID, side: '${side}', donorName: donorNameVal, donorPhone: donorPhoneVal })
+            body: JSON.stringify({ orderID: data.orderID, side: '${side}', donorName: donorNameVal, donorPhone: donorPhoneVal, donorEmail: donorEmailVal })
           }).then(r => r.json()).then(d => {
             document.getElementById('status').textContent = 'Thank you! Your support will appear on stream shortly 🎉';
             donorName = d.name || 'Anonymous';
@@ -1042,6 +1065,24 @@ app.get('/overlay', requireOverlayAuth, (req, res) => {
 });
 
 // ====== Unified App: JSON data API (same data as /dashboard, machine-readable) ======
+// ====== One-time backfill: push already-uploaded local photos to Drive ======
+// For photos that were uploaded BEFORE the Apps Script's "photo" handling
+// was added — they're still sitting in local donor-photos.json with no
+// driveLink yet. This re-sends each one that's missing a driveLink, exactly
+// the same way a brand-new upload would, so nothing has to be re-uploaded
+// by hand.
+app.post('/api/backfill-photos-to-drive', requireDashboardAuth, async (req, res) => {
+  const missing = Object.entries(donorPhotoMap).filter(([, v]) => !v.driveLink);
+  if (missing.length === 0) return res.json({ ok: true, updated: 0, total: 0 });
+  let updated = 0;
+  for (const [name, v] of missing) {
+    const driveLink = await uploadPhotoToDriveAndLog(name, v.photo);
+    if (driveLink) { donorPhotoMap[name].driveLink = driveLink; updated++; }
+  }
+  savePhotos(donorPhotoMap);
+  res.json({ ok: true, updated, total: missing.length });
+});
+
 app.get('/api/dashboard-data', requireDashboardAuth, (req, res) => {
   const records = loadRecords();
   const byMonth = {}, byDay = {};
@@ -1231,7 +1272,9 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   <!-- PHOTOS -->
   <section class="tab-panel" id="tab-photos">
     <div class="section-title">Donor photos — moderate here</div>
-    <div class="photo-grid" id="photoGrid"></div>
+    <button class="add-gw-btn" onclick="backfillPhotosToDrive()">☁️ Backup all photos to Google Drive now</button>
+    <div id="backfillStatus" style="margin-top:8px; font-size:12.5px; color:var(--dim);"></div>
+    <div class="photo-grid" id="photoGrid" style="margin-top:14px;"></div>
   </section>
 
   <!-- RECORDS -->
@@ -1362,6 +1405,19 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   function deletePhoto(encodedName){
     fetch('/donor-photo?name=' + encodedName, { method:'DELETE' }).then(loadData);
+  }
+
+  function backfillPhotosToDrive(){
+    const statusEl = document.getElementById('backfillStatus');
+    statusEl.textContent = 'Uploading to Drive... this may take a moment.';
+    fetch('/api/backfill-photos-to-drive', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">Something went wrong.</span>'; return; }
+        if(d.total === 0){ statusEl.innerHTML = '<span style="color:var(--green);">All photos already backed up ✓</span>'; return; }
+        statusEl.innerHTML = '<span style="color:var(--green);">✅ ' + d.updated + ' of ' + d.total + ' photo(s) backed up to Drive</span>';
+        loadData();
+      }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
   }
 
   function renderPendingList(containerId, items){
@@ -1931,8 +1987,9 @@ app.get('/go-live/:id', (req, res) => {
       <div class="done-box">
         <div style="font-size:40px;">🎉</div>
         <h2>You're live on both!</h2>
-        <p style="color:#8B93A7;">Back to your saved ideas any time.</p>
-        <a href="/app" style="color:${chosenPreset.accent}; font-weight:700;">← Back to Fan Battle Live Control</a>
+        <p style="color:#8B93A7;">Taking you to your live overlay.</p>
+        <a href="/overlay" style="display:block; background:${chosenPreset.accent}; color:#0B0F19; font-weight:800; padding:14px; border-radius:12px; text-decoration:none; margin-top:16px;">→ Go to my Live Overlay</a>
+        <a href="/app" style="display:block; color:#8B93A7; font-size:12.5px; margin-top:14px; text-decoration:none;">← Or back to Control panel</a>
       </div>
     </div>
 
