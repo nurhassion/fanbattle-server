@@ -17,7 +17,7 @@ const path = require('path');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '6mb' })); // photo uploads are base64, need a bit of headroom
+app.use(express.json({ limit: '20mb' })); // content ideas can bundle a thumbnail + 2 side-photos as base64
 
 // ====== Persistent donor records (name, side, amount, currency, country, date) ======
 // NOTE: On Render's FREE tier, the filesystem is not guaranteed to survive
@@ -1254,9 +1254,23 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <textarea id="schDescription" placeholder="What's happening in this stream" rows="4"></textarea>
       <label class="f-label">Hashtags (comma separated)</label>
       <input type="text" id="schHashtags" placeholder="FanBattle, LiveCricket, WorldCup">
-      <label class="f-label">Thumbnail</label>
+      <label class="f-label">Thumbnail (for YouTube/Facebook)</label>
       <input type="file" id="schThumbnail" accept="image/*">
       <img id="schThumbPreview" style="display:none; max-width:140px; border-radius:10px; margin-top:8px;">
+
+      <label class="f-label" style="color:var(--left);">🔵 Left side name</label>
+      <input type="text" id="schLeftName" placeholder="Left side name" maxlength="40">
+      <label class="f-label" style="color:var(--left);">🔵 Left side photo</label>
+      <input type="file" id="schLeftPhoto" accept="image/*">
+      <img id="schLeftPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
+
+      <label class="f-label" style="color:var(--right); margin-top:16px;">🔴 Right side name</label>
+      <input type="text" id="schRightName" placeholder="Right side name" maxlength="40">
+      <label class="f-label" style="color:var(--right);">🔴 Right side photo</label>
+      <input type="file" id="schRightPhoto" accept="image/*">
+      <img id="schRightPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
+
+      <p class="form-hint" style="margin-top:14px;">Video clips and music still upload directly inside the overlay itself (in OBS) — not saved here yet, to keep things fast and reliable for tonight.</p>
       <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
     </div>
@@ -1387,24 +1401,31 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     fetch('/gateway-settings/remove-gateway?id=' + encodeURIComponent(id), { method:'DELETE' }).then(loadData);
   }
 
-  let schThumbDataUrl = null;
-  document.getElementById('schThumbnail').addEventListener('change', function(e){
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev){
-      schThumbDataUrl = ev.target.result;
-      const img = document.getElementById('schThumbPreview');
-      img.src = schThumbDataUrl;
-      img.style.display = 'block';
-    };
-    reader.readAsDataURL(file);
-  });
+  let schThumbDataUrl = null, schLeftPhotoDataUrl = null, schRightPhotoDataUrl = null;
+  function setupPhotoPreview(inputId, previewId, setter){
+    document.getElementById(inputId).addEventListener('change', function(e){
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev){
+        setter(ev.target.result);
+        const img = document.getElementById(previewId);
+        img.src = ev.target.result;
+        img.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  setupPhotoPreview('schThumbnail', 'schThumbPreview', v => schThumbDataUrl = v);
+  setupPhotoPreview('schLeftPhoto', 'schLeftPhotoPreview', v => schLeftPhotoDataUrl = v);
+  setupPhotoPreview('schRightPhoto', 'schRightPhotoPreview', v => schRightPhotoDataUrl = v);
 
   function submitSchedule(){
     const title = document.getElementById('schTitle').value.trim();
     const description = document.getElementById('schDescription').value.trim();
     const hashtags = document.getElementById('schHashtags').value.trim();
+    const leftName = document.getElementById('schLeftName').value.trim();
+    const rightName = document.getElementById('schRightName').value.trim();
     const statusEl = document.getElementById('scheduleStatus');
 
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
@@ -1412,16 +1433,18 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     statusEl.textContent = 'Saving...';
     fetch('/schedule/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl })
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
       statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
       document.getElementById('schTitle').value = '';
       document.getElementById('schDescription').value = '';
       document.getElementById('schHashtags').value = '';
-      document.getElementById('schThumbnail').value = '';
-      document.getElementById('schThumbPreview').style.display = 'none';
-      schThumbDataUrl = null;
+      document.getElementById('schLeftName').value = '';
+      document.getElementById('schRightName').value = '';
+      ['schThumbnail','schLeftPhoto','schRightPhoto'].forEach(id => document.getElementById(id).value = '');
+      ['schThumbPreview','schLeftPhotoPreview','schRightPhotoPreview'].forEach(id => document.getElementById(id).style.display = 'none');
+      schThumbDataUrl = schLeftPhotoDataUrl = schRightPhotoDataUrl = null;
       loadIdeas();
     }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
   }
@@ -1433,11 +1456,24 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('ideaCount').textContent = d.ideas.length;
       const listEl = document.getElementById('ideasList');
       listEl.innerHTML = d.ideas.length ? d.ideas.map(idea =>
-        '<div class="form-card" style="margin-top:10px;">' +
+        '<div class="form-card" style="margin-top:10px; ' + (idea.isLive ? 'border-color:var(--right); box-shadow:0 0 0 1px var(--right);' : '') + '">' +
+          (idea.isLive ? '<div style="color:var(--right); font-weight:800; font-size:12px; margin-bottom:8px;">🔴 LIVE NOW</div>' : '') +
           '<div style="font-weight:700;">' + idea.title + '</div>' +
-          (idea.thumbnailDataUrl ? '<img src="' + idea.thumbnailDataUrl + '" style="max-width:100px; border-radius:8px; margin-top:8px;">' : '') +
-          '<div style="display:flex; gap:8px; margin-top:12px;">' +
-            '<a href="' + idea.goLiveUrl + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;">▶ Go Live</a>' +
+          '<div style="display:flex; gap:14px; margin-top:8px;">' +
+            (idea.leftPhotoDataUrl ? '<img src="' + idea.leftPhotoDataUrl + '" style="width:56px; height:56px; object-fit:cover; border-radius:8px;">' : '') +
+            (idea.leftName ? '<div style="font-size:12px; align-self:center; color:var(--left);">🔵 ' + idea.leftName + '</div>' : '') +
+            (idea.rightPhotoDataUrl ? '<img src="' + idea.rightPhotoDataUrl + '" style="width:56px; height:56px; object-fit:cover; border-radius:8px;">' : '') +
+            (idea.rightName ? '<div style="font-size:12px; align-self:center; color:var(--right);">🔴 ' + idea.rightName + '</div>' : '') +
+          '</div>' +
+          '<div style="display:flex; gap:8px; margin-top:12px; align-items:center;">' +
+            '<span style="font-size:11px; color:var(--dim);">Theme:</span>' +
+            '<button title="Blue/Red (default)" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='1'||!idea.preset ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#6C9BFF 50%,#FF6B5E 50%); cursor:pointer; padding:0;" onclick="setPreset(\'' + idea.id + '\',\'1\')"></button>' +
+            '<button title="Purple/Gold" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='2' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#A78BFA 50%,#FFC53D 50%); cursor:pointer; padding:0;" onclick="setPreset(\'' + idea.id + '\',\'2\')"></button>' +
+            '<button title="Green/Orange" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='3' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#4ADE80 50%,#FB923C 50%); cursor:pointer; padding:0;" onclick="setPreset(\'' + idea.id + '\',\'3\')"></button>' +
+          '</div>' +
+          '<div style="display:flex; gap:8px; margin-top:10px;">' +
+            '<a href="' + idea.goLiveUrl + (idea.preset ? '?preset=' + idea.preset : '') + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;" onclick="markLive(\'' + idea.id + '\')">▶ Go Live</a>' +
+            (idea.isLive ? '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="endLive()">End Live</button>' : '') +
             '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="deleteIdea(\'' + idea.id + '\')">Delete</button>' +
           '</div>' +
         '</div>'
@@ -1448,6 +1484,19 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   function deleteIdea(id){
     if(!confirm('Delete this saved idea?')) return;
     fetch('/schedule/' + id, { method: 'DELETE' }).then(loadIdeas);
+  }
+
+  function markLive(id){
+    fetch('/schedule/' + id + '/set-live', { method: 'POST' }).then(loadIdeas);
+  }
+  function endLive(){
+    fetch('/schedule/end-live', { method: 'POST' }).then(loadIdeas);
+  }
+  function setPreset(id, preset){
+    fetch('/schedule/' + id + '/set-preset', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ preset })
+    }).then(loadIdeas);
   }
 
   function saveNotifySettings(){
@@ -1670,7 +1719,7 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 const MAX_CONTENT_IDEAS = 20;
 
 app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
-  const { title, description, hashtags, thumbnailDataUrl } = req.body;
+  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
 
   const hashtagLine = (hashtags || '')
@@ -1685,7 +1734,10 @@ app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
   const eventId = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
   events.push({
     id: eventId, title, description: fullDescription, hashtags: hashtagLine,
-    thumbnailDataUrl: thumbnailDataUrl || null, createdAt: new Date().toISOString()
+    thumbnailDataUrl: thumbnailDataUrl || null,
+    leftName: leftName || '', rightName: rightName || '',
+    leftPhotoDataUrl: leftPhotoDataUrl || null, rightPhotoDataUrl: rightPhotoDataUrl || null,
+    createdAt: new Date().toISOString()
   });
   saveScheduledEvents(events);
 
@@ -1698,8 +1750,36 @@ app.delete('/schedule/:id', requireDashboardAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ====== Track which saved idea is currently the LIVE one ======
+// A simple marker so the ideas list can show a 🔴 LIVE badge, and so you
+// can jump back into that specific idea later (e.g. to moderate photos)
+// without hunting for it.
+app.post('/schedule/:id/set-live', requireDashboardAuth, (req, res) => {
+  const gw = loadGatewaySettings();
+  gw.activeIdeaId = req.params.id;
+  saveGatewaySettings(gw);
+  res.json({ ok: true });
+});
+app.post('/schedule/end-live', requireDashboardAuth, (req, res) => {
+  const gw = loadGatewaySettings();
+  gw.activeIdeaId = null;
+  saveGatewaySettings(gw);
+  res.json({ ok: true });
+});
+
+app.post('/schedule/:id/set-preset', requireDashboardAuth, (req, res) => {
+  const { preset } = req.body;
+  const events = loadScheduledEvents();
+  const evt = events.find(e => e.id === req.params.id);
+  if (!evt) return res.status(404).json({ ok: false, error: 'Idea not found' });
+  evt.preset = preset;
+  saveScheduledEvents(events);
+  res.json({ ok: true });
+});
+
 app.get('/api/content-ideas', requireDashboardAuth, (req, res) => {
-  const events = loadScheduledEvents().map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}` }));
+  const gw = loadGatewaySettings();
+  const events = loadScheduledEvents().map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}`, isLive: e.id === gw.activeIdeaId }));
   res.json({ ideas: events.reverse() });
 });
 
@@ -1793,6 +1873,15 @@ app.get('/go-live/:id', (req, res) => {
   const events = loadScheduledEvents();
   const evt = events.find(e => e.id === req.params.id);
   if (!evt) return res.status(404).send('<body style="background:#0B0F19; color:#F5F7FA; font-family:Arial; text-align:center; padding:60px;">This link is no longer valid — the idea may have been deleted.</body>');
+
+  // ====== Three color presets (cosmetic only — same layout/design, just recolored) ======
+  const PRESETS = {
+    '1': { accent: '#FFC53D', badge: '#FFC53D', left: '#6C9BFF', right: '#FF6B5E' },
+    '2': { accent: '#A78BFA', badge: '#A78BFA', left: '#A78BFA', right: '#FFC53D' },
+    '3': { accent: '#4ADE80', badge: '#4ADE80', left: '#4ADE80', right: '#FB923C' }
+  };
+  const chosenPreset = PRESETS[req.query.preset] || PRESETS[evt.preset] || PRESETS['1'];
+
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Go live: ${evt.title}</title>
@@ -1806,13 +1895,23 @@ app.get('/go-live/:id', (req, res) => {
     a.fb-btn, a.yt-btn, button.confirm-btn{ display:block; width:100%; box-sizing:border-box; text-align:center; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:14px; border:none; font-size:15px; cursor:pointer; font-family:Arial,sans-serif; }
     a.yt-btn{ background:#FF0000; color:white; }
     a.fb-btn{ background:#1877F2; color:white; }
-    button.confirm-btn{ background:#4ADE80; color:#0B0F19; }
+    button.confirm-btn{ background:${chosenPreset.accent}; color:#0B0F19; }
     .step{ display:none; }
     .step.active{ display:block; }
-    .step-badge{ display:inline-block; background:#FFC53D; color:#0B0F19; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:800; margin-bottom:10px; }
+    .step-badge{ display:inline-block; background:${chosenPreset.badge}; color:#0B0F19; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:800; margin-bottom:10px; }
     .done-box{ text-align:center; padding:30px 10px; }
+    .top-back{ display:inline-block; color:#8B93A7; font-size:13px; text-decoration:none; margin-bottom:14px; }
+    .sides-row{ display:flex; gap:16px; margin-top:12px; }
+    .sides-row img{ width:56px; height:56px; object-fit:cover; border-radius:8px; margin-top:0; }
   </style></head><body>
+    <a class="top-back" href="/app">← Back to Control (without going live)</a>
     <h2>🔴 Go live: ${evt.title}</h2>
+    ${(evt.leftName || evt.rightName) ? `<div class="sides-row">
+      ${evt.leftPhotoDataUrl ? `<img src="${evt.leftPhotoDataUrl}">` : ''}
+      ${evt.leftName ? `<div style="align-self:center; color:${chosenPreset.left}; font-size:13px;">🔵 ${evt.leftName}</div>` : ''}
+      ${evt.rightPhotoDataUrl ? `<img src="${evt.rightPhotoDataUrl}">` : ''}
+      ${evt.rightName ? `<div style="align-self:center; color:${chosenPreset.right}; font-size:13px;">🔴 ${evt.rightName}</div>` : ''}
+    </div>` : ''}
     <div class="box"><div class="box-label">Title (copy this into YouTube/Facebook)</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
     <div class="box"><div class="box-label">Description + hashtags</div><div id="descText" style="white-space:pre-wrap;">${evt.description || ''}</div><button class="copy-btn" onclick="copyText('descText')">Copy</button></div>
     ${evt.thumbnailDataUrl ? `<div class="box"><div class="box-label">Thumbnail (save this image, upload manually)</div><img src="${evt.thumbnailDataUrl}"></div>` : ''}
@@ -1833,7 +1932,7 @@ app.get('/go-live/:id', (req, res) => {
         <div style="font-size:40px;">🎉</div>
         <h2>You're live on both!</h2>
         <p style="color:#8B93A7;">Back to your saved ideas any time.</p>
-        <a href="/app" style="color:#FFC53D; font-weight:700;">← Back to Fan Battle Live Control</a>
+        <a href="/app" style="color:${chosenPreset.accent}; font-weight:700;">← Back to Fan Battle Live Control</a>
       </div>
     </div>
 
@@ -1843,6 +1942,10 @@ app.get('/go-live/:id', (req, res) => {
         document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
         document.getElementById('step' + n).classList.add('active');
       }
+      // Mark this idea as the "live" one the moment this page opens, so the
+      // ideas list back in /app shows a 🔴 LIVE badge on it. Silently
+      // ignored if not logged into the dashboard in this browser.
+      fetch('/schedule/${evt.id}/set-live', { method: 'POST' }).catch(() => {});
     </script>
   </body></html>`);
 });
