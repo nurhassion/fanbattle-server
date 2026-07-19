@@ -37,8 +37,12 @@ const GATEWAY_SETTINGS_FILE = path.join(__dirname, 'gateway-settings.json');
 // visitor, immediately. International tips default to ON, exactly as
 // requested, until you flip it off yourself.
 function loadGatewaySettings() {
-  try { return JSON.parse(fs.readFileSync(GATEWAY_SETTINGS_FILE, 'utf8')); }
-  catch (e) { return { domesticEnabled: true, internationalEnabled: true }; }
+  try {
+    const s = JSON.parse(fs.readFileSync(GATEWAY_SETTINGS_FILE, 'utf8'));
+    if (!Array.isArray(s.additionalGateways)) s.additionalGateways = [];
+    return s;
+  }
+  catch (e) { return { domesticEnabled: true, internationalEnabled: true, additionalGateways: [] }; }
 }
 function saveGatewaySettings(settings) {
   try { fs.writeFileSync(GATEWAY_SETTINGS_FILE, JSON.stringify(settings, null, 2)); }
@@ -966,6 +970,39 @@ app.post('/gateway-settings/toggle', requireDashboardAuth, (req, res) => {
   res.json({ ok: true, settings: gw });
 });
 
+// ====== "Add New Gateway" request ======
+// This does NOT wire up real payment processing by itself — every gateway
+// (Razorpay, Stripe, etc.) has its own different API, so real integration
+// code has to be written once you actually have that gateway's approval and
+// API keys. What this DOES do: instantly records your request so it shows
+// up right here in the app as "Pending — needs integration", instead of
+// getting lost in chat. Once the real code is added for a specific gateway,
+// its entry becomes a live on/off switch like Instamojo/PayPal above.
+app.post('/gateway-settings/add-gateway', requireDashboardAuth, (req, res) => {
+  const { name, category, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ ok: false, error: 'Gateway name is required.' });
+  if (category !== 'domestic' && category !== 'international') return res.status(400).json({ ok: false, error: 'Category must be domestic or international.' });
+  const gw = loadGatewaySettings();
+  gw.additionalGateways.push({
+    id: 'gw-' + Date.now(),
+    name: name.trim(),
+    category,
+    notes: (notes || '').trim(),
+    status: 'pending_integration',
+    addedAt: new Date().toISOString()
+  });
+  saveGatewaySettings(gw);
+  res.json({ ok: true, settings: gw });
+});
+
+app.delete('/gateway-settings/remove-gateway', requireDashboardAuth, (req, res) => {
+  const { id } = req.query;
+  const gw = loadGatewaySettings();
+  gw.additionalGateways = gw.additionalGateways.filter(g => g.id !== id);
+  saveGatewaySettings(gw);
+  res.json({ ok: true, settings: gw });
+});
+
 // Streamer-only moderation: delete any photo they don't want shown.
 app.delete('/donor-photo', requireDashboardAuth, (req, res) => {
   const { name } = req.query;
@@ -1057,6 +1094,19 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   .quick-link .emoji{ font-size:20px; display:block; margin-bottom:6px; }
 
   .gw-row{ display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin-top:12px; }
+  .pending-row{ display:flex; align-items:center; justify-content:space-between; background:rgba(255,197,61,0.05); border:1px dashed rgba(255,197,61,0.35); border-radius:14px; padding:12px 16px; margin-top:10px; }
+  .pending-name{ font-size:13.5px; font-weight:600; }
+  .pending-badge{ font-size:10.5px; color:var(--gold); margin-top:2px; }
+  .pending-del{ background:none; border:none; color:var(--dim); font-size:12px; cursor:pointer; padding:4px 8px; }
+  .add-gw-btn{ display:block; width:100%; background:none; border:1.5px dashed var(--line); color:var(--dim); font-weight:600; font-size:13px; padding:12px; border-radius:14px; margin-top:12px; cursor:pointer; font-family:'Inter',sans-serif; }
+  .form-card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-top:6px; }
+  .f-label{ display:block; font-size:11.5px; color:var(--dim); margin:10px 0 5px; font-weight:600; }
+  .form-card input, .form-card textarea{ width:100%; background:var(--bg-soft); border:1px solid var(--line); border-radius:10px; padding:10px 12px; color:var(--white); font-family:'Inter',sans-serif; font-size:13.5px; resize:vertical; }
+  .form-hint{ font-size:11px; color:var(--dim); margin-top:10px; line-height:1.5; }
+  .form-actions{ display:flex; gap:10px; margin-top:14px; }
+  .btn-secondary, .btn-primary{ flex:1; padding:11px; border-radius:10px; border:none; font-weight:700; font-size:13px; cursor:pointer; font-family:'Inter',sans-serif; }
+  .btn-secondary{ background:var(--bg-soft); color:var(--dim); }
+  .btn-primary{ background:var(--gold); color:#0B0F19; }
   .gw-name{ font-size:15px; font-weight:700; }
   .gw-status{ font-size:12px; margin-top:3px; }
   .gw-status.on{ color:var(--green); } .gw-status.off{ color:var(--right); }
@@ -1117,14 +1167,35 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   <!-- GATEWAYS -->
   <section class="tab-panel" id="tab-gateways">
-    <div class="section-title">Payment gateways</div>
+    <div class="section-title">Domestic (India)</div>
     <div class="gw-row">
-      <div><div class="gw-name">🇮🇳 Domestic (Instamojo)</div><div class="gw-status" id="domesticStatus">—</div></div>
+      <div><div class="gw-name">🇮🇳 Instamojo</div><div class="gw-status" id="domesticStatus">—</div></div>
       <label class="switch"><input type="checkbox" id="domesticToggle" onchange="toggleGateway('domestic', this.checked)"><span class="slider"></span></label>
     </div>
+    <div id="domesticPendingList"></div>
+    <button class="add-gw-btn" onclick="openAddGatewayForm('domestic')">+ Add domestic gateway</button>
+
+    <div class="section-title" style="margin-top:30px;">International</div>
     <div class="gw-row">
-      <div><div class="gw-name">🌍 International (PayPal)</div><div class="gw-status" id="internationalStatus">—</div></div>
+      <div><div class="gw-name">🌍 PayPal</div><div class="gw-status" id="internationalStatus">—</div></div>
       <label class="switch"><input type="checkbox" id="internationalToggle" onchange="toggleGateway('international', this.checked)"><span class="slider"></span></label>
+    </div>
+    <div id="internationalPendingList"></div>
+    <button class="add-gw-btn" onclick="openAddGatewayForm('international')">+ Add international gateway</button>
+
+    <div id="addGatewayForm" style="display:none;">
+      <div class="section-title" id="addGatewayFormTitle" style="margin-top:26px;">Add gateway</div>
+      <div class="form-card">
+        <label class="f-label">Gateway name</label>
+        <input type="text" id="newGwName" placeholder="e.g. Razorpay, Stripe" maxlength="40">
+        <label class="f-label">Notes (optional — approval status, account email, etc.)</label>
+        <textarea id="newGwNotes" placeholder="Optional notes for your own reference" maxlength="300" rows="3"></textarea>
+        <p class="form-hint">This records your request here so it's not lost — real payment processing for this gateway still needs its own integration code once you have approval and API keys.</p>
+        <div class="form-actions">
+          <button class="btn-secondary" onclick="closeAddGatewayForm()">Cancel</button>
+          <button class="btn-primary" onclick="submitAddGateway()">Add</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1182,6 +1253,10 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('internationalStatus').textContent = d.gatewaySettings.internationalEnabled ? 'Active — accepting tips' : 'Paused';
       document.getElementById('internationalStatus').className = 'gw-status ' + (d.gatewaySettings.internationalEnabled ? 'on' : 'off');
 
+      const additional = d.gatewaySettings.additionalGateways || [];
+      renderPendingList('domesticPendingList', additional.filter(g => g.category === 'domestic'));
+      renderPendingList('internationalPendingList', additional.filter(g => g.category === 'international'));
+
       const photoGrid = document.getElementById('photoGrid');
       photoGrid.innerHTML = d.photos.length ? d.photos.map(p => \`
         <div class="photo-card">
@@ -1210,6 +1285,43 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   function deletePhoto(encodedName){
     fetch('/donor-photo?name=' + encodedName, { method:'DELETE' }).then(loadData);
+  }
+
+  function renderPendingList(containerId, items){
+    const el = document.getElementById(containerId);
+    el.innerHTML = items.map(g => \`
+      <div class="pending-row">
+        <div><div class="pending-name">\${g.name}</div><div class="pending-badge">⏳ Pending — needs integration</div></div>
+        <button class="pending-del" onclick="removePendingGateway('\${g.id}')">Remove</button>
+      </div>\`).join('');
+  }
+
+  let addGatewayCategory = null;
+  function openAddGatewayForm(category){
+    addGatewayCategory = category;
+    document.getElementById('addGatewayFormTitle').textContent = 'Add ' + (category === 'domestic' ? 'domestic' : 'international') + ' gateway';
+    document.getElementById('addGatewayForm').style.display = 'block';
+    document.getElementById('newGwName').value = '';
+    document.getElementById('newGwNotes').value = '';
+    document.getElementById('addGatewayForm').scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+  function closeAddGatewayForm(){
+    document.getElementById('addGatewayForm').style.display = 'none';
+  }
+  function submitAddGateway(){
+    const name = document.getElementById('newGwName').value.trim();
+    const notes = document.getElementById('newGwNotes').value.trim();
+    if(!name){ alert('Please enter a gateway name.'); return; }
+    fetch('/gateway-settings/add-gateway', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, category: addGatewayCategory, notes })
+    }).then(r => r.json()).then(d => {
+      if(d.ok){ closeAddGatewayForm(); loadData(); }
+      else alert(d.error || 'Could not add gateway.');
+    }).catch(() => alert('Network error — try again.'));
+  }
+  function removePendingGateway(id){
+    fetch('/gateway-settings/remove-gateway?id=' + encodeURIComponent(id), { method:'DELETE' }).then(loadData);
   }
 
   loadData();
