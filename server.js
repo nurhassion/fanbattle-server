@@ -1090,7 +1090,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   body{
     background:var(--bg); color:var(--white); font-family:'Inter',sans-serif;
     max-width:480px; margin:0 auto; min-height:100vh; position:relative;
-    padding-bottom:140px; overflow-x:hidden;
+    padding-bottom:200px; overflow-x:hidden;
   }
   header{
     padding:20px 18px 14px; position:sticky; top:0; background:var(--bg); z-index:5;
@@ -1276,7 +1276,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <input type="text" id="notifySms" placeholder="+91XXXXXXXXXX">
       <label class="f-label">Email</label>
       <input type="email" id="notifyEmail" placeholder="you@example.com">
-      <button class="btn-secondary" style="width:100%; margin-top:14px;" onclick="saveNotifySettings()">Save contact info</button>
+      <button class="btn-primary" style="width:100%; margin-top:14px; padding:13px; margin-bottom:24px;" onclick="saveNotifySettings()">Save contact info</button>
       <div id="notifySaveStatus" style="margin-top:10px; font-size:12.5px;"></div>
     </div>
   </section>
