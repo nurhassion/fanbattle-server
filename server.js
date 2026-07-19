@@ -1057,16 +1057,12 @@ app.get('/api/dashboard-data', requireDashboardAuth, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = new Date().toISOString().slice(0, 7);
   const photosOut = Object.entries(donorPhotoMap).map(([name, v]) => ({ name, photo: v.photo, driveLink: v.driveLink || null, timestamp: v.timestamp }));
-  const upcomingEvents = loadScheduledEvents()
-    .filter(e => new Date(e.scheduledTime).getTime() > Date.now() - 12 * 3600000) // keep for 12h after go-live too, in case they're late
-    .map(e => ({ title: e.title, scheduledTime: e.scheduledTime, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}` }));
   res.json({
     todayTotals: byDay[today] || { byCurrency: {}, count: 0 },
     monthTotals: byMonth[thisMonth] || { byCurrency: {}, count: 0 },
     recentRecords: [...records].reverse().slice(0, 50),
     photos: photosOut,
-    gatewaySettings: loadGatewaySettings(),
-    upcomingEvents
+    gatewaySettings: loadGatewaySettings()
   });
 });
 
@@ -1196,8 +1192,6 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <a class="quick-link" href="/pay-left" target="_blank"><span class="emoji">🔵</span>Left pay</a>
       <a class="quick-link" href="/pay-right" target="_blank"><span class="emoji">🔴</span>Right pay</a>
     </div>
-    <div class="section-title" style="margin-top:26px;">Upcoming Facebook publish links</div>
-    <div id="upcomingEventsList"></div>
   </section>
 
   <!-- GATEWAYS -->
@@ -1252,7 +1246,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   <!-- SCHEDULE -->
   <section class="tab-panel" id="tab-schedule">
-    <div class="section-title">Schedule next live</div>
+    <div class="section-title">Save a content idea (no time needed)</div>
     <div class="form-card">
       <label class="f-label">Title</label>
       <input type="text" id="schTitle" placeholder="e.g. Fan Battle Live — Final Night" maxlength="100">
@@ -1263,25 +1257,14 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <label class="f-label">Thumbnail</label>
       <input type="file" id="schThumbnail" accept="image/*">
       <img id="schThumbPreview" style="display:none; max-width:140px; border-radius:10px; margin-top:8px;">
-      <label class="f-label">Scheduled date &amp; time</label>
-      <input type="datetime-local" id="schDatetime">
-      <label class="f-label">Push to</label>
-      <div style="display:flex; gap:16px; margin-top:4px;">
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px;"><input type="checkbox" id="schYoutube" checked style="width:auto;"> YouTube (auto-starts itself)</label>
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px;"><input type="checkbox" id="schFacebook" checked style="width:auto;"> Facebook (reminder to publish)</label>
-      </div>
-      <label class="f-label">Send Facebook reminder</label>
-      <select id="schReminderMinutes">
-        <option value="0">Exactly at go-live time</option>
-        <option value="5">5 minutes before</option>
-        <option value="10">10 minutes before</option>
-        <option value="15">15 minutes before</option>
-      </select>
-      <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Schedule live</button>
+      <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
     </div>
 
-    <div class="section-title" style="margin-top:26px;">Reminder contact info (set once)</div>
+    <div class="section-title" style="margin-top:26px;">Your saved ideas (<span id="ideaCount">0</span>/20)</div>
+    <div id="ideasList"></div>
+
+    <div class="section-title" style="margin-top:26px;">Reminder contact info (optional, set once)</div>
     <div class="form-card">
       <label class="f-label">WhatsApp number (with country code)</label>
       <input type="text" id="notifyWhatsapp" placeholder="+91XXXXXXXXXX">
@@ -1325,17 +1308,6 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('todayCount').textContent = d.todayTotals.count + ' tip' + (d.todayTotals.count === 1 ? '' : 's');
       document.getElementById('monthValue').textContent = fmtCurrencies(d.monthTotals.byCurrency);
       document.getElementById('monthCount').textContent = d.monthTotals.count + ' tip' + (d.monthTotals.count === 1 ? '' : 's');
-
-      const upcomingList = document.getElementById('upcomingEventsList');
-      if (upcomingList) {
-        upcomingList.innerHTML = (d.upcomingEvents && d.upcomingEvents.length)
-          ? d.upcomingEvents.map(e => {
-              const t = new Date(e.scheduledTime);
-              const timeStr = t.toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-              return '<div class="stat-card" style="margin-top:10px;"><div class="stat-label">' + timeStr + '</div><div style="font-weight:700; margin-top:4px;">' + e.title + '</div><a href="' + e.goLiveUrl + '" target="_blank" style="color:var(--gold); font-size:12.5px; display:inline-block; margin-top:6px;">📎 Open publish page →</a></div>';
-            }).join('')
-          : '<div class="empty">No upcoming scheduled lives.</div>';
-      }
 
       document.getElementById('domesticToggle').checked = d.gatewaySettings.domesticEnabled;
       document.getElementById('domesticStatus').textContent = d.gatewaySettings.domesticEnabled ? 'Active — accepting tips' : 'Paused';
@@ -1433,32 +1405,49 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     const title = document.getElementById('schTitle').value.trim();
     const description = document.getElementById('schDescription').value.trim();
     const hashtags = document.getElementById('schHashtags').value.trim();
-    const scheduledTime = document.getElementById('schDatetime').value;
-    const reminderMinutesBefore = parseInt(document.getElementById('schReminderMinutes').value, 10);
-    const platforms = [];
-    if(document.getElementById('schYoutube').checked) platforms.push('youtube');
-    if(document.getElementById('schFacebook').checked) platforms.push('facebook');
     const statusEl = document.getElementById('scheduleStatus');
 
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
-    if(!scheduledTime){ statusEl.innerHTML = '<span style="color:var(--right);">Please choose a date & time.</span>'; return; }
-    if(!platforms.length){ statusEl.innerHTML = '<span style="color:var(--right);">Choose at least one platform.</span>'; return; }
 
-    statusEl.textContent = 'Scheduling...';
+    statusEl.textContent = 'Saving...';
     fetch('/schedule/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, scheduledTime, platforms, reminderMinutesBefore })
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
-      let lines = [];
-      if(d.result.youtube) lines.push(d.result.youtube.ok
-        ? '✅ YouTube scheduled — <a href="' + d.result.youtube.url + '" target="_blank" style="color:var(--gold);">view</a>'
-        : '❌ YouTube: ' + d.result.youtube.error);
-      if(d.result.facebook) lines.push(d.result.facebook.ok
-        ? '✅ Facebook: <a href="' + d.result.facebook.reminderUrl + '" target="_blank" style="color:var(--gold); font-weight:700;">📎 Open your Facebook publish page</a> (bookmark this — works anytime, with or without the WhatsApp/SMS/Email reminder)'
-        : '❌ Facebook: ' + d.result.facebook.error);
-      statusEl.innerHTML = lines.join('<br>');
+      statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
+      document.getElementById('schTitle').value = '';
+      document.getElementById('schDescription').value = '';
+      document.getElementById('schHashtags').value = '';
+      document.getElementById('schThumbnail').value = '';
+      document.getElementById('schThumbPreview').style.display = 'none';
+      schThumbDataUrl = null;
+      loadIdeas();
     }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
+  }
+
+  async function loadIdeas(){
+    try {
+      const res = await fetch('/api/content-ideas');
+      const d = await res.json();
+      document.getElementById('ideaCount').textContent = d.ideas.length;
+      const listEl = document.getElementById('ideasList');
+      listEl.innerHTML = d.ideas.length ? d.ideas.map(idea =>
+        '<div class="form-card" style="margin-top:10px;">' +
+          '<div style="font-weight:700;">' + idea.title + '</div>' +
+          (idea.thumbnailDataUrl ? '<img src="' + idea.thumbnailDataUrl + '" style="max-width:100px; border-radius:8px; margin-top:8px;">' : '') +
+          '<div style="display:flex; gap:8px; margin-top:12px;">' +
+            '<a href="' + idea.goLiveUrl + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;">▶ Go Live</a>' +
+            '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="deleteIdea(\'' + idea.id + '\')">Delete</button>' +
+          '</div>' +
+        '</div>'
+      ).join('') : '<div class="empty">No saved ideas yet — add one above.</div>';
+    } catch(e){ /* not critical */ }
+  }
+
+  function deleteIdea(id){
+    if(!confirm('Delete this saved idea?')) return;
+    fetch('/schedule/' + id, { method: 'DELETE' }).then(loadIdeas);
   }
 
   function saveNotifySettings(){
@@ -1486,6 +1475,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   loadData();
   loadNotifySettingsIntoForm();
+  loadIdeas();
   setInterval(loadData, 10000); // keep stats fresh while the app is open
 </script>
 </body></html>`);
@@ -1671,46 +1661,49 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 // were checked, and reports each platform's own success/failure separately
 // (one platform failing, e.g. Facebook pending approval, never blocks the
 // other from succeeding).
+// ====== Content Ideas Library — no fixed time, click "Go Live" whenever ======
+// You save up to 20 title/description/hashtags/thumbnail sets ahead of time.
+// Whenever you actually want to go live with one, open its "Go Live" link —
+// it walks you through YouTube then Facebook, one tap each, entirely on your
+// own schedule. Nothing here calls the YouTube or Facebook API at all, so
+// there's no OAuth/billing/App-Review dependency of any kind.
+const MAX_CONTENT_IDEAS = 20;
+
 app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
-  const { title, description, hashtags, thumbnailDataUrl, scheduledTime, platforms, reminderMinutesBefore } = req.body;
+  const { title, description, hashtags, thumbnailDataUrl } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
-  if (!scheduledTime) return res.status(400).json({ ok: false, error: 'Scheduled date/time is required.' });
 
   const hashtagLine = (hashtags || '')
     .split(',').map(h => h.trim()).filter(Boolean)
     .map(h => h.startsWith('#') ? h : '#' + h).join(' ');
   const fullDescription = hashtagLine ? `${description || ''}\n\n${hashtagLine}` : (description || '');
 
-  const result = {};
-  if ((platforms || []).includes('youtube')) {
-    try {
-      result.youtube = { ok: true, ...(await createYoutubeScheduledBroadcast({ title, description: fullDescription, scheduledTime, thumbnailDataUrl })) };
-    } catch (e) { result.youtube = { ok: false, error: e.message }; }
+  const events = loadScheduledEvents();
+  if (events.length >= MAX_CONTENT_IDEAS) {
+    return res.status(400).json({ ok: false, error: `You already have ${MAX_CONTENT_IDEAS} saved ideas — delete one first from the list below.` });
   }
+  const eventId = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  events.push({
+    id: eventId, title, description: fullDescription, hashtags: hashtagLine,
+    thumbnailDataUrl: thumbnailDataUrl || null, createdAt: new Date().toISOString()
+  });
+  saveScheduledEvents(events);
 
-  // ====== Go-Live Reminder path for Facebook (works today, no App Review) ======
-  // Instead of calling Facebook's API (which needs publish_video approval),
-  // this stores the event and, at the scheduled time, sends a WhatsApp+SMS+
-  // Email reminder with a link to a page on THIS server that shows the
-  // title/description/thumbnail ready to copy into Facebook's own Live
-  // Producer, plus a direct link there — you tap "Go Live" yourself on
-  // Facebook, using your own normal Page-admin access. No API permission
-  // needed for this path at all.
-  if ((platforms || []).includes('facebook')) {
-    const eventId = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    const events = loadScheduledEvents();
-    events.push({
-      id: eventId, title, description: fullDescription, hashtags: hashtagLine,
-      thumbnailDataUrl: thumbnailDataUrl || null, scheduledTime,
-      reminderMinutesBefore: Number.isFinite(reminderMinutesBefore) ? reminderMinutesBefore : 0,
-      notified: false, createdAt: new Date().toISOString()
-    });
-    saveScheduledEvents(events);
-    result.facebook = { ok: true, mode: 'reminder', message: `A reminder will be sent (WhatsApp/SMS/Email) at go-live time with a link to publish on Facebook yourself.`, reminderUrl: `${PUBLIC_BASE_URL}/go-live/${eventId}` };
-  }
-
-  res.json({ ok: true, result });
+  res.json({ ok: true, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${eventId}` });
 });
+
+app.delete('/schedule/:id', requireDashboardAuth, (req, res) => {
+  const events = loadScheduledEvents().filter(e => e.id !== req.params.id);
+  saveScheduledEvents(events);
+  res.json({ ok: true });
+});
+
+app.get('/api/content-ideas', requireDashboardAuth, (req, res) => {
+  const events = loadScheduledEvents().map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}` }));
+  res.json({ ideas: events.reverse() });
+});
+
+
 
 // ====== Notification senders — plain HTTPS calls, no extra npm packages ======
 // Email via Resend (resend.com) — simplest transactional email API, works
@@ -1799,7 +1792,7 @@ setInterval(checkGoLiveReminders, 30000);
 app.get('/go-live/:id', (req, res) => {
   const events = loadScheduledEvents();
   const evt = events.find(e => e.id === req.params.id);
-  if (!evt) return res.status(404).send('<body style="background:#0B0F19; color:#F5F7FA; font-family:Arial; text-align:center; padding:60px;">This reminder link is no longer valid.</body>');
+  if (!evt) return res.status(404).send('<body style="background:#0B0F19; color:#F5F7FA; font-family:Arial; text-align:center; padding:60px;">This link is no longer valid — the idea may have been deleted.</body>');
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Go live: ${evt.title}</title>
@@ -1810,19 +1803,46 @@ app.get('/go-live/:id', (req, res) => {
     .box-label{ font-size:11px; color:#8B93A7; text-transform:uppercase; margin-bottom:6px; }
     .copy-btn{ font-size:11px; background:#2A3350; color:#F5F7FA; border:none; padding:5px 10px; border-radius:8px; margin-top:8px; cursor:pointer; }
     img{ max-width:100%; border-radius:10px; margin-top:10px; }
-    a.fb-btn{ display:block; text-align:center; background:#1877F2; color:white; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:20px; }
-    a.yt-btn{ display:block; text-align:center; background:#FF0000; color:white; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:14px; }
-    .step-num{ display:inline-block; background:#FFC53D; color:#0B0F19; width:20px; height:20px; border-radius:50%; text-align:center; font-size:12px; font-weight:800; line-height:20px; margin-right:6px; }
+    a.fb-btn, a.yt-btn, button.confirm-btn{ display:block; width:100%; box-sizing:border-box; text-align:center; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:14px; border:none; font-size:15px; cursor:pointer; font-family:Arial,sans-serif; }
+    a.yt-btn{ background:#FF0000; color:white; }
+    a.fb-btn{ background:#1877F2; color:white; }
+    button.confirm-btn{ background:#4ADE80; color:#0B0F19; }
+    .step{ display:none; }
+    .step.active{ display:block; }
+    .step-badge{ display:inline-block; background:#FFC53D; color:#0B0F19; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:800; margin-bottom:10px; }
+    .done-box{ text-align:center; padding:30px 10px; }
   </style></head><body>
     <h2>🔴 Go live: ${evt.title}</h2>
     <div class="box"><div class="box-label">Title (copy this into YouTube/Facebook)</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
     <div class="box"><div class="box-label">Description + hashtags</div><div id="descText" style="white-space:pre-wrap;">${evt.description || ''}</div><button class="copy-btn" onclick="copyText('descText')">Copy</button></div>
     ${evt.thumbnailDataUrl ? `<div class="box"><div class="box-label">Thumbnail (save this image, upload manually)</div><img src="${evt.thumbnailDataUrl}"></div>` : ''}
-    <a class="yt-btn" href="https://studio.youtube.com/live_dashboard" target="_blank"><span class="step-num">1</span>Open YouTube Studio — publish there first →</a>
-    <a class="fb-btn" href="https://www.facebook.com/live/producer" target="_blank"><span class="step-num">2</span>Then open Facebook Live Producer →</a>
-    <p style="font-size:12px; color:#8B93A7; margin-top:16px;">Tap each button in order, right when you're ready to go live — both are one-tap, fully manual, your own timing.</p>
+
+    <div class="step active" id="step1">
+      <a class="yt-btn" href="https://studio.youtube.com/live_dashboard" target="_blank">Open YouTube Studio →</a>
+      <button class="confirm-btn" onclick="goToStep(2)">✓ Published on YouTube — Continue to Facebook</button>
+    </div>
+
+    <div class="step" id="step2">
+      <span class="step-badge">STEP 2</span>
+      <a class="fb-btn" href="https://www.facebook.com/live/producer" target="_blank">Open Facebook Live Producer →</a>
+      <button class="confirm-btn" onclick="goToStep(3)">✓ Published on Facebook — Done</button>
+    </div>
+
+    <div class="step" id="step3">
+      <div class="done-box">
+        <div style="font-size:40px;">🎉</div>
+        <h2>You're live on both!</h2>
+        <p style="color:#8B93A7;">Back to your saved ideas any time.</p>
+        <a href="/app" style="color:#FFC53D; font-weight:700;">← Back to Fan Battle Live Control</a>
+      </div>
+    </div>
+
     <script>
       function copyText(id){ navigator.clipboard.writeText(document.getElementById(id).textContent); }
+      function goToStep(n){
+        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+        document.getElementById('step' + n).classList.add('active');
+      }
     </script>
   </body></html>`);
 });
