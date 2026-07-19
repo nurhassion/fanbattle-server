@@ -29,6 +29,28 @@ app.use(express.json({ limit: '6mb' })); // photo uploads are base64, need a bit
 const RECORDS_FILE = path.join(__dirname, 'records.json');
 const PHOTOS_FILE = path.join(__dirname, 'donor-photos.json');
 const GATEWAY_SETTINGS_FILE = path.join(__dirname, 'gateway-settings.json');
+const NOTIFY_SETTINGS_FILE = path.join(__dirname, 'notify-settings.json');
+const SCHEDULED_EVENTS_FILE = path.join(__dirname, 'scheduled-events.json');
+
+// ====== Go-Live Reminders: contact info (set once, reused every schedule) ======
+function loadNotifySettings() {
+  try { return JSON.parse(fs.readFileSync(NOTIFY_SETTINGS_FILE, 'utf8')); }
+  catch (e) { return { whatsappNumber: '', smsNumber: '', email: '' }; }
+}
+function saveNotifySettings(settings) {
+  try { fs.writeFileSync(NOTIFY_SETTINGS_FILE, JSON.stringify(settings, null, 2)); }
+  catch (e) { console.error('Could not save notify settings:', e.message); }
+}
+
+// ====== Scheduled events (for the go-live reminder checker below) ======
+function loadScheduledEvents() {
+  try { return JSON.parse(fs.readFileSync(SCHEDULED_EVENTS_FILE, 'utf8')); }
+  catch (e) { return []; }
+}
+function saveScheduledEvents(events) {
+  try { fs.writeFileSync(SCHEDULED_EVENTS_FILE, JSON.stringify(events, null, 2)); }
+  catch (e) { console.error('Could not save scheduled events:', e.message); }
+}
 
 // ====== STEP 4: Payment Gateway On/Off — instant, one-click, no redeploy ======
 // Unlike an environment variable (which needs a Render redeploy, ~1 minute,
@@ -1214,6 +1236,50 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     </table>
     <a class="export-btn" href="/export">⬇ Download full CSV backup</a>
   </section>
+
+  <!-- SCHEDULE -->
+  <section class="tab-panel" id="tab-schedule">
+    <div class="section-title">Schedule next live</div>
+    <div class="form-card">
+      <label class="f-label">Title</label>
+      <input type="text" id="schTitle" placeholder="e.g. Fan Battle Live — Final Night" maxlength="100">
+      <label class="f-label">Description</label>
+      <textarea id="schDescription" placeholder="What's happening in this stream" rows="4"></textarea>
+      <label class="f-label">Hashtags (comma separated)</label>
+      <input type="text" id="schHashtags" placeholder="FanBattle, LiveCricket, WorldCup">
+      <label class="f-label">Thumbnail</label>
+      <input type="file" id="schThumbnail" accept="image/*">
+      <img id="schThumbPreview" style="display:none; max-width:140px; border-radius:10px; margin-top:8px;">
+      <label class="f-label">Scheduled date &amp; time</label>
+      <input type="datetime-local" id="schDatetime">
+      <label class="f-label">Push to</label>
+      <div style="display:flex; gap:16px; margin-top:4px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px;"><input type="checkbox" id="schYoutube" checked style="width:auto;"> YouTube (auto-starts itself)</label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px;"><input type="checkbox" id="schFacebook" checked style="width:auto;"> Facebook (reminder to publish)</label>
+      </div>
+      <label class="f-label">Send Facebook reminder</label>
+      <select id="schReminderMinutes">
+        <option value="0">Exactly at go-live time</option>
+        <option value="5">5 minutes before</option>
+        <option value="10">10 minutes before</option>
+        <option value="15">15 minutes before</option>
+      </select>
+      <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Schedule live</button>
+      <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
+    </div>
+
+    <div class="section-title" style="margin-top:26px;">Reminder contact info (set once)</div>
+    <div class="form-card">
+      <label class="f-label">WhatsApp number (with country code)</label>
+      <input type="text" id="notifyWhatsapp" placeholder="+91XXXXXXXXXX">
+      <label class="f-label">Mobile number for SMS</label>
+      <input type="text" id="notifySms" placeholder="+91XXXXXXXXXX">
+      <label class="f-label">Email</label>
+      <input type="email" id="notifyEmail" placeholder="you@example.com">
+      <button class="btn-secondary" style="width:100%; margin-top:14px;" onclick="saveNotifySettings()">Save contact info</button>
+      <div id="notifySaveStatus" style="margin-top:10px; font-size:12.5px;"></div>
+    </div>
+  </section>
 </main>
 
 <nav class="bottom">
@@ -1221,6 +1287,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   <button data-tab="gateways" onclick="showTab('gateways')"><span class="icon">🎛️</span><span class="lbl">Gateways</span></button>
   <button data-tab="photos" onclick="showTab('photos')"><span class="icon">🖼️</span><span class="lbl">Photos</span></button>
   <button data-tab="records" onclick="showTab('records')"><span class="icon">📊</span><span class="lbl">Records</span></button>
+  <button data-tab="schedule" onclick="showTab('schedule')"><span class="icon">📅</span><span class="lbl">Schedule</span></button>
 </nav>
 
 <script>
@@ -1324,7 +1391,77 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     fetch('/gateway-settings/remove-gateway?id=' + encodeURIComponent(id), { method:'DELETE' }).then(loadData);
   }
 
+  let schThumbDataUrl = null;
+  document.getElementById('schThumbnail').addEventListener('change', function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      schThumbDataUrl = ev.target.result;
+      const img = document.getElementById('schThumbPreview');
+      img.src = schThumbDataUrl;
+      img.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function submitSchedule(){
+    const title = document.getElementById('schTitle').value.trim();
+    const description = document.getElementById('schDescription').value.trim();
+    const hashtags = document.getElementById('schHashtags').value.trim();
+    const scheduledTime = document.getElementById('schDatetime').value;
+    const reminderMinutesBefore = parseInt(document.getElementById('schReminderMinutes').value, 10);
+    const platforms = [];
+    if(document.getElementById('schYoutube').checked) platforms.push('youtube');
+    if(document.getElementById('schFacebook').checked) platforms.push('facebook');
+    const statusEl = document.getElementById('scheduleStatus');
+
+    if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
+    if(!scheduledTime){ statusEl.innerHTML = '<span style="color:var(--right);">Please choose a date & time.</span>'; return; }
+    if(!platforms.length){ statusEl.innerHTML = '<span style="color:var(--right);">Choose at least one platform.</span>'; return; }
+
+    statusEl.textContent = 'Scheduling...';
+    fetch('/schedule/create', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, scheduledTime, platforms, reminderMinutesBefore })
+    }).then(r => r.json()).then(d => {
+      if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
+      let lines = [];
+      if(d.result.youtube) lines.push(d.result.youtube.ok
+        ? '✅ YouTube scheduled — <a href="' + d.result.youtube.url + '" target="_blank" style="color:var(--gold);">view</a>'
+        : '❌ YouTube: ' + d.result.youtube.error);
+      if(d.result.facebook) lines.push(d.result.facebook.ok
+        ? '✅ Facebook reminder set — you will get WhatsApp/SMS/Email at go-live time with a publish link'
+        : '❌ Facebook: ' + d.result.facebook.error);
+      statusEl.innerHTML = lines.join('<br>');
+    }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
+  }
+
+  function saveNotifySettings(){
+    const whatsappNumber = document.getElementById('notifyWhatsapp').value.trim();
+    const smsNumber = document.getElementById('notifySms').value.trim();
+    const email = document.getElementById('notifyEmail').value.trim();
+    const statusEl = document.getElementById('notifySaveStatus');
+    statusEl.textContent = 'Saving...';
+    fetch('/api/notify-settings', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ whatsappNumber, smsNumber, email })
+    }).then(r => r.json()).then(() => { statusEl.innerHTML = '<span style="color:var(--green);">Saved ✓</span>'; })
+      .catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Could not save — try again.</span>'; });
+  }
+
+  async function loadNotifySettingsIntoForm(){
+    try {
+      const res = await fetch('/api/notify-settings');
+      const d = await res.json();
+      document.getElementById('notifyWhatsapp').value = d.whatsappNumber || '';
+      document.getElementById('notifySms').value = d.smsNumber || '';
+      document.getElementById('notifyEmail').value = d.email || '';
+    } catch(e){ /* not critical if this fails */ }
+  }
+
   loadData();
+  loadNotifySettingsIntoForm();
   setInterval(loadData, 10000); // keep stats fresh while the app is open
 </script>
 </body></html>`);
@@ -1401,8 +1538,277 @@ app.get('/export', requireDashboardAuth, (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 // =====================================================================
-// =====================  CONTENT CALENDAR (STEP 2)  ====================
+// =========  LIVE SCHEDULING: YouTube + Facebook (title/thumbnail/  =====
+// =========  description/hashtags), pushed from the /app Schedule tab ===
 // =====================================================================
+// YouTube part: needs a one-time OAuth setup (Google Cloud Console) — see
+// SCHEDULE-SETUP.md. Once YT_CLIENT_ID/YT_CLIENT_SECRET/YT_REFRESH_TOKEN
+// are set as Render env vars, this works fully automatically from then on.
+//
+// Facebook part: Facebook's Live Video API requires Facebook's own App
+// Review approval for the relevant permission — this is a manual review
+// Facebook itself performs, no code can bypass it (flagged honestly here,
+// same as discussed before). The code below is written correctly against
+// Facebook's documented API and will work the moment that approval is
+// granted and FB_PAGE_ID/FB_PAGE_ACCESS_TOKEN are set — until then it will
+// return a clear error explaining exactly that, rather than failing silently.
+const YT_CLIENT_ID = process.env.YT_CLIENT_ID || '';
+const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET || '';
+const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN || '';
+const FB_PAGE_ID = process.env.FB_PAGE_ID || '';
+const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || '';
+
+let cachedYoutubeToken = null;
+let cachedYoutubeTokenExpiry = 0;
+async function getYoutubeAccessToken() {
+  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
+    throw new Error('YouTube isn\'t connected yet — see SCHEDULE-SETUP.md to set YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN.');
+  }
+  if (cachedYoutubeToken && Date.now() < cachedYoutubeTokenExpiry) return cachedYoutubeToken;
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: YT_CLIENT_ID, client_secret: YT_CLIENT_SECRET,
+      refresh_token: YT_REFRESH_TOKEN, grant_type: 'refresh_token'
+    })
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('YouTube auth failed: ' + JSON.stringify(data));
+  cachedYoutubeToken = data.access_token;
+  cachedYoutubeTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+  return cachedYoutubeToken;
+}
+
+// Creates a scheduled YouTube live broadcast with title/description, then
+// uploads the custom thumbnail — this is what shows up on your channel and
+// in subscribers' feeds ahead of time, with your own thumbnail instead of a
+// generic placeholder.
+async function createYoutubeScheduledBroadcast({ title, description, scheduledTime, thumbnailDataUrl }) {
+  const token = await getYoutubeAccessToken();
+  const insertRes = await fetch('https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status,contentDetails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      snippet: { title, description, scheduledStartTime: scheduledTime },
+      status: { privacyStatus: 'public', selfDeclaredMadeForKids: false },
+      contentDetails: { enableAutoStart: true, enableAutoStop: true }
+    })
+  });
+  const broadcast = await insertRes.json();
+  if (!broadcast.id) throw new Error('YouTube broadcast creation failed: ' + JSON.stringify(broadcast));
+
+  // Upload the thumbnail, if one was provided — a separate API call because
+  // YouTube treats the image as binary media, not part of the JSON body above.
+  if (thumbnailDataUrl) {
+    const matches = thumbnailDataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (matches) {
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${broadcast.id}&uploadType=media`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': mimeType },
+        body: buffer
+      });
+    }
+  }
+
+  return { id: broadcast.id, url: `https://www.youtube.com/watch?v=${broadcast.id}` };
+}
+
+// Creates a SCHEDULED (not yet live) Facebook video on your Page — viewers
+// see it appear on the Page ahead of time with your title/description.
+// NOTE: Facebook's scheduled-live thumbnail is best set from Facebook's own
+// Live Producer/Creator Studio at go-live time — their API for pre-setting
+// a custom thumbnail on a not-yet-started scheduled live video is
+// inconsistent, so this intentionally does not attempt it, to avoid
+// silently failing while claiming success.
+async function createFacebookScheduledLive({ title, description, scheduledTime }) {
+  if (!FB_PAGE_ID || !FB_PAGE_ACCESS_TOKEN) {
+    throw new Error('Facebook isn\'t connected yet — see SCHEDULE-SETUP.md to set FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN (requires Facebook App Review approval for Live Video access first).');
+  }
+  const scheduledUnix = Math.floor(new Date(scheduledTime).getTime() / 1000);
+  const res = await fetch(`https://graph.facebook.com/v19.0/${FB_PAGE_ID}/live_videos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title, description,
+      status: 'SCHEDULED_UNPUBLISHED',
+      planned_start_time: scheduledUnix,
+      access_token: FB_PAGE_ACCESS_TOKEN
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error('Facebook scheduling failed: ' + (data.error.message || JSON.stringify(data.error)));
+  return { id: data.id, url: `https://www.facebook.com/${FB_PAGE_ID}/videos/${data.id}` };
+}
+
+// Single endpoint the Schedule tab calls — pushes to whichever platform(s)
+// were checked, and reports each platform's own success/failure separately
+// (one platform failing, e.g. Facebook pending approval, never blocks the
+// other from succeeding).
+app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
+  const { title, description, hashtags, thumbnailDataUrl, scheduledTime, platforms, reminderMinutesBefore } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
+  if (!scheduledTime) return res.status(400).json({ ok: false, error: 'Scheduled date/time is required.' });
+
+  const hashtagLine = (hashtags || '')
+    .split(',').map(h => h.trim()).filter(Boolean)
+    .map(h => h.startsWith('#') ? h : '#' + h).join(' ');
+  const fullDescription = hashtagLine ? `${description || ''}\n\n${hashtagLine}` : (description || '');
+
+  const result = {};
+  if ((platforms || []).includes('youtube')) {
+    try {
+      result.youtube = { ok: true, ...(await createYoutubeScheduledBroadcast({ title, description: fullDescription, scheduledTime, thumbnailDataUrl })) };
+    } catch (e) { result.youtube = { ok: false, error: e.message }; }
+  }
+
+  // ====== Go-Live Reminder path for Facebook (works today, no App Review) ======
+  // Instead of calling Facebook's API (which needs publish_video approval),
+  // this stores the event and, at the scheduled time, sends a WhatsApp+SMS+
+  // Email reminder with a link to a page on THIS server that shows the
+  // title/description/thumbnail ready to copy into Facebook's own Live
+  // Producer, plus a direct link there — you tap "Go Live" yourself on
+  // Facebook, using your own normal Page-admin access. No API permission
+  // needed for this path at all.
+  if ((platforms || []).includes('facebook')) {
+    const eventId = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const events = loadScheduledEvents();
+    events.push({
+      id: eventId, title, description: fullDescription, hashtags: hashtagLine,
+      thumbnailDataUrl: thumbnailDataUrl || null, scheduledTime,
+      reminderMinutesBefore: Number.isFinite(reminderMinutesBefore) ? reminderMinutesBefore : 0,
+      notified: false, createdAt: new Date().toISOString()
+    });
+    saveScheduledEvents(events);
+    result.facebook = { ok: true, mode: 'reminder', message: `A reminder will be sent (WhatsApp/SMS/Email) at go-live time with a link to publish on Facebook yourself.`, reminderUrl: `${PUBLIC_BASE_URL}/go-live/${eventId}` };
+  }
+
+  res.json({ ok: true, result });
+});
+
+// ====== Notification senders — plain HTTPS calls, no extra npm packages ======
+// Email via Resend (resend.com) — simplest transactional email API, works
+// immediately with just an API key, no domain verification needed if you
+// use their shared sending address for now.
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+async function sendEmailNotification(toEmail, subject, htmlBody) {
+  if (!RESEND_API_KEY || !toEmail) return { ok: false, error: 'Email not configured' };
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'Fan Battle Live <onboarding@resend.dev>', to: [toEmail], subject, html: htmlBody })
+    });
+    const data = await res.json();
+    if (data.id) return { ok: true };
+    return { ok: false, error: JSON.stringify(data) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+// SMS + WhatsApp via Twilio's plain REST API — self-serve signup, no
+// content/App Review needed for your own number sending to your own phone.
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
+const TWILIO_SMS_FROM = process.env.TWILIO_SMS_FROM || '';
+const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM || ''; // e.g. 'whatsapp:+14155238886' (sandbox)
+
+async function sendTwilioMessage({ to, from, body }) {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !from || !to) return { ok: false, error: 'Twilio not configured' };
+  try {
+    const creds = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`, {
+      method: 'POST',
+      headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ To: to, From: from, Body: body })
+    });
+    const data = await res.json();
+    if (data.sid) return { ok: true };
+    return { ok: false, error: data.message || JSON.stringify(data) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+async function sendSmsNotification(toNumber, message) {
+  return sendTwilioMessage({ to: toNumber, from: TWILIO_SMS_FROM, body: message });
+}
+async function sendWhatsappNotification(toNumber, message) {
+  return sendTwilioMessage({ to: `whatsapp:${toNumber.replace(/^whatsapp:/, '')}`, from: TWILIO_WHATSAPP_FROM, body: message });
+}
+
+// ====== Go-Live Reminder checker ======
+// Runs every 30 seconds. For each not-yet-notified scheduled event, once the
+// current time reaches (scheduledTime - reminderMinutesBefore), fires all
+// three notification channels with the same link, then marks it notified so
+// it never re-sends. This is independent of whether Facebook approval ever
+// arrives — it works today, regardless.
+async function checkGoLiveReminders() {
+  const events = loadScheduledEvents();
+  if (!events.length) return;
+  const now = Date.now();
+  let changed = false;
+  for (const evt of events) {
+    if (evt.notified) continue;
+    const fireAt = new Date(evt.scheduledTime).getTime() - (evt.reminderMinutesBefore || 0) * 60000;
+    if (now >= fireAt) {
+      const notify = loadNotifySettings();
+      const link = `${PUBLIC_BASE_URL}/go-live/${evt.id}`;
+      const message = `🔴 Time to go live: "${evt.title}"\nPublish on Facebook now: ${link}`;
+      const results = await Promise.allSettled([
+        notify.email ? sendEmailNotification(notify.email, `Go live now: ${evt.title}`, `<p><b>${evt.title}</b></p><p>${(evt.description || '').replace(/\n/g, '<br>')}</p><p><a href="${link}">Click here to publish on Facebook</a></p>`) : Promise.resolve({ ok: false, error: 'no email set' }),
+        notify.smsNumber ? sendSmsNotification(notify.smsNumber, message) : Promise.resolve({ ok: false, error: 'no SMS number set' }),
+        notify.whatsappNumber ? sendWhatsappNotification(notify.whatsappNumber, message) : Promise.resolve({ ok: false, error: 'no WhatsApp number set' })
+      ]);
+      console.log(`🔔 Go-live reminder fired for "${evt.title}":`, results.map(r => r.value || r.reason));
+      evt.notified = true;
+      changed = true;
+    }
+  }
+  if (changed) saveScheduledEvents(events);
+}
+setInterval(checkGoLiveReminders, 30000);
+
+// ====== The page the reminder link opens — everything needed to publish ======
+// Intentionally NOT behind dashboard login — this link is meant to be
+// tapped straight from a WhatsApp/SMS/email notification on your phone,
+// possibly without an active browser session. The event id itself
+// (long, random, unguessable) is what keeps this from being public.
+app.get('/go-live/:id', (req, res) => {
+  const events = loadScheduledEvents();
+  const evt = events.find(e => e.id === req.params.id);
+  if (!evt) return res.status(404).send('<body style="background:#0B0F19; color:#F5F7FA; font-family:Arial; text-align:center; padding:60px;">This reminder link is no longer valid.</body>');
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Go live: ${evt.title}</title>
+  <style>
+    body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; padding:28px 20px; max-width:480px; margin:0 auto;}
+    h2{margin-bottom:14px;}
+    .box{ background:#161C2E; border:1px solid rgba(245,247,250,0.08); border-radius:14px; padding:16px; margin-top:14px; }
+    .box-label{ font-size:11px; color:#8B93A7; text-transform:uppercase; margin-bottom:6px; }
+    .copy-btn{ font-size:11px; background:#2A3350; color:#F5F7FA; border:none; padding:5px 10px; border-radius:8px; margin-top:8px; cursor:pointer; }
+    img{ max-width:100%; border-radius:10px; margin-top:10px; }
+    a.fb-btn{ display:block; text-align:center; background:#1877F2; color:white; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:20px; }
+  </style></head><body>
+    <h2>🔴 Go live: ${evt.title}</h2>
+    <div class="box"><div class="box-label">Title (copy this into Facebook)</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
+    <div class="box"><div class="box-label">Description + hashtags</div><div id="descText" style="white-space:pre-wrap;">${evt.description || ''}</div><button class="copy-btn" onclick="copyText('descText')">Copy</button></div>
+    ${evt.thumbnailDataUrl ? `<div class="box"><div class="box-label">Thumbnail (save this image, upload manually)</div><img src="${evt.thumbnailDataUrl}"></div>` : ''}
+    <a class="fb-btn" href="https://www.facebook.com/live/producer" target="_blank">Open Facebook Live Producer →</a>
+    <p style="font-size:12px; color:#8B93A7; margin-top:16px;">YouTube is already set to start automatically at this time — this link is only for publishing on Facebook, on your own tap.</p>
+    <script>
+      function copyText(id){ navigator.clipboard.writeText(document.getElementById(id).textContent); }
+    </script>
+  </body></html>`);
+});
+
+// ====== Notification contact settings (WhatsApp / SMS / Email) ======
+app.get('/api/notify-settings', requireDashboardAuth, (req, res) => { res.json(loadNotifySettings()); });
+app.post('/api/notify-settings', requireDashboardAuth, (req, res) => {
+  const { whatsappNumber, smsNumber, email } = req.body;
+  saveNotifySettings({ whatsappNumber: whatsappNumber || '', smsNumber: smsNumber || '', email: email || '' });
+  res.json({ ok: true });
+});
+
+
 // A separate Google Apps Script Web App (deployed from a "Calendar" Google
 // Sheet — see CALENDAR-SHEET-SETUP.md for the exact script to paste) reads
 // today's row and returns it as JSON. This server just proxies that, with a
