@@ -1323,7 +1323,12 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <input type="file" id="schMusic" accept="audio/*" multiple>
       <div id="schMusicList" style="font-size:11.5px; color:var(--dim); margin-top:6px;"></div>
 
-      <p class="form-hint" style="margin-top:14px;">Video clips still upload directly inside the overlay itself (in OBS) — not saved here yet, kept for a safe follow-up after tonight's match.</p>
+      <label class="f-label" style="color:var(--left); margin-top:16px;">🔵 Left side video links (one per line, up to 10)</label>
+      <textarea id="schLeftVideoLinks" rows="3" placeholder="https://streamable.com/xxxxx"></textarea>
+      <label class="f-label" style="color:var(--right);">🔴 Right side video links (one per line, up to 10)</label>
+      <textarea id="schRightVideoLinks" rows="3" placeholder="https://streamable.com/yyyyy"></textarea>
+      <p class="form-hint">Paste direct video links here (e.g. from Streamable) — they'll rotate automatically on stream, same as uploading clips directly in the overlay. Google Drive's usual share link often won't play directly, so Streamable (or a similar direct-link host) works more reliably.</p>
+
       <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
     </div>
@@ -1513,6 +1518,8 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     const leftName = document.getElementById('schLeftName').value.trim();
     const rightName = document.getElementById('schRightName').value.trim();
     const voiceRepeatSeconds = parseInt(document.getElementById('schVoiceRepeat').value, 10) || 40;
+    const leftVideoUrls = document.getElementById('schLeftVideoLinks').value.trim();
+    const rightVideoUrls = document.getElementById('schRightVideoLinks').value.trim();
     const statusEl = document.getElementById('scheduleStatus');
 
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
@@ -1520,7 +1527,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     statusEl.textContent = 'Saving...';
     fetch('/schedule/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls })
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
       statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
@@ -1529,6 +1536,8 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('schHashtags').value = '';
       document.getElementById('schLeftName').value = '';
       document.getElementById('schRightName').value = '';
+      document.getElementById('schLeftVideoLinks').value = '';
+      document.getElementById('schRightVideoLinks').value = '';
       ['schThumbnail','schLeftPhoto','schRightPhoto','schIntroVoice','schMusic'].forEach(id => document.getElementById(id).value = '');
       ['schThumbPreview','schLeftPhotoPreview','schRightPhotoPreview'].forEach(id => document.getElementById(id).style.display = 'none');
       document.getElementById('schIntroVoiceList').textContent = '';
@@ -1809,13 +1818,19 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 const MAX_CONTENT_IDEAS = 20;
 
 app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
-  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls } = req.body;
+  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
 
   const hashtagLine = (hashtags || '')
     .split(',').map(h => h.trim()).filter(Boolean)
     .map(h => h.startsWith('#') ? h : '#' + h).join(' ');
   const fullDescription = hashtagLine ? `${description || ''}\n\n${hashtagLine}` : (description || '');
+
+  // Video LINKS only (not uploaded files) — this is the safe way to include
+  // several clips per side without risking the server's memory/disk, since
+  // we're just storing short text URLs, never the video data itself.
+  const parseVideoLinks = (raw) => (raw || '')
+    .split(/[\n,]+/).map(u => u.trim()).filter(Boolean).slice(0, 10);
 
   const events = loadScheduledEvents();
   if (events.length >= MAX_CONTENT_IDEAS) {
@@ -1835,6 +1850,10 @@ app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
     // Multiple background music tracks — played as a playlist, looping
     // through all of them instead of just one repeating track.
     musicDataUrls: Array.isArray(musicDataUrls) ? musicDataUrls.slice(0, 5) : [],
+    // Up to 10 video LINKS per side (e.g. Streamable links) — rotates
+    // through them just like the overlay's own manual video upload already did.
+    leftVideoUrls: parseVideoLinks(leftVideoUrls),
+    rightVideoUrls: parseVideoLinks(rightVideoUrls),
     createdAt: new Date().toISOString()
   });
   saveScheduledEvents(events);
@@ -1898,7 +1917,9 @@ app.get('/api/active-idea', (req, res) => {
     leftPhotoUrl: evt.leftPhotoDataUrl, rightPhotoUrl: evt.rightPhotoDataUrl,
     introVoiceUrls: evt.introVoiceDataUrls || [],
     voiceRepeatSeconds: evt.voiceRepeatSeconds,
-    musicUrls: evt.musicDataUrls || []
+    musicUrls: evt.musicDataUrls || [],
+    leftClipUrls: evt.leftVideoUrls || [],
+    rightClipUrls: evt.rightVideoUrls || []
   });
 });
 
