@@ -546,7 +546,7 @@ function paypalPageHtml(side, teamName) {
     <div id="status"></div>
     <div id="photoSection">
       <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">Totally optional — skip if you'd rather not.</span></p>
-      <input type="file" id="photoInput" accept="image/*" capture="environment">
+      <input type="file" id="photoInput" accept="image/*">
       <div id="photoPreviewWrap"><img id="photoPreview" style="display:none;"></div>
       <br><button onclick="uploadPhoto()"><span id="addPhotoText">Add my photo</span></button>
       ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
@@ -692,7 +692,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
     <h2 id="thankYouHeading">🎉 Thank you, ${name || 'friend'}!</h2>
     <p id="tipReceivedText">${amount ? `Your ${currency || '₹'} ${amount} tip has been received.` : 'Your support has been received.'}</p>
     <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">This is completely optional — skip if you'd rather not.</span></p>
-    <div><input type="file" id="photoInput" accept="image/*" capture="environment"></div>
+    <div><input type="file" id="photoInput" accept="image/*"></div>
     <img id="photoPreview" style="display:none;">
     <br><button onclick="uploadPhoto()"><span id="addPhotoText">Add my photo</span></button>
     ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
