@@ -81,6 +81,14 @@
   .name-edit{ text-align:left !important; font-size:17px !important; font-family:'Bebas Neue', sans-serif; letter-spacing:0.5px; }
   #cardLeft .name-edit{ background: linear-gradient(90deg, var(--left-glow), var(--white) 85%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
   #cardRight .name-edit{ background: linear-gradient(90deg, var(--right-glow), var(--white) 85%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+  /* ---- Fun-only "fan support meter" percentage — deliberately styled in a
+     different font/treatment than the donation amounts, so it never reads
+     as a serious financial stat, just a playful crowd-mood indicator. ---- */
+  .support-pct-row{ margin-top:4px; display:flex; align-items:center; gap:6px; padding-left:2px; }
+  .support-pct{ font-family:'Bebas Neue', sans-serif; font-size:15px; letter-spacing:1.5px; padding:2px 9px; border-radius:20px; line-height:1.5; }
+  .support-pct.l{ background: linear-gradient(90deg, rgba(46,111,242,0.35), rgba(46,111,242,0.12)); color:var(--left-glow); border:1px solid rgba(46,111,242,0.5); }
+  .support-pct.r{ background: linear-gradient(90deg, rgba(255,75,62,0.35), rgba(255,75,62,0.12)); color:var(--right-glow); border:1px solid rgba(255,75,62,0.5); }
+  .support-pct-note{ font-size:8.5px; color:var(--dim); font-style:italic; }
   .leaderboard{ margin-top:3px; border:1px solid var(--line); border-radius:12px; background: var(--bg-soft); padding:6px 7px; flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:2px; text-align:center; flex-shrink:0; }
   /* Three supporters side by side, spanning the full width of this box
@@ -308,9 +316,11 @@
   <div class="cards">
     <div class="card" id="cardLeft">
       <div class="name-row"><div class="avatar l">L</div><input class="name-edit" id="nameLeft" value="Messi" /></div>
+      <div class="support-pct-row"><span class="support-pct l" id="pctLeft">50%</span><span class="support-pct-note">fan power 🔥</span></div>
     </div>
     <div class="card" id="cardRight">
       <div class="name-row"><div class="avatar r">R</div><input class="name-edit" id="nameRight" value="Ronaldo" /></div>
+      <div class="support-pct-row"><span class="support-pct r" id="pctRight">50%</span><span class="support-pct-note">fan power 🔥</span></div>
     </div>
   </div>
   <div class="qr-title">📲 SCAN. PAY. PICK YOUR SIDE.</div>
@@ -840,6 +850,19 @@ function updateUI(){
       .map(([cur, amt]) => currencySymbol(cur) + amt.toLocaleString('en-IN'));
     intlEl.textContent = parts.length ? ('+ ' + parts.join(' · ') + ' from abroad') : '';
   }
+
+  // ---- Fun-only "fan support meter" — purely a crowd-mood percentage
+  // based on total tip volume so far, NOT a serious financial ranking.
+  // Defaults to an even 50/50 split before anyone has tipped yet. ----
+  let leftPct = 50, rightPct = 50;
+  if(total > 0){
+    leftPct = Math.round((totals.left / total) * 100);
+    rightPct = 100 - leftPct;
+  }
+  const pctLeftEl = document.getElementById('pctLeft');
+  const pctRightEl = document.getElementById('pctRight');
+  if(pctLeftEl) pctLeftEl.textContent = leftPct + '%';
+  if(pctRightEl) pctRightEl.textContent = rightPct + '%';
 }
 
 // ---- Top-supporters leaderboard: a single ranked list (not split by side),
