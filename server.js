@@ -1074,6 +1074,13 @@ app.get('/api/dashboard-data', requireDashboardAuth, (req, res) => {
 // setup. A true native/Electron app remains the later, more complete step —
 // this is the professional, unified interface available right now.
 app.get('/app', requireDashboardAuth, (req, res) => {
+  // No caching, ever — same reasoning as /overlay below. Without this, some
+  // browsers keep serving an old cached copy of this page even after the
+  // server has a newer version, which looks like "nothing I fix ever shows
+  // up" even though the deploy succeeded.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#0B0F19">
