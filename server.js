@@ -1523,14 +1523,14 @@ app.get('/app', requireDashboardAuth, (req, res) => {
           '</div>' +
           '<div style="display:flex; gap:8px; margin-top:12px; align-items:center;">' +
             '<span style="font-size:11px; color:var(--dim);">Theme:</span>' +
-            '<button title="Blue/Red (default)" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='1'||!idea.preset ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#6C9BFF 50%,#FF6B5E 50%); cursor:pointer; padding:0;" onclick="setPreset(\'' + idea.id + '\',\'1\')"></button>' +
-            '<button title="Purple/Gold" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='2' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#A78BFA 50%,#FFC53D 50%); cursor:pointer; padding:0;" onclick="setPreset(\'' + idea.id + '\',\'2\')"></button>' +
-            '<button title="Green/Orange" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='3' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#4ADE80 50%,#FB923C 50%); cursor:pointer; padding:0;" onclick="setPreset(\'' + idea.id + '\',\'3\')"></button>' +
+            '<button title="Blue/Red (default)" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='1'||!idea.preset ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#6C9BFF 50%,#FF6B5E 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'1\\')"></button>' +
+            '<button title="Purple/Gold" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='2' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#A78BFA 50%,#FFC53D 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'2\\')"></button>' +
+            '<button title="Green/Orange" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='3' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#4ADE80 50%,#FB923C 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'3\\')"></button>' +
           '</div>' +
           '<div style="display:flex; gap:8px; margin-top:10px;">' +
-            '<a href="' + idea.goLiveUrl + (idea.preset ? '?preset=' + idea.preset : '') + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;" onclick="markLive(\'' + idea.id + '\')">▶ Go Live</a>' +
+            '<a href="' + idea.goLiveUrl + (idea.preset ? '?preset=' + idea.preset : '') + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;" onclick="markLive(\\'' + idea.id + '\\')">▶ Go Live</a>' +
             (idea.isLive ? '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="endLive()">End Live</button>' : '') +
-            '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="deleteIdea(\'' + idea.id + '\')">Delete</button>' +
+            '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="deleteIdea(\\'' + idea.id + '\\')">Delete</button>' +
           '</div>' +
         '</div>'
       ).join('') : '<div class="empty">No saved ideas yet — add one above.</div>';
