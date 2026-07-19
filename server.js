@@ -1811,13 +1811,16 @@ app.get('/go-live/:id', (req, res) => {
     .copy-btn{ font-size:11px; background:#2A3350; color:#F5F7FA; border:none; padding:5px 10px; border-radius:8px; margin-top:8px; cursor:pointer; }
     img{ max-width:100%; border-radius:10px; margin-top:10px; }
     a.fb-btn{ display:block; text-align:center; background:#1877F2; color:white; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:20px; }
+    a.yt-btn{ display:block; text-align:center; background:#FF0000; color:white; font-weight:bold; padding:14px; border-radius:12px; text-decoration:none; margin-top:14px; }
+    .step-num{ display:inline-block; background:#FFC53D; color:#0B0F19; width:20px; height:20px; border-radius:50%; text-align:center; font-size:12px; font-weight:800; line-height:20px; margin-right:6px; }
   </style></head><body>
     <h2>🔴 Go live: ${evt.title}</h2>
-    <div class="box"><div class="box-label">Title (copy this into Facebook)</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
+    <div class="box"><div class="box-label">Title (copy this into YouTube/Facebook)</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
     <div class="box"><div class="box-label">Description + hashtags</div><div id="descText" style="white-space:pre-wrap;">${evt.description || ''}</div><button class="copy-btn" onclick="copyText('descText')">Copy</button></div>
     ${evt.thumbnailDataUrl ? `<div class="box"><div class="box-label">Thumbnail (save this image, upload manually)</div><img src="${evt.thumbnailDataUrl}"></div>` : ''}
-    <a class="fb-btn" href="https://www.facebook.com/live/producer" target="_blank">Open Facebook Live Producer →</a>
-    <p style="font-size:12px; color:#8B93A7; margin-top:16px;">YouTube is already set to start automatically at this time — this link is only for publishing on Facebook, on your own tap.</p>
+    <a class="yt-btn" href="https://studio.youtube.com/live_dashboard" target="_blank"><span class="step-num">1</span>Open YouTube Studio — publish there first →</a>
+    <a class="fb-btn" href="https://www.facebook.com/live/producer" target="_blank"><span class="step-num">2</span>Then open Facebook Live Producer →</a>
+    <p style="font-size:12px; color:#8B93A7; margin-top:16px;">Tap each button in order, right when you're ready to go live — both are one-tap, fully manual, your own timing.</p>
     <script>
       function copyText(id){ navigator.clipboard.writeText(document.getElementById(id).textContent); }
     </script>
