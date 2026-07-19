@@ -69,26 +69,28 @@
   .total-amount{ font-family:'Bebas Neue', sans-serif; font-size:26px; letter-spacing:1px; color:var(--gold); margin-top:2px; }
   .total-amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px; }
   .cards{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; flex-shrink:0; }
-  .card{ background: var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:5px; position:relative; }
-  .name-row{ display:flex; flex-direction:row; align-items:center; gap:8px; text-align:left; }
-  .avatar{ width:64px; height:64px; flex-shrink:0; border-radius:10px; display:flex; align-items:center; justify-content:center;
-    font-family:'Bebas Neue', sans-serif; font-size:24px; }
+  .card{ background: var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:8px; position:relative; }
+  .name-row{ display:flex; flex-direction:row; align-items:center; gap:10px; text-align:left; }
+  .avatar{ width:88px; height:88px; flex-shrink:0; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-family:'Bebas Neue', sans-serif; font-size:32px; }
   .avatar.l{ background: rgba(46,111,242,0.18); color:var(--left-glow); border:2px solid rgba(46,111,242,0.6); background-size:cover; background-position:center; overflow:hidden; box-shadow:0 0 14px rgba(46,111,242,0.35);}
   .avatar.r{ background: rgba(255,75,62,0.18); color:var(--right-glow); border:2px solid rgba(255,75,62,0.6); background-size:cover; background-position:center; overflow:hidden; box-shadow:0 0 14px rgba(255,75,62,0.35);}
-  .avatar img{ width:100%; height:100%; object-fit:cover; border-radius:8px; }
+  .avatar img{ width:100%; height:100%; object-fit:cover; border-radius:10px; }
   /* Eye-catching team names: bold, gradient-lit text similar to the main
      title treatment, so they pop instead of reading like a plain label. */
-  .name-edit{ text-align:left !important; font-size:17px !important; font-family:'Bebas Neue', sans-serif; letter-spacing:0.5px; }
+  .name-edit{ text-align:left !important; font-size:18px !important; font-family:'Bebas Neue', sans-serif; letter-spacing:0.5px; }
   #cardLeft .name-edit{ background: linear-gradient(90deg, var(--left-glow), var(--white) 85%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
   #cardRight .name-edit{ background: linear-gradient(90deg, var(--right-glow), var(--white) 85%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
   /* ---- Fun-only "fan support meter" percentage — deliberately styled in a
      different font/treatment than the donation amounts, so it never reads
-     as a serious financial stat, just a playful crowd-mood indicator. ---- */
-  .support-pct-row{ margin-top:4px; display:flex; align-items:center; gap:6px; padding-left:2px; }
-  .support-pct{ font-family:'Bebas Neue', sans-serif; font-size:15px; letter-spacing:1.5px; padding:2px 9px; border-radius:20px; line-height:1.5; }
-  .support-pct.l{ background: linear-gradient(90deg, rgba(46,111,242,0.35), rgba(46,111,242,0.12)); color:var(--left-glow); border:1px solid rgba(46,111,242,0.5); }
-  .support-pct.r{ background: linear-gradient(90deg, rgba(255,75,62,0.35), rgba(255,75,62,0.12)); color:var(--right-glow); border:1px solid rgba(255,75,62,0.5); }
-  .support-pct-note{ font-size:8.5px; color:var(--dim); font-style:italic; }
+     as a serious financial stat, just a playful crowd-mood indicator. Now
+     given real visual weight (large, glowing, filling the space next to
+     the name) instead of a small pill, since there was empty room there. ---- */
+  .support-pct-row{ margin-top:6px; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding-left:2px; }
+  .support-pct{ font-family:'Bebas Neue', sans-serif; font-size:30px; letter-spacing:1.5px; padding:3px 14px; border-radius:12px; line-height:1.2; }
+  .support-pct.l{ background: linear-gradient(90deg, rgba(46,111,242,0.4), rgba(46,111,242,0.15)); color:var(--left-glow); border:1.5px solid rgba(46,111,242,0.65); box-shadow:0 0 16px rgba(46,111,242,0.3); }
+  .support-pct.r{ background: linear-gradient(90deg, rgba(255,75,62,0.4), rgba(255,75,62,0.15)); color:var(--right-glow); border:1.5px solid rgba(255,75,62,0.65); box-shadow:0 0 16px rgba(255,75,62,0.3); }
+  .support-pct-note{ font-size:9px; color:var(--dim); font-style:italic; margin-top:2px; }
   .leaderboard{ margin-top:3px; border:1px solid var(--line); border-radius:12px; background: var(--bg-soft); padding:6px 7px; flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:2px; text-align:center; flex-shrink:0; }
   /* Three supporters side by side, spanning the full width of this box
@@ -258,7 +260,7 @@
       <label>Intro voice message (optional — repeats automatically so new viewers understand)</label>
       <div class="setup-photo-row">
         <div class="setup-photo-preview" id="previewVoice" style="font-size:20px;">🎙️</div>
-        <label class="setup-photo-btn"><span id="voiceFileName">Upload your recorded voice (any language)</span><input type="file" accept="audio/*" id="introVoiceFile" style="display:none"></label>
+        <label class="setup-photo-btn"><span id="voiceFileName">Upload your recorded voice — pick multiple for different languages</span><input type="file" accept="audio/*" id="introVoiceFile" multiple style="display:none"></label>
       </div>
       <div style="margin-top:8px; display:flex; align-items:center; gap:10px;">
         <label style="font-size:12px; color:var(--dim); white-space:nowrap;">Repeat every</label>
@@ -446,14 +448,12 @@ document.getElementById('musicFile').addEventListener('change', function(e){
   document.getElementById('musicFileName').textContent = '🎵 ' + file.name;
 });
 
-let introVoiceUrl = null;
+let introVoiceUrls = [];
 let introVoiceRepeatTimer = null;
 document.getElementById('introVoiceFile').addEventListener('change', function(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  if(introVoiceUrl) URL.revokeObjectURL(introVoiceUrl);
-  introVoiceUrl = URL.createObjectURL(file);
-  document.getElementById('voiceFileName').textContent = '🎙️ ' + file.name;
+  introVoiceUrls.forEach(u => URL.revokeObjectURL(u));
+  introVoiceUrls = Array.from(e.target.files).map(f => URL.createObjectURL(f));
+  document.getElementById('voiceFileName').textContent = introVoiceUrls.length + ' voice clip(s) selected';
 });
 
 let clipUrlsLeft = [];
@@ -553,7 +553,11 @@ function beginLiveWithData(cfg){
     const bg = document.getElementById('bgMusic');
     bg.src = musicObjectUrl; bg.volume = 0.35; bg.loop = true; bg.play().catch(() => {});
   }
-  if(cfg.introVoiceUrl) introVoiceUrl = cfg.introVoiceUrl;
+  // Accepts either the new multi-clip introVoiceUrls array (from a saved
+  // Content Idea) or the older single introVoiceUrl (from the Content
+  // Calendar), so both paths keep working without breaking each other.
+  if(cfg.introVoiceUrls && cfg.introVoiceUrls.length) introVoiceUrls = cfg.introVoiceUrls;
+  else if(cfg.introVoiceUrl) introVoiceUrls = [cfg.introVoiceUrl];
   if(cfg.voiceRepeatSeconds) document.getElementById('voiceRepeatSeconds').value = cfg.voiceRepeatSeconds;
   document.getElementById('setupScreen').style.display = 'none';
   startServerPolling();
@@ -569,8 +573,32 @@ function startLive(){
     rightName: document.getElementById('setupRight').value,
     leftPhoto: photoDataLeft, rightPhoto: photoDataRight,
     clipsLeft: clipUrlsLeft, clipsRight: clipUrlsRight,
+    introVoiceUrls: introVoiceUrls,
     musicUrls: null // manual uploads are handled via musicObjectUrl inside beginLiveWithData
   });
+}
+
+// ---- Content Idea auto-load (checked FIRST): whichever saved idea you
+// marked "🔴 LIVE" from the /app Schedule tab — this is what "Go Live"
+// actually applies to the overlay itself, so you never have to manually
+// re-type names or re-upload the photo/voice/music here. ----
+async function tryLoadActiveIdea(){
+  try{
+    const res = await fetch(SERVER_URL + '/api/active-idea');
+    const data = await res.json();
+    if(data && data.found){
+      beginLiveWithData({
+        leftName: data.leftName, rightName: data.rightName,
+        leftPhoto: data.leftPhotoUrl, rightPhoto: data.rightPhotoUrl,
+        introVoiceUrls: data.introVoiceUrls, voiceRepeatSeconds: data.voiceRepeatSeconds,
+        musicUrls: data.musicUrls,
+        clipsLeft: data.leftClipUrls, clipsRight: data.rightClipUrls
+      });
+      console.log('✅ Auto-started from your saved Content Idea (marked LIVE).');
+      return true;
+    }
+  }catch(err){ console.error('Active Content Idea check failed:', err.message); }
+  return false;
 }
 
 // ---- Content Calendar (Step 2): on every load, ask the server whether
@@ -598,7 +626,14 @@ async function tryLoadTodaysCalendar(){
   }catch(err){ console.error('Content Calendar check failed, falling back to manual setup:', err.message); }
   return false;
 }
-tryLoadTodaysCalendar();
+// Priority: an explicitly-marked-LIVE Content Idea wins first (that's the
+// one you just chose from the app); otherwise fall back to today's Content
+// Calendar row; otherwise the manual "Set Today's Battle" screen (already
+// shown by default) stays up, exactly as before.
+(async function autoLoadOnStartup(){
+  const loadedFromIdea = await tryLoadActiveIdea();
+  if(!loadedFromIdea) await tryLoadTodaysCalendar();
+})();
 
 // ---- Guarantees Recent Supporters is ALWAYS fully visible, by directly
 // MEASURING real rendered pixel heights (offsetTop/offsetHeight — these are
@@ -737,17 +772,21 @@ function restoreAudioAfterAnnouncement(){
 }
 
 function playIntroVoiceOnce(onDone){
-  if(!introVoiceUrl){ onDone(); return; }
+  if(!introVoiceUrls || introVoiceUrls.length === 0){ onDone(); return; }
   const voice = document.getElementById('introVoice');
-  voice.src = introVoiceUrl; voice.volume = 1.0;
   introVoiceIsPlaying = true;
   duckAudioForAnnouncement();
-  voice.play().catch(() => {
-    introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone();
-  });
-  voice.onended = function(){
-    introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone();
-  };
+  let i = 0;
+  function playNext(){
+    if(i >= introVoiceUrls.length){
+      introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone();
+      return;
+    }
+    voice.src = introVoiceUrls[i]; voice.volume = 1.0;
+    voice.play().catch(() => { i++; playNext(); }); // skip a clip that fails to play rather than getting stuck
+    voice.onended = function(){ i++; playNext(); };
+  }
+  playNext();
 }
 
 // Speaks all current Top-3 names one after another, lighting up each box
@@ -780,7 +819,7 @@ function playTop3Announcement(onDone){
 function checkAmbientSchedule(){
   if(ambientBusy) return;
   const now = Date.now();
-  const introOverdueBy = introVoiceUrl ? (now - introDueAt) : -Infinity;
+  const introOverdueBy = (introVoiceUrls && introVoiceUrls.length) ? (now - introDueAt) : -Infinity;
   const top3OverdueBy = (top3Cache.length > 0) ? (now - top3DueAt) : -Infinity;
   if(introOverdueBy < 0 && top3OverdueBy < 0) return; // nothing due yet
   // Whichever is more overdue goes first — keeps both loops honest over time.
