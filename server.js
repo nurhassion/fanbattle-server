@@ -32,6 +32,47 @@ const GATEWAY_SETTINGS_FILE = path.join(__dirname, 'gateway-settings.json');
 const NOTIFY_SETTINGS_FILE = path.join(__dirname, 'notify-settings.json');
 const SCHEDULED_EVENTS_FILE = path.join(__dirname, 'scheduled-events.json');
 
+// ====== Multi-channel config (Fan Battle Live / Zero to Trader / Daily Needle) ======
+// Each channel gets its OWN saved-ideas file, its own Google Drive backup
+// destination (so Render restarts never lose any channel's ideas), and its
+// own YouTube/Facebook links for the Go-Live wizard. Fan Battle Live and
+// Zero to Trader share the original Google account's backup webhook;
+// Daily Needle uses a separate, dedicated Google account/webhook (set up
+// specifically to avoid one account's storage/quota being shared across
+// everything).
+const CHANNELS = {
+  fanbattle: {
+    label: 'Fan Battle Live',
+    file: path.join(__dirname, 'scheduled-events-fanbattle.json'),
+    youtubeUrl: 'https://www.youtube.com/@supportyourfavourite',
+    facebookUrl: 'https://www.facebook.com/share/18Av6gds4G/',
+    webhookUrl: () => GSHEET_WEBHOOK_URL,
+    secret: () => GSHEET_SECRET
+  },
+  zerototrader: {
+    label: 'Zero to Trader',
+    file: path.join(__dirname, 'scheduled-events-zerototrader.json'),
+    youtubeUrl: 'https://www.youtube.com/@ZerotoTrader-y6k',
+    facebookUrl: 'https://www.facebook.com/share/1YovxyeAcD/',
+    webhookUrl: () => GSHEET_WEBHOOK_URL,
+    secret: () => GSHEET_SECRET,
+    // Facebook Live requires 100 followers + the Page being 60 days old —
+    // rather than guessing this automatically, you flip this switch
+    // yourself from the app once Facebook itself shows you're eligible.
+    // Until then, Go Live only ever sends you to YouTube.
+    facebookEligibilityIsManual: true
+  },
+  dailyneedle: {
+    label: 'Daily Needle',
+    file: path.join(__dirname, 'scheduled-events-dailyneedle.json'),
+    youtubeUrl: 'https://www.youtube.com/@DailyNeedle',
+    facebookUrl: 'https://www.facebook.com/share/1D9aN6mMPv/',
+    webhookUrl: () => GSHEET_WEBHOOK_URL_CH3,
+    secret: () => GSHEET_SECRET_CH3
+  }
+};
+function channelOrDefault(channel) { return CHANNELS[channel] ? channel : 'fanbattle'; }
+
 // ====== Go-Live Reminders: contact info (set once, reused every schedule) ======
 function loadNotifySettings() {
   try { return JSON.parse(fs.readFileSync(NOTIFY_SETTINGS_FILE, 'utf8')); }
@@ -43,13 +84,26 @@ function saveNotifySettings(settings) {
 }
 
 // ====== Scheduled events (for the go-live reminder checker below) ======
-function loadScheduledEvents() {
-  try { return JSON.parse(fs.readFileSync(SCHEDULED_EVENTS_FILE, 'utf8')); }
-  catch (e) { return []; }
+function loadScheduledEvents(channel) {
+  const ch = channelOrDefault(channel);
+  const file = CHANNELS[ch].file;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) {
+    // One-time migration: the very first version of this server only had a
+    // single channel (Fan Battle Live) saved at the old shared filename —
+    // if that old file still exists and the new per-channel file doesn't
+    // yet, adopt it once so nobody's existing ideas silently disappear.
+    if (ch === 'fanbattle') {
+      try { return JSON.parse(fs.readFileSync(SCHEDULED_EVENTS_FILE, 'utf8')); }
+      catch (e2) { return []; }
+    }
+    return [];
+  }
 }
-function saveScheduledEvents(events) {
-  try { fs.writeFileSync(SCHEDULED_EVENTS_FILE, JSON.stringify(events, null, 2)); }
-  catch (e) { console.error('Could not save scheduled events:', e.message); }
+function saveScheduledEvents(events, channel) {
+  const ch = channelOrDefault(channel);
+  try { fs.writeFileSync(CHANNELS[ch].file, JSON.stringify(events, null, 2)); }
+  catch (e) { console.error(`Could not save scheduled events (${ch}):`, e.message); }
 }
 
 // ====== STEP 4: Payment Gateway On/Off — instant, one-click, no redeploy ======
@@ -99,6 +153,12 @@ let donorPhotoMap = loadPhotos();
 // ====== Google Sheets permanent backup ======
 const GSHEET_WEBHOOK_URL = process.env.GSHEET_WEBHOOK_URL || '';
 const GSHEET_SECRET = process.env.GSHEET_SECRET || '';
+// Daily Needle's OWN dedicated Google account/Apps Script — kept entirely
+// separate from the original account so its content ideas (which can carry
+// large base64 photos) never share storage/quota with donation records,
+// donor photos, or the other two channels' saved ideas.
+const GSHEET_WEBHOOK_URL_CH3 = process.env.GSHEET_WEBHOOK_URL_CH3 || 'https://script.google.com/macros/s/AKfycbyaxFWaA-3yuiopQ0Y8S7ShoMWkwMICzn-XiNteDAcrDHFnuqfXhRKsKXqJJ2nsbR5C/exec';
+const GSHEET_SECRET_CH3 = process.env.GSHEET_SECRET_CH3 || 'papugandu.0215.0912.02150912';
 async function backupToGoogleSheet(record) {
   if (!GSHEET_WEBHOOK_URL) return;
   try {
@@ -108,6 +168,58 @@ async function backupToGoogleSheet(record) {
       body: JSON.stringify({ ...record, secret: GSHEET_SECRET })
     });
   } catch (e) { console.error('Could not back up record to Google Sheet:', e.message); }
+}
+
+// ====== Content Ideas — durable cross-device backup, per channel ======
+// Render's free-tier disk can be wiped on restart/redeploy — so each
+// channel's local scheduled-events-*.json file alone is only a fast,
+// same-session cache, not the source of truth. Every save/delete is ALSO
+// pushed to that channel's own Google Drive (as a JSON text file, via its
+// Apps Script webhook) which survives any server restart AND is reachable
+// from any device — this is what makes ideas durable and "the same
+// everywhere", not tied to one laptop/phone's local storage. Fan Battle
+// Live and Zero to Trader share the original account's webhook; Daily
+// Needle uses its own separate one (see CHANNELS config above).
+async function backupContentIdeasToSheet(events, channel) {
+  const ch = channelOrDefault(channel);
+  const webhookUrl = CHANNELS[ch].webhookUrl();
+  const secret = CHANNELS[ch].secret();
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'content-ideas', ideas: events, secret })
+    });
+  } catch (e) { console.error(`Could not back up content ideas to Google Drive (${ch}):`, e.message); }
+}
+async function fetchContentIdeasFromSheet(channel) {
+  const ch = channelOrDefault(channel);
+  const webhookUrl = CHANNELS[ch].webhookUrl();
+  const secret = CHANNELS[ch].secret();
+  if (!webhookUrl) return null;
+  try {
+    const res = await fetch(`${webhookUrl}?type=content-ideas&secret=${encodeURIComponent(secret)}`);
+    const data = await res.json();
+    return Array.isArray(data.ideas) ? data.ideas : null;
+  } catch (e) { console.error(`Could not restore content ideas from Google Drive (${ch}):`, e.message); return null; }
+}
+// Called once at server startup (see bottom of this file) — for EACH
+// channel, if its local file is empty (fresh disk after a restart) but a
+// durable copy exists on that channel's own Drive, pull it back down so
+// nothing saved earlier is lost, for all three channels independently.
+async function restoreContentIdeasOnStartup() {
+  for (const ch of Object.keys(CHANNELS)) {
+    const local = loadScheduledEvents(ch);
+    if (local.length > 0) continue; // this channel's local file already has data this boot — nothing to restore
+    const webhookUrl = CHANNELS[ch].webhookUrl();
+    if (!webhookUrl) { console.log(`ℹ️ No backup webhook configured for "${ch}" — its content ideas will only persist for this server session.`); continue; }
+    const restored = await fetchContentIdeasFromSheet(ch);
+    if (restored && restored.length > 0) {
+      saveScheduledEvents(restored, ch);
+      console.log(`♻️ Restored ${restored.length} content idea(s) for "${ch}" from Google Drive backup after restart.`);
+    }
+  }
 }
 
 // ====== STEP 3 (new): Donor photo -> Google Drive, link saved to Sheet ======
@@ -1055,14 +1167,30 @@ app.delete('/donor-photo', requireDashboardAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/overlay', requireOverlayAuth, (req, res) => {
+// Each channel's overlay is its own HTML file — Fan Battle Live keeps its
+// original filename (and the original bare /overlay URL, unchanged, so the
+// OBS Browser Source you already set up keeps working with no edits);
+// Daily Needle and Zero to Trader are new files (see OVERLAY_FILES below).
+const OVERLAY_FILES = {
+  fanbattle: 'fan-battle-live-demo.html',
+  dailyneedle: 'daily-needle-overlay.html',
+  zerototrader: 'zero-to-trader-overlay.html'
+};
+function serveOverlay(channel, res) {
+  const fileName = OVERLAY_FILES[channelOrDefault(channel)];
+  const filePath = path.join(__dirname, fileName);
   // No caching, ever — every layout/CSS fix must take effect immediately
   // the next time this page loads, never an old cached copy.
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
-  res.sendFile(path.join(__dirname, 'fan-battle-live-demo.html'));
-});
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send(`<body style="background:#0B0F19;color:#F5F7FA;font-family:Arial;text-align:center;padding:60px;">This channel's overlay file (${fileName}) hasn't been uploaded to the server yet.</body>`);
+  }
+  res.sendFile(filePath);
+}
+app.get('/overlay', requireOverlayAuth, (req, res) => { serveOverlay('fanbattle', res); });
+app.get('/overlay/:channel', requireOverlayAuth, (req, res) => { serveOverlay(req.params.channel, res); });
 
 // ====== Unified App: JSON data API (same data as /dashboard, machine-readable) ======
 // ====== One-time backfill: push already-uploaded local photos to Drive ======
@@ -1289,7 +1417,22 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   <!-- SCHEDULE -->
   <section class="tab-panel" id="tab-schedule">
-    <div class="section-title">Save a content idea (no time needed)</div>
+    <div class="section-title">Channel</div>
+    <div class="quick-links" id="channelSwitcher">
+      <a class="quick-link channel-pill active" data-channel="fanbattle" onclick="switchChannel('fanbattle')" style="cursor:pointer;">⚔️ Fan Battle Live</a>
+      <a class="quick-link channel-pill" data-channel="zerototrader" onclick="switchChannel('zerototrader')" style="cursor:pointer;">📈 Zero to Trader</a>
+      <a class="quick-link channel-pill" data-channel="dailyneedle" onclick="switchChannel('dailyneedle')" style="cursor:pointer;">🧵 Daily Needle</a>
+    </div>
+
+    <div id="zeroToTraderFbBox" style="display:none;">
+      <div class="gw-row" style="margin-top:14px;">
+        <div><div class="gw-name">📘 Facebook Live eligible</div><div class="gw-status" id="zttFbStatus">—</div></div>
+        <label class="switch"><input type="checkbox" id="zttFbToggle" onchange="toggleZttFbEligibility(this.checked)"><span class="slider"></span></label>
+      </div>
+      <p class="form-hint" style="margin-top:6px;">Turn this ON only once Facebook itself shows this Page has 100+ followers and is at least 60 days old. Until then, Go Live only sends you to YouTube for this channel.</p>
+    </div>
+
+    <div class="section-title" style="margin-top:22px;">Save a content idea (no time needed)</div>
     <div class="form-card">
       <label class="f-label">Title</label>
       <input type="text" id="schTitle" placeholder="e.g. Fan Battle Live — Final Night" maxlength="100">
@@ -1511,6 +1654,20 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     document.getElementById('schMusicList').textContent = schMusicUrls.length + ' music track(s) selected';
   });
 
+  // ====== Channel switcher — Fan Battle Live / Zero to Trader / Daily Needle ======
+  // All three channels share this ONE form/list UI; only which channel's
+  // saved-ideas endpoint gets called changes. Each channel's ideas, Go-Live
+  // links, and "currently live" marker are completely independent of the
+  // others — switching tabs never affects another channel's saved ideas.
+  let currentScheduleChannel = 'fanbattle';
+  function switchChannel(channel){
+    currentScheduleChannel = channel;
+    document.querySelectorAll('.channel-pill').forEach(p => p.classList.toggle('active', p.dataset.channel === channel));
+    document.getElementById('zeroToTraderFbBox').style.display = (channel === 'zerototrader') ? 'block' : 'none';
+    if(channel === 'zerototrader') loadZttFbEligibility();
+    loadIdeas();
+  }
+
   function submitSchedule(){
     const title = document.getElementById('schTitle').value.trim();
     const description = document.getElementById('schDescription').value.trim();
@@ -1525,7 +1682,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
 
     statusEl.textContent = 'Saving...';
-    fetch('/schedule/create', {
+    fetch('/schedule/' + currentScheduleChannel + '/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls })
     }).then(r => r.json()).then(d => {
@@ -1550,7 +1707,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   async function loadIdeas(){
     try {
-      const res = await fetch('/api/content-ideas');
+      const res = await fetch('/api/content-ideas/' + currentScheduleChannel);
       const d = await res.json();
       document.getElementById('ideaCount').textContent = d.ideas.length;
       const listEl = document.getElementById('ideasList');
@@ -1582,20 +1739,35 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
   function deleteIdea(id){
     if(!confirm('Delete this saved idea?')) return;
-    fetch('/schedule/' + id, { method: 'DELETE' }).then(loadIdeas);
+    fetch('/schedule/' + currentScheduleChannel + '/' + id, { method: 'DELETE' }).then(loadIdeas);
   }
 
   function markLive(id){
-    fetch('/schedule/' + id + '/set-live', { method: 'POST' }).then(loadIdeas);
+    fetch('/schedule/' + currentScheduleChannel + '/' + id + '/set-live', { method: 'POST' }).then(loadIdeas);
   }
   function endLive(){
-    fetch('/schedule/end-live', { method: 'POST' }).then(loadIdeas);
+    fetch('/schedule/' + currentScheduleChannel + '/end-live', { method: 'POST' }).then(loadIdeas);
   }
   function setPreset(id, preset){
-    fetch('/schedule/' + id + '/set-preset', {
+    fetch('/schedule/' + currentScheduleChannel + '/' + id + '/set-preset', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ preset })
     }).then(loadIdeas);
+  }
+
+  // ====== Zero to Trader — manual Facebook-eligibility switch ======
+  function loadZttFbEligibility(){
+    fetch('/api/fb-eligibility/zerototrader').then(r => r.json()).then(d => {
+      document.getElementById('zttFbToggle').checked = !!d.eligible;
+      document.getElementById('zttFbStatus').textContent = d.eligible ? 'Enabled — Go Live will include Facebook' : 'Not yet — Go Live only goes to YouTube';
+      document.getElementById('zttFbStatus').className = 'gw-status ' + (d.eligible ? 'on' : 'off');
+    }).catch(() => {});
+  }
+  function toggleZttFbEligibility(eligible){
+    fetch('/api/fb-eligibility/zerototrader', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ eligible })
+    }).then(loadZttFbEligibility);
   }
 
   function saveNotifySettings(){
@@ -1817,7 +1989,19 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 // there's no OAuth/billing/App-Review dependency of any kind.
 const MAX_CONTENT_IDEAS = 20;
 
-app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
+// ====== Per-channel "which idea is live" + Zero to Trader's manual  ======
+// ====== Facebook-eligibility toggle — both stored inside gateway-settings ======
+function getActiveIdeaId(gw, channel) {
+  if (!gw.activeIdeaIds) gw.activeIdeaIds = {};
+  return gw.activeIdeaIds[channel] || null;
+}
+function setActiveIdeaId(gw, channel, id) {
+  if (!gw.activeIdeaIds) gw.activeIdeaIds = {};
+  gw.activeIdeaIds[channel] = id;
+}
+
+app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
   const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
 
@@ -1832,7 +2016,7 @@ app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
   const parseVideoLinks = (raw) => (raw || '')
     .split(/[\n,]+/).map(u => u.trim()).filter(Boolean).slice(0, 10);
 
-  const events = loadScheduledEvents();
+  const events = loadScheduledEvents(channel);
   if (events.length >= MAX_CONTENT_IDEAS) {
     return res.status(400).json({ ok: false, error: `You already have ${MAX_CONTENT_IDEAS} saved ideas — delete one first from the list below.` });
   }
@@ -1856,63 +2040,93 @@ app.post('/schedule/create', requireDashboardAuth, async (req, res) => {
     rightVideoUrls: parseVideoLinks(rightVideoUrls),
     createdAt: new Date().toISOString()
   });
-  saveScheduledEvents(events);
+  saveScheduledEvents(events, channel);
+  backupContentIdeasToSheet(events, channel); // fire-and-forget durable cross-device backup
 
-  res.json({ ok: true, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${eventId}` });
+  res.json({ ok: true, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${channel}/${eventId}` });
 });
 
-app.delete('/schedule/:id', requireDashboardAuth, (req, res) => {
-  const events = loadScheduledEvents().filter(e => e.id !== req.params.id);
-  saveScheduledEvents(events);
+app.delete('/schedule/:channel/:id', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
+  const events = loadScheduledEvents(channel).filter(e => e.id !== req.params.id);
+  saveScheduledEvents(events, channel);
+  backupContentIdeasToSheet(events, channel); // keep the durable backup in sync with deletions too
   res.json({ ok: true });
 });
 
-// ====== Track which saved idea is currently the LIVE one ======
-// A simple marker so the ideas list can show a 🔴 LIVE badge, and so you
-// can jump back into that specific idea later (e.g. to moderate photos)
-// without hunting for it.
-app.post('/schedule/:id/set-live', requireDashboardAuth, (req, res) => {
+// ====== Track which saved idea is currently the LIVE one, per channel ======
+// A simple marker so each channel's ideas list can show a 🔴 LIVE badge, and
+// so you can jump back into that specific idea later (e.g. to moderate
+// photos) without hunting for it. Each channel tracks its own "live" idea
+// independently — going live on one channel never affects another.
+app.post('/schedule/:channel/:id/set-live', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
   const gw = loadGatewaySettings();
-  gw.activeIdeaId = req.params.id;
+  setActiveIdeaId(gw, channel, req.params.id);
   saveGatewaySettings(gw);
   res.json({ ok: true });
 });
-app.post('/schedule/end-live', requireDashboardAuth, (req, res) => {
+app.post('/schedule/:channel/end-live', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
   const gw = loadGatewaySettings();
-  gw.activeIdeaId = null;
+  setActiveIdeaId(gw, channel, null);
   saveGatewaySettings(gw);
   res.json({ ok: true });
 });
 
-app.post('/schedule/:id/set-preset', requireDashboardAuth, (req, res) => {
+app.post('/schedule/:channel/:id/set-preset', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
   const { preset } = req.body;
-  const events = loadScheduledEvents();
+  const events = loadScheduledEvents(channel);
   const evt = events.find(e => e.id === req.params.id);
   if (!evt) return res.status(404).json({ ok: false, error: 'Idea not found' });
   evt.preset = preset;
-  saveScheduledEvents(events);
+  saveScheduledEvents(events, channel);
+  backupContentIdeasToSheet(events, channel); // keep the durable backup in sync with preset changes too
   res.json({ ok: true });
 });
 
-app.get('/api/content-ideas', requireDashboardAuth, (req, res) => {
+// ====== Zero to Trader's manual Facebook-eligibility switch ======
+// Facebook requires the Page to have 100 followers AND be 60 days old
+// before Live Video works — rather than guessing this automatically, you
+// flip this switch yourself once Facebook shows you're eligible. Until
+// then, every Go-Live for this channel only ever sends you to YouTube.
+app.get('/api/fb-eligibility/:channel', requireDashboardAuth, (req, res) => {
   const gw = loadGatewaySettings();
-  const events = loadScheduledEvents().map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${e.id}`, isLive: e.id === gw.activeIdeaId }));
+  res.json({ eligible: !!(gw.fbEligibility && gw.fbEligibility[req.params.channel]) });
+});
+app.post('/api/fb-eligibility/:channel', requireDashboardAuth, (req, res) => {
+  const gw = loadGatewaySettings();
+  if (!gw.fbEligibility) gw.fbEligibility = {};
+  gw.fbEligibility[req.params.channel] = !!req.body.eligible;
+  saveGatewaySettings(gw);
+  res.json({ ok: true });
+});
+
+app.get('/api/content-ideas/:channel', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
+  const gw = loadGatewaySettings();
+  const activeId = getActiveIdeaId(gw, channel);
+  const events = loadScheduledEvents(channel).map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${channel}/${e.id}`, isLive: e.id === activeId }));
   res.json({ ideas: events.reverse() });
 });
 
-// ====== Overlay auto-load: whichever idea is marked "live" right now ======
-// Intentionally public (no login) — the OBS Browser Source loading /overlay
-// has no way to authenticate as you, so this has to be readable without a
-// login, same as /events and /calendar-today already are. It only ever
-// exposes whatever YOU chose to mark live from the Schedule tab — nothing
-// donors/visitors submit ends up here.
-app.get('/api/active-idea', (req, res) => {
+// ====== Overlay auto-load: whichever idea is marked "live" right now, per channel ======
+// Intentionally public (no login) — the OBS Browser Source loading each
+// channel's overlay has no way to authenticate as you, so this has to be
+// readable without a login, same as /events and /calendar-today already
+// are. It only ever exposes whatever YOU chose to mark live from that
+// channel's Schedule panel — nothing donors/visitors submit ends up here.
+app.get('/api/active-idea/:channel', (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
   const gw = loadGatewaySettings();
-  if (!gw.activeIdeaId) return res.json({ found: false });
-  const evt = loadScheduledEvents().find(e => e.id === gw.activeIdeaId);
+  const activeId = getActiveIdeaId(gw, channel);
+  if (!activeId) return res.json({ found: false });
+  const evt = loadScheduledEvents(channel).find(e => e.id === activeId);
   if (!evt) return res.json({ found: false });
   res.json({
     found: true,
+    title: evt.title,
     leftName: evt.leftName, rightName: evt.rightName,
     leftPhotoUrl: evt.leftPhotoDataUrl, rightPhotoUrl: evt.rightPhotoDataUrl,
     introVoiceUrls: evt.introVoiceDataUrls || [],
@@ -1921,6 +2135,35 @@ app.get('/api/active-idea', (req, res) => {
     leftClipUrls: evt.leftVideoUrls || [],
     rightClipUrls: evt.rightVideoUrls || []
   });
+});
+
+// ====== Backward-compatible aliases (old links/bookmarks without a  ======
+// ====== :channel segment) — always resolve to Fan Battle Live, so    ======
+// nothing that was already saved/bookmarked before this update breaks. ======
+app.get('/api/active-idea', (req, res) => {
+  const channel = 'fanbattle';
+  const gw = loadGatewaySettings();
+  const activeId = getActiveIdeaId(gw, channel);
+  if (!activeId) return res.json({ found: false });
+  const evt = loadScheduledEvents(channel).find(e => e.id === activeId);
+  if (!evt) return res.json({ found: false });
+  res.json({
+    found: true, title: evt.title,
+    leftName: evt.leftName, rightName: evt.rightName,
+    leftPhotoUrl: evt.leftPhotoDataUrl, rightPhotoUrl: evt.rightPhotoDataUrl,
+    introVoiceUrls: evt.introVoiceDataUrls || [],
+    voiceRepeatSeconds: evt.voiceRepeatSeconds,
+    musicUrls: evt.musicDataUrls || [],
+    leftClipUrls: evt.leftVideoUrls || [],
+    rightClipUrls: evt.rightVideoUrls || []
+  });
+});
+app.get('/api/content-ideas', requireDashboardAuth, (req, res) => {
+  const channel = 'fanbattle';
+  const gw = loadGatewaySettings();
+  const activeId = getActiveIdeaId(gw, channel);
+  const events = loadScheduledEvents(channel).map(e => ({ ...e, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${channel}/${e.id}`, isLive: e.id === activeId }));
+  res.json({ ideas: events.reverse() });
 });
 
 
@@ -2009,10 +2252,18 @@ setInterval(checkGoLiveReminders, 30000);
 // tapped straight from a WhatsApp/SMS/email notification on your phone,
 // possibly without an active browser session. The event id itself
 // (long, random, unguessable) is what keeps this from being public.
-app.get('/go-live/:id', (req, res) => {
-  const events = loadScheduledEvents();
+app.get('/go-live/:channel/:id', (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
+  const chConfig = CHANNELS[channel];
+  const events = loadScheduledEvents(channel);
   const evt = events.find(e => e.id === req.params.id);
   if (!evt) return res.status(404).send('<body style="background:#0B0F19; color:#F5F7FA; font-family:Arial; text-align:center; padding:60px;">This link is no longer valid — the idea may have been deleted.</body>');
+
+  // Zero to Trader's Facebook step only unlocks once you've manually
+  // flipped the eligibility switch in the app (100 followers + 60 days) —
+  // every other channel always shows both steps.
+  const gw = loadGatewaySettings();
+  const fbStepEnabled = !chConfig.facebookEligibilityIsManual || !!(gw.fbEligibility && gw.fbEligibility[channel]);
 
   // ====== Three color presets (cosmetic only — same layout/design, just recolored) ======
   const PRESETS = {
@@ -2021,6 +2272,7 @@ app.get('/go-live/:id', (req, res) => {
     '3': { accent: '#4ADE80', badge: '#4ADE80', left: '#4ADE80', right: '#FB923C' }
   };
   const chosenPreset = PRESETS[req.query.preset] || PRESETS[evt.preset] || PRESETS['1'];
+  const finalStepNumber = fbStepEnabled ? 3 : 2;
 
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2043,36 +2295,39 @@ app.get('/go-live/:id', (req, res) => {
     .top-back{ display:inline-block; color:#8B93A7; font-size:13px; text-decoration:none; margin-bottom:14px; }
     .sides-row{ display:flex; gap:16px; margin-top:12px; }
     .sides-row img{ width:56px; height:56px; object-fit:cover; border-radius:8px; margin-top:0; }
+    .fb-note{ font-size:12px; color:#8B93A7; margin-top:10px; text-align:center; line-height:1.5; }
   </style></head><body>
     <a class="top-back" href="/app">← Back to Control (without going live)</a>
     <h2>🔴 Go live: ${evt.title}</h2>
+    <div style="font-size:12px; color:#8B93A7; margin-top:-8px; margin-bottom:10px;">${chConfig.label}</div>
     ${(evt.leftName || evt.rightName) ? `<div class="sides-row">
       ${evt.leftPhotoDataUrl ? `<img src="${evt.leftPhotoDataUrl}">` : ''}
       ${evt.leftName ? `<div style="align-self:center; color:${chosenPreset.left}; font-size:13px;">🔵 ${evt.leftName}</div>` : ''}
       ${evt.rightPhotoDataUrl ? `<img src="${evt.rightPhotoDataUrl}">` : ''}
       ${evt.rightName ? `<div style="align-self:center; color:${chosenPreset.right}; font-size:13px;">🔴 ${evt.rightName}</div>` : ''}
     </div>` : ''}
-    <div class="box"><div class="box-label">Title (copy this into YouTube/Facebook)</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
+    <div class="box"><div class="box-label">Title (copy this into YouTube${fbStepEnabled ? '/Facebook' : ''})</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
     <div class="box"><div class="box-label">Description + hashtags</div><div id="descText" style="white-space:pre-wrap;">${evt.description || ''}</div><button class="copy-btn" onclick="copyText('descText')">Copy</button></div>
     ${evt.thumbnailDataUrl ? `<div class="box"><div class="box-label">Thumbnail (save this image, upload manually)</div><img src="${evt.thumbnailDataUrl}"></div>` : ''}
 
     <div class="step active" id="step1">
-      <a class="yt-btn" href="https://studio.youtube.com/live_dashboard" target="_blank">Open YouTube Studio →</a>
-      <button class="confirm-btn" onclick="goToStep(2)">✓ Published on YouTube — Continue to Facebook</button>
+      <a class="yt-btn" href="${chConfig.youtubeUrl ? 'https://studio.youtube.com/live_dashboard' : 'https://studio.youtube.com/live_dashboard'}" target="_blank">Open YouTube Studio →</a>
+      <button class="confirm-btn" onclick="goToStep(${fbStepEnabled ? 2 : finalStepNumber + 1})">✓ Published on YouTube${fbStepEnabled ? ' — Continue to Facebook' : ' — Done'}</button>
+      ${!fbStepEnabled ? `<div class="fb-note">Facebook Live isn't enabled for this channel yet (needs 100 followers + the Page to be 60 days old). Flip it on from the app's ${chConfig.label} panel once Facebook shows you're eligible.</div>` : ''}
     </div>
 
-    <div class="step" id="step2">
+    ${fbStepEnabled ? `<div class="step" id="step2">
       <span class="step-badge">STEP 2</span>
       <a class="fb-btn" href="https://www.facebook.com/live/producer" target="_blank">Open Facebook Live Producer →</a>
       <button class="confirm-btn" onclick="goToStep(3)">✓ Published on Facebook — Done</button>
-    </div>
+    </div>` : ''}
 
-    <div class="step" id="step3">
+    <div class="step" id="step${finalStepNumber + 1}">
       <div class="done-box">
         <div style="font-size:40px;">🎉</div>
-        <h2>You're live on both!</h2>
+        <h2>You're live!</h2>
         <p style="color:#8B93A7;">Taking you to your live overlay.</p>
-        <a href="/overlay" style="display:block; background:${chosenPreset.accent}; color:#0B0F19; font-weight:800; padding:14px; border-radius:12px; text-decoration:none; margin-top:16px;">→ Go to my Live Overlay</a>
+        <a href="/overlay/${channel}" style="display:block; background:${chosenPreset.accent}; color:#0B0F19; font-weight:800; padding:14px; border-radius:12px; text-decoration:none; margin-top:16px;">→ Go to my Live Overlay</a>
         <a href="/app" style="display:block; color:#8B93A7; font-size:12.5px; margin-top:14px; text-decoration:none;">← Or back to Control panel</a>
       </div>
     </div>
@@ -2086,7 +2341,7 @@ app.get('/go-live/:id', (req, res) => {
       // Mark this idea as the "live" one the moment this page opens, so the
       // ideas list back in /app shows a 🔴 LIVE badge on it. Silently
       // ignored if not logged into the dashboard in this browser.
-      fetch('/schedule/${evt.id}/set-live', { method: 'POST' }).catch(() => {});
+      fetch('/schedule/${channel}/${evt.id}/set-live', { method: 'POST' }).catch(() => {});
     </script>
   </body></html>`);
 });
@@ -2129,4 +2384,10 @@ app.get('/calendar-today', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  // Pull back any content ideas from the Google Drive backup if this boot
+  // started with an empty/wiped local disk (e.g. after a Render free-tier
+  // restart) — see restoreContentIdeasOnStartup() above for details.
+  await restoreContentIdeasOnStartup();
+});
