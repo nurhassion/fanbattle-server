@@ -250,8 +250,17 @@ async function uploadPhotoToDriveAndLog(name, photoDataUrl) {
   }
 }
 
-// ====== Shared in-memory event queue the browser overlay polls every 4s ======
-let latestEvents = [];
+// ====== Per-channel in-memory event queues the browser overlays poll ======
+// Fan Battle Live keeps "side" meaning left/right (its own two-team battle).
+// Daily Needle and Zero to Trader have no sides at all — for them, `side`
+// IS the channel name itself ('dailyneedle' / 'zerototrader'), and this
+// helper maps any side value to which overlay's queue it belongs in.
+function sideToChannel(side) {
+  if (side === 'left' || side === 'right') return 'fanbattle';
+  if (side === 'dailyneedle' || side === 'zerototrader') return side;
+  return 'fanbattle';
+}
+let latestEventsByChannel = { fanbattle: [], dailyneedle: [], zerototrader: [] };
 
 // ---- Celebration timing is DELIBERATELY separated from bookkeeping. ----
 // The payment itself is recorded immediately (recordDonation) so accounting/
@@ -299,8 +308,9 @@ function notifyOverlay(celebrationId) {
   const pending = pendingCelebrations[celebrationId];
   if (!pending) return; // already fired, or an unknown/expired id — safe no-op
   delete pendingCelebrations[celebrationId];
-  latestEvents.push(pending);
-  console.log('🎉 Celebration fired for:', pending.name, '(after donor confirmed return to stream)');
+  const channel = sideToChannel(pending.side);
+  latestEventsByChannel[channel].push(pending);
+  console.log(`🎉 Celebration fired for (${channel}):`, pending.name, '(after donor confirmed return to stream)');
 }
 
 // Legacy alias kept so any older call sites (e.g. Instamojo's background
@@ -346,6 +356,19 @@ async function fetchInstamojoPayment(paymentId) {
   return data.payment || null;
 }
 
+// Shared with the /thanks handler further below — decodes which of the
+// four possible prefixes (L/R for Fan Battle Live's two sides, DN for
+// Daily Needle, ZT for Zero to Trader) an Instamojo purpose string starts
+// with, so every payment always lands on the correct channel/overlay.
+function parseSideFromPurpose(purpose) {
+  const p = (purpose || '').trim();
+  if (/^ZT:/i.test(p)) return 'zerototrader';
+  if (/^DN:/i.test(p)) return 'dailyneedle';
+  if (/^R:/i.test(p)) return 'right';
+  if (/^L:/i.test(p)) return 'left';
+  return null;
+}
+
 async function resolveSideFromPaymentRequest(paymentRequestUrl) {
   if (!paymentRequestUrl) return null;
   try {
@@ -353,9 +376,7 @@ async function resolveSideFromPaymentRequest(paymentRequestUrl) {
     const data = await res.json();
     const pr = data.payment_request || data;
     const purpose = (pr && pr.purpose) || '';
-    if (/^R:/i.test(purpose.trim())) return 'right';
-    if (/^L:/i.test(purpose.trim())) return 'left';
-    return null;
+    return parseSideFromPurpose(purpose);
   } catch (e) { console.error('Could not resolve payment_request purpose:', e.message); return null; }
 }
 
@@ -379,9 +400,7 @@ async function fetchRecentPayments() {
       if (p.status === 'Credit' && !seenPaymentIds.has(p.payment_id)) {
         seenPaymentIds.add(p.payment_id);
         const purposeRaw = p.purpose || '';
-        let side = null;
-        if (/^R:/i.test(purposeRaw.trim())) side = 'right';
-        else if (/^L:/i.test(purposeRaw.trim())) side = 'left';
+        let side = parseSideFromPurpose(purposeRaw);
         if (!side && p.payment_request) side = await resolveSideFromPaymentRequest(p.payment_request);
         if (!side) { console.log('⚠️ Could not determine side, skipping. Purpose was:', purposeRaw); continue; }
 
@@ -400,8 +419,15 @@ fetchRecentPayments();
 // visitor chose on our own page, with OUR redirect_url baked in — this
 // works purely through the API and does not depend on any dashboard
 // "Post Purchase" configuration at all.
+// Maps every valid "side" value (which now also doubles as a bare channel
+// name for Daily Needle/Zero to Trader) to the short prefix embedded in the
+// Instamojo purpose field/PayPal custom_id — this is how /thanks and the
+// background poller later figure out which channel a payment belongs to.
+const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', zerototrader: 'ZT' };
+const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', zerototrader: 'Zero to Trader tip' };
 async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone) {
-  const purpose = (side === 'left' ? 'L: ' : 'R: ') + 'Fan Battle Live tip';
+  const prefix = SIDE_PREFIX[side] || 'R';
+  const purpose = `${prefix}: ${SIDE_LABEL[side] || 'Fan Battle Live tip'}`;
   // Carry the donor's OWN name/phone (entered on our page, not Instamojo's
   // hosted checkout) through the redirect, so /thanks can prefer it — this
   // is what lets us skip requiring an email at all on our side.
@@ -520,7 +546,9 @@ app.post('/instamojo-create-request', async (req, res) => {
     if (!donorName || !donorName.trim()) return res.status(400).json({ error: 'Name is required.' });
     if (!donorPhone || !donorPhone.trim()) return res.status(400).json({ error: 'Mobile number is required.' });
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
-    const longurl = await createInstamojoPaymentRequest(amt, side === 'left' ? 'left' : 'right', donorName.trim(), donorPhone);
+    const validSides = ['left', 'right', 'dailyneedle', 'zerototrader'];
+    const safeSide = validSides.includes(side) ? side : 'right';
+    const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), donorPhone);
     res.json({ longurl });
   } catch (e) {
     console.error('instamojo-create-request failed:', e.message);
@@ -566,7 +594,7 @@ app.post('/paypal-create-order', async (req, res) => {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: side === 'left' ? 'left' : 'right' }]
+        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'zerototrader'].includes(side) ? side : 'right' }]
       })
     });
     const order = await orderRes.json();
@@ -602,7 +630,7 @@ app.post('/paypal-capture-order', async (req, res) => {
     const amount = captureObj.amount ? captureObj.amount.value : null;
     const currency = captureObj.amount ? captureObj.amount.currency_code : 'USD';
     const country = (payer.address && payer.address.country_code) || null;
-    const side = (purchaseUnit.custom_id === 'left') ? 'left' : 'right';
+    const side = ['left', 'right', 'dailyneedle', 'zerototrader'].includes(purchaseUnit.custom_id) ? purchaseUnit.custom_id : 'right';
 
     let celebrationId = null;
     if (amount) {
@@ -889,7 +917,7 @@ app.get('/thanks', async (req, res) => {
         name = donorProvidedName || payment.buyer_name;
         amount = payment.amount; currency = 'INR';
         const purpose = payment.purpose || '';
-        side = /^L:/i.test(purpose.trim()) ? 'left' : (/^R:/i.test(purpose.trim()) ? 'right' : null);
+        side = parseSideFromPurpose(purpose);
         // Record now (recordDonation's built-in duplicate-guard makes this
         // safe even if the background poller also notices this same
         // payment_id around the same time) — celebration itself is queued
@@ -1023,6 +1051,33 @@ app.get('/pay-right', async (req, res) => {
   res.send(paypalPageHtml('right', 'the Right side'));
 });
 
+// ====== Daily Needle & Zero to Trader — ONE smart-routed QR each ======
+// Same exact mechanism as /pay-left and /pay-right above (India → Instamojo,
+// abroad → PayPal, decided per-visitor) — just a single QR per channel
+// instead of two, since neither channel has "sides" to split between.
+const SINGLE_CHANNEL_PAY_LABEL = { dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader' };
+app.get('/pay/:channel', async (req, res) => {
+  const channel = req.params.channel;
+  if (channel !== 'dailyneedle' && channel !== 'zerototrader') return res.status(404).send('Unknown channel');
+  const label = SINGLE_CHANNEL_PAY_LABEL[channel];
+  const gw = loadGatewaySettings();
+  if (req.query.force === 'paypal') {
+    if (!gw.internationalEnabled) return res.send(pausedPageHtml(label));
+    return res.send(paypalPageHtml(channel, label));
+  }
+  if (req.query.force === 'instamojo') {
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml(label));
+    return res.send(instamojoAmountPageHtml(channel, label));
+  }
+  const country = await lookupCountry(getVisitorIp(req));
+  if (country === 'IN') {
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml(label));
+    return res.send(instamojoAmountPageHtml(channel, label));
+  }
+  if (!gw.internationalEnabled) return res.send(pausedPageHtml(label));
+  res.send(paypalPageHtml(channel, label));
+});
+
 // NOTE: the /gateway-settings page and its toggle endpoint are registered
 // further below, right after requireDashboardAuth is defined (they need
 // that middleware to exist first).
@@ -1031,8 +1086,19 @@ app.get('/pay-right', async (req, res) => {
 // ===============================  ROUTES  =============================
 // =====================================================================
 app.get('/events', (req, res) => {
-  const eventsToSend = [...latestEvents];
-  latestEvents = [];
+  const eventsToSend = [...latestEventsByChannel.fanbattle];
+  latestEventsByChannel.fanbattle = [];
+  const photosOut = {};
+  Object.entries(donorPhotoMap).forEach(([name, v]) => { photosOut[name] = v.photo; });
+  res.json({ events: eventsToSend, photos: photosOut });
+});
+// Daily Needle and Zero to Trader poll their OWN channel's events —
+// entirely separate queues, so one channel's tips never show up on
+// another channel's overlay.
+app.get('/events/:channel', (req, res) => {
+  const channel = (req.params.channel === 'dailyneedle' || req.params.channel === 'zerototrader') ? req.params.channel : 'fanbattle';
+  const eventsToSend = [...latestEventsByChannel[channel]];
+  latestEventsByChannel[channel] = [];
   const photosOut = {};
   Object.entries(donorPhotoMap).forEach(([name, v]) => { photosOut[name] = v.photo; });
   res.json({ events: eventsToSend, photos: photosOut });
@@ -1472,6 +1538,11 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <textarea id="schRightVideoLinks" rows="3" placeholder="https://streamable.com/yyyyy"></textarea>
       <p class="form-hint">Paste direct video links here (e.g. from Streamable) — they'll rotate automatically on stream, same as uploading clips directly in the overlay. Google Drive's usual share link often won't play directly, so Streamable (or a similar direct-link host) works more reliably.</p>
 
+      <div id="zttLossFieldWrap" style="display:none;">
+        <label class="f-label" style="margin-top:16px;">📉 Starting loss amount (₹) — counts down live as tips come in</label>
+        <input type="number" id="schStartingLoss" placeholder="e.g. 10000" min="0">
+      </div>
+
       <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
     </div>
@@ -1664,6 +1735,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     currentScheduleChannel = channel;
     document.querySelectorAll('.channel-pill').forEach(p => p.classList.toggle('active', p.dataset.channel === channel));
     document.getElementById('zeroToTraderFbBox').style.display = (channel === 'zerototrader') ? 'block' : 'none';
+    document.getElementById('zttLossFieldWrap').style.display = (channel === 'zerototrader') ? 'block' : 'none';
     if(channel === 'zerototrader') loadZttFbEligibility();
     loadIdeas();
   }
@@ -1677,6 +1749,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     const voiceRepeatSeconds = parseInt(document.getElementById('schVoiceRepeat').value, 10) || 40;
     const leftVideoUrls = document.getElementById('schLeftVideoLinks').value.trim();
     const rightVideoUrls = document.getElementById('schRightVideoLinks').value.trim();
+    const startingLossAmount = document.getElementById('schStartingLoss').value.trim();
     const statusEl = document.getElementById('scheduleStatus');
 
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
@@ -1684,7 +1757,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     statusEl.textContent = 'Saving...';
     fetch('/schedule/' + currentScheduleChannel + '/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls })
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls, startingLossAmount })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
       statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
@@ -1695,6 +1768,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('schRightName').value = '';
       document.getElementById('schLeftVideoLinks').value = '';
       document.getElementById('schRightVideoLinks').value = '';
+      document.getElementById('schStartingLoss').value = '';
       ['schThumbnail','schLeftPhoto','schRightPhoto','schIntroVoice','schMusic'].forEach(id => document.getElementById(id).value = '');
       ['schThumbPreview','schLeftPhotoPreview','schRightPhotoPreview'].forEach(id => document.getElementById(id).style.display = 'none');
       document.getElementById('schIntroVoiceList').textContent = '';
@@ -2002,7 +2076,7 @@ function setActiveIdeaId(gw, channel, id) {
 
 app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => {
   const channel = channelOrDefault(req.params.channel);
-  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls } = req.body;
+  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls, startingLossAmount } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
 
   const hashtagLine = (hashtags || '')
@@ -2038,6 +2112,9 @@ app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => 
     // through them just like the overlay's own manual video upload already did.
     leftVideoUrls: parseVideoLinks(leftVideoUrls),
     rightVideoUrls: parseVideoLinks(rightVideoUrls),
+    // Zero to Trader only: the "loss" figure you set by hand, which then
+    // counts DOWN live on the overlay as tips come in (see /api/active-idea/:channel).
+    startingLossAmount: startingLossAmount != null && startingLossAmount !== '' ? Number(startingLossAmount) : null,
     createdAt: new Date().toISOString()
   });
   saveScheduledEvents(events, channel);
@@ -2133,7 +2210,8 @@ app.get('/api/active-idea/:channel', (req, res) => {
     voiceRepeatSeconds: evt.voiceRepeatSeconds,
     musicUrls: evt.musicDataUrls || [],
     leftClipUrls: evt.leftVideoUrls || [],
-    rightClipUrls: evt.rightVideoUrls || []
+    rightClipUrls: evt.rightVideoUrls || [],
+    startingLossAmount: evt.startingLossAmount != null ? evt.startingLossAmount : null
   });
 });
 
