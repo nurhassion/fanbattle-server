@@ -1422,10 +1422,24 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <div class="stat-card"><div class="stat-label">This month</div><div class="stat-value" id="monthValue">—</div><div class="stat-sub" id="monthCount">—</div></div>
     </div>
     <div class="section-title">Quick access</div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:6px;">⚔️ Fan Battle Live</div>
     <div class="quick-links">
       <a class="quick-link" href="/overlay" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
       <a class="quick-link" href="/pay-left" target="_blank"><span class="emoji">🔵</span>Left pay</a>
       <a class="quick-link" href="/pay-right" target="_blank"><span class="emoji">🔴</span>Right pay</a>
+    </div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">📈 Zero to Trader</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/overlay/zerototrader" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/pay/zerototrader" target="_blank"><span class="emoji">💸</span>Pay</a>
+    </div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">🧵 Daily Needle</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/overlay/dailyneedle" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/pay/dailyneedle" target="_blank"><span class="emoji">💸</span>Pay</a>
     </div>
   </section>
 
@@ -1542,6 +1556,9 @@ app.get('/app', requireDashboardAuth, (req, res) => {
         <label class="f-label" style="margin-top:16px;">📉 Starting loss amount (₹) — counts down live as tips come in</label>
         <input type="number" id="schStartingLoss" placeholder="e.g. 10000" min="0">
       </div>
+
+      <div class="section-title" style="margin-top:20px;">🛍️ Affiliate marketing (optional — up to 20 products per platform)</div>
+      <div id="affPlatformsWrap"></div>
 
       <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
@@ -1725,6 +1742,112 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     document.getElementById('schMusicList').textContent = schMusicUrls.length + ' music track(s) selected';
   });
 
+  // ====== Affiliate marketing — 4 platforms, up to 20 products each ======
+  // Kept entirely client-side until "Save idea" is pressed — this builds
+  // the { amazon: [...], flipkart: [...], meesho: [...], myntra: [...] }
+  // object sent along with the rest of the content idea. Every product is
+  // { link, price, imageDataUrl } — the overlay generates its OWN QR code
+  // from the link when it's this product's turn to appear, since a
+  // livestream video can never contain a directly-clickable link.
+  var AFF_PLATFORMS = [
+    { key: 'amazon', label: '🅰️ Amazon' },
+    { key: 'flipkart', label: '🛒 Flipkart' },
+    { key: 'meesho', label: '👜 Meesho' },
+    { key: 'myntra', label: '👗 Myntra' }
+  ];
+  var affProducts = { amazon: [], flipkart: [], meesho: [], myntra: [] };
+  var affPendingImage = {}; // { amazon: dataUrl, ... } — the currently-picked (not-yet-added) product image per platform
+
+  function renderAffiliatePanel(){
+    var wrap = document.getElementById('affPlatformsWrap');
+    var html = '';
+    for(var idx = 0; idx < AFF_PLATFORMS.length; idx++){
+      var p = AFF_PLATFORMS[idx];
+      var platformNameOnly = p.label.replace(/^\S+\s/, '');
+      html += '<div class="gw-row" style="margin-top:10px;">' +
+        '<div><div class="gw-name">' + p.label + '</div><div class="gw-status" id="affStatus_' + p.key + '">' + affProducts[p.key].length + ' / 20 products added</div></div>' +
+        '<label class="switch"><input type="checkbox" id="affToggle_' + p.key + '" onchange="toggleAffPanel(\'' + p.key + '\', this.checked)"><span class="slider"></span></label>' +
+        '</div>' +
+        '<div id="affPanel_' + p.key + '" style="display:none;">' +
+          '<div class="form-card" style="margin-top:6px;">' +
+            '<label class="f-label">Product link</label>' +
+            '<input type="text" id="affLink_' + p.key + '" placeholder="Paste the ' + platformNameOnly + ' product link">' +
+            '<label class="f-label">Original price (₹, optional)</label>' +
+            '<input type="text" id="affOrigPrice_' + p.key + '" placeholder="e.g. 999">' +
+            '<label class="f-label">Discounted / actual selling price (₹, optional)</label>' +
+            '<input type="text" id="affDiscPrice_' + p.key + '" placeholder="e.g. 649">' +
+            '<label class="f-label">Product photo</label>' +
+            '<input type="file" id="affImage_' + p.key + '" accept="image/*">' +
+            '<img id="affImagePreview_' + p.key + '" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">' +
+            '<button class="btn-secondary" style="width:100%; margin-top:12px; padding:10px;" onclick="addAffiliateProduct(\'' + p.key + '\')">+ Add this product</button>' +
+            '<div id="affList_' + p.key + '" style="margin-top:10px;"></div>' +
+          '</div>' +
+        '</div>';
+    }
+    wrap.innerHTML = html;
+    AFF_PLATFORMS.forEach(function(p){
+      document.getElementById('affImage_' + p.key).addEventListener('change', function(e){
+        var file = e.target.files[0];
+        if(!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev){
+          affPendingImage[p.key] = ev.target.result;
+          var img = document.getElementById('affImagePreview_' + p.key);
+          img.src = ev.target.result; img.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      });
+      renderAffiliateList(p.key);
+    });
+  }
+  function toggleAffPanel(key, open){
+    document.getElementById('affPanel_' + key).style.display = open ? 'block' : 'none';
+  }
+  function addAffiliateProduct(key){
+    var linkInput = document.getElementById('affLink_' + key);
+    var origPriceInput = document.getElementById('affOrigPrice_' + key);
+    var discPriceInput = document.getElementById('affDiscPrice_' + key);
+    var link = linkInput.value.trim();
+    if(!link){ alert('Please paste a product link first.'); return; }
+    if(affProducts[key].length >= 20){ alert('You already have 20 products for this platform — delete one first.'); return; }
+    affProducts[key].push({ link: link, originalPrice: origPriceInput.value.trim(), discountedPrice: discPriceInput.value.trim(), imageDataUrl: affPendingImage[key] || null });
+    linkInput.value = ''; origPriceInput.value = ''; discPriceInput.value = '';
+    affPendingImage[key] = null;
+    document.getElementById('affImage_' + key).value = '';
+    document.getElementById('affImagePreview_' + key).style.display = 'none';
+    document.getElementById('affStatus_' + key).textContent = affProducts[key].length + ' / 20 products added';
+    renderAffiliateList(key);
+  }
+  function removeAffiliateProduct(key, index){
+    affProducts[key].splice(index, 1);
+    document.getElementById('affStatus_' + key).textContent = affProducts[key].length + ' / 20 products added';
+    renderAffiliateList(key);
+  }
+  function renderAffiliateList(key){
+    var el = document.getElementById('affList_' + key);
+    if(!el) return;
+    var html = '';
+    for(var i = 0; i < affProducts[key].length; i++){
+      var prod = affProducts[key][i];
+      var priceLabel = '';
+      if(prod.discountedPrice){ priceLabel = '₹' + prod.discountedPrice + (prod.originalPrice ? ' (was ₹' + prod.originalPrice + ') — ' : ' — '); }
+      else if(prod.originalPrice){ priceLabel = '₹' + prod.originalPrice + ' — '; }
+      html += '<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line);">' +
+        (prod.imageDataUrl ? '<img src="' + prod.imageDataUrl + '" style="width:34px; height:34px; object-fit:cover; border-radius:6px;">' : '') +
+        '<div style="flex:1; min-width:0; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + priceLabel + prod.link + '</div>' +
+        '<button class="pending-del" onclick="removeAffiliateProduct(\'' + key + '\', ' + i + ')">Remove</button>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  }
+  function resetAffiliateProducts(){
+    affProducts = { amazon: [], flipkart: [], meesho: [], myntra: [] };
+    affPendingImage = {};
+    renderAffiliatePanel();
+    AFF_PLATFORMS.forEach(function(p){ document.getElementById('affToggle_' + p.key).checked = false; toggleAffPanel(p.key, false); });
+  }
+  renderAffiliatePanel();
+
   // ====== Channel switcher — Fan Battle Live / Zero to Trader / Daily Needle ======
   // All three channels share this ONE form/list UI; only which channel's
   // saved-ideas endpoint gets called changes. Each channel's ideas, Go-Live
@@ -1737,6 +1860,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     document.getElementById('zeroToTraderFbBox').style.display = (channel === 'zerototrader') ? 'block' : 'none';
     document.getElementById('zttLossFieldWrap').style.display = (channel === 'zerototrader') ? 'block' : 'none';
     if(channel === 'zerototrader') loadZttFbEligibility();
+    resetAffiliateProducts();
     loadIdeas();
   }
 
@@ -1757,7 +1881,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     statusEl.textContent = 'Saving...';
     fetch('/schedule/' + currentScheduleChannel + '/create', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls, startingLossAmount })
+      body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls, startingLossAmount, affiliateProducts: affProducts })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
       statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
@@ -1775,6 +1899,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       document.getElementById('schMusicList').textContent = '';
       schThumbDataUrl = schLeftPhotoDataUrl = schRightPhotoDataUrl = null;
       schIntroVoiceUrls = []; schMusicUrls = [];
+      resetAffiliateProducts();
       loadIdeas();
     }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
   }
@@ -2076,7 +2201,7 @@ function setActiveIdeaId(gw, channel, id) {
 
 app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => {
   const channel = channelOrDefault(req.params.channel);
-  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls, startingLossAmount } = req.body;
+  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls, startingLossAmount, affiliateProducts } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
 
   const hashtagLine = (hashtags || '')
@@ -2089,6 +2214,31 @@ app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => 
   // we're just storing short text URLs, never the video data itself.
   const parseVideoLinks = (raw) => (raw || '')
     .split(/[\n,]+/).map(u => u.trim()).filter(Boolean).slice(0, 10);
+
+  // ====== Affiliate marketing products — up to 20 per platform, 4 platforms ======
+  // Each product is { link, originalPrice, discountedPrice, imageDataUrl } —
+  // both prices are OPTIONAL and only shown/percentage-calculated on the
+  // overlay if both are present and the discount is real (never a fabricated
+  // "% off" — see the honesty discussion this was designed around). The
+  // overlay generates its OWN QR code from `link` at render time (never a
+  // clickable video overlay, since livestream video can never be clickable).
+  const AFFILIATE_PLATFORMS = ['amazon', 'flipkart', 'meesho', 'myntra'];
+  function sanitizeAffiliateProducts(raw) {
+    const out = {};
+    for (const platform of AFFILIATE_PLATFORMS) {
+      const list = (raw && Array.isArray(raw[platform])) ? raw[platform] : [];
+      out[platform] = list
+        .filter(p => p && p.link && p.link.trim())
+        .slice(0, 20)
+        .map(p => ({
+          link: p.link.trim(),
+          originalPrice: p.originalPrice != null ? String(p.originalPrice).trim() : '',
+          discountedPrice: p.discountedPrice != null ? String(p.discountedPrice).trim() : '',
+          imageDataUrl: p.imageDataUrl || null
+        }));
+    }
+    return out;
+  }
 
   const events = loadScheduledEvents(channel);
   if (events.length >= MAX_CONTENT_IDEAS) {
@@ -2115,6 +2265,10 @@ app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => 
     // Zero to Trader only: the "loss" figure you set by hand, which then
     // counts DOWN live on the overlay as tips come in (see /api/active-idea/:channel).
     startingLossAmount: startingLossAmount != null && startingLossAmount !== '' ? Number(startingLossAmount) : null,
+    // Affiliate marketing products, up to 20 per platform (Amazon/Flipkart/
+    // Meesho/Myntra) — see /api/active-idea/:channel for how the overlay
+    // consumes these.
+    affiliateProducts: sanitizeAffiliateProducts(affiliateProducts),
     createdAt: new Date().toISOString()
   });
   saveScheduledEvents(events, channel);
@@ -2211,7 +2365,8 @@ app.get('/api/active-idea/:channel', (req, res) => {
     musicUrls: evt.musicDataUrls || [],
     leftClipUrls: evt.leftVideoUrls || [],
     rightClipUrls: evt.rightVideoUrls || [],
-    startingLossAmount: evt.startingLossAmount != null ? evt.startingLossAmount : null
+    startingLossAmount: evt.startingLossAmount != null ? evt.startingLossAmount : null,
+    affiliateProducts: evt.affiliateProducts || { amazon: [], flipkart: [], meesho: [], myntra: [] }
   });
 });
 
