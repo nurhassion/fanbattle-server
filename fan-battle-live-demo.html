@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Live Fan Battle — Demo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@500;700&family=Anton&family=Playfair+Display:wght@700;800&family=Righteous&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 <style>
   :root{
@@ -48,7 +48,7 @@
   .eyebrow{ display:flex; align-items:center; justify-content:center; gap:8px; font-size:10px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; }
   .dot{width:6px;height:6px;border-radius:50%; background:#FF4B3E; box-shadow:0 0 10px #FF4B3E; animation:pulse 1.4s infinite;}
   @keyframes pulse{0%,100%{opacity:1} 50%{opacity:0.25}}
-  h1{ font-family:'Bebas Neue', sans-serif; text-align:center; font-size: 27px; letter-spacing:1px; margin-top:2px;
+  h1{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; text-align:center; font-size: 27px; letter-spacing:1px; margin-top:2px;
     background: linear-gradient(90deg, var(--left-glow), var(--white) 50%, var(--right-glow));
     -webkit-background-clip:text; background-clip:text; color:transparent; }
   .sub{ text-align:center; color:var(--dim); font-size:10.5px; margin-top:0px; margin-bottom:2px;}
@@ -61,24 +61,24 @@
   .clip-player{ position:relative; margin-top:6px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
     flex-shrink:0; background:#000; width:100%; height:150px; }
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
-  .clip-tag{ position:absolute; left:8px; bottom:8px; font-family:'Bebas Neue', sans-serif; font-size:14px; letter-spacing:0.5px;
+  .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
     background:rgba(11,15,25,0.8); padding:3px 10px; border-radius:7px; }
   .total-shell{ text-align:center; background: var(--bg-soft); border:1px solid var(--line); border-radius:10px;
     padding:6px 14px; flex-shrink:0; }
   .total-label{ font-size:10px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; }
-  .total-amount{ font-family:'Bebas Neue', sans-serif; font-size:26px; letter-spacing:1px; color:var(--gold); margin-top:2px; }
+  .total-amount{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:26px; letter-spacing:1px; color:var(--gold); margin-top:2px; }
   .total-amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px; }
   .cards{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; flex-shrink:0; }
   .card{ background: var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:8px; position:relative; }
   .name-row{ display:flex; flex-direction:row; align-items:center; gap:10px; text-align:left; }
   .avatar{ width:88px; height:88px; flex-shrink:0; border-radius:12px; display:flex; align-items:center; justify-content:center;
-    font-family:'Bebas Neue', sans-serif; font-size:32px; }
+    font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:32px; }
   .avatar.l{ background: rgba(46,111,242,0.18); color:var(--left-glow); border:2px solid rgba(46,111,242,0.6); background-size:cover; background-position:center; overflow:hidden; box-shadow:0 0 14px rgba(46,111,242,0.35);}
   .avatar.r{ background: rgba(255,75,62,0.18); color:var(--right-glow); border:2px solid rgba(255,75,62,0.6); background-size:cover; background-position:center; overflow:hidden; box-shadow:0 0 14px rgba(255,75,62,0.35);}
   .avatar img{ width:100%; height:100%; object-fit:cover; border-radius:10px; }
   /* Eye-catching team names: bold, gradient-lit text similar to the main
      title treatment, so they pop instead of reading like a plain label. */
-  .name-edit{ text-align:left !important; font-size:18px !important; font-family:'Bebas Neue', sans-serif; letter-spacing:0.5px; }
+  .name-edit{ text-align:left !important; font-size:18px !important; font-family: var(--display-font, 'Bebas Neue'), sans-serif; letter-spacing:0.5px; }
   #cardLeft .name-edit{ background: linear-gradient(90deg, var(--left-glow), var(--white) 85%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
   #cardRight .name-edit{ background: linear-gradient(90deg, var(--right-glow), var(--white) 85%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
   /* ---- Fun-only "fan support meter" percentage — deliberately styled in a
@@ -87,7 +87,7 @@
      given real visual weight (large, glowing, filling the space next to
      the name) instead of a small pill, since there was empty room there. ---- */
   .support-pct-row{ margin-top:6px; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding-left:2px; }
-  .support-pct{ font-family:'Bebas Neue', sans-serif; font-size:30px; letter-spacing:1.5px; padding:3px 14px; border-radius:12px; line-height:1.2; }
+  .support-pct{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:30px; letter-spacing:1.5px; padding:3px 14px; border-radius:12px; line-height:1.2; }
   .support-pct.l{ background: linear-gradient(90deg, rgba(46,111,242,0.4), rgba(46,111,242,0.15)); color:var(--left-glow); border:1.5px solid rgba(46,111,242,0.65); box-shadow:0 0 16px rgba(46,111,242,0.3); }
   .support-pct.r{ background: linear-gradient(90deg, rgba(255,75,62,0.4), rgba(255,75,62,0.15)); color:var(--right-glow); border:1.5px solid rgba(255,75,62,0.65); box-shadow:0 0 16px rgba(255,75,62,0.3); }
   .support-pct-note{ font-size:9px; color:var(--dim); font-style:italic; margin-top:2px; }
@@ -106,18 +106,18 @@
     border:1.5px solid var(--line); background:var(--bg); transition: box-shadow 300ms ease, border-color 300ms ease;
     text-align:center; min-height:0; height:100%; }
   .top3-row .top3-photo-wrap{ position:relative; width:100%; flex:1 1 auto; min-height:0; }
-  .top3-row .top3-rank{ position:absolute; top:2px; left:2px; font-family:'Bebas Neue'; font-size:12px; color:var(--gold);
+  .top3-row .top3-rank{ position:absolute; top:2px; left:2px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:12px; color:var(--gold);
     line-height:1; background:rgba(11,15,25,0.8); padding:1px 5px; border-radius:5px; z-index:2; }
   .top3-row .top3-photo{ width:100%; height:100%; border-radius:8px; object-fit:cover; background:var(--bg-soft); display:block; }
   .top3-row .top3-placeholder{ width:100%; height:100%; border-radius:8px; background:var(--bg-soft);
-    display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue'; font-size:24px; color:var(--dim); }
+    display:flex; align-items:center; justify-content:center; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:24px; color:var(--dim); }
   .top3-row .top3-name{ font-size:11px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
-  .top3-row .top3-amt{ font-family:'Bebas Neue'; font-size:13px; color:var(--gold); line-height:1; flex-shrink:0; }
+  .top3-row .top3-amt{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; color:var(--gold); line-height:1; flex-shrink:0; }
   .top3-row.highlight{ border-color:var(--gold); box-shadow:0 0 16px rgba(255,197,61,0.7); }
   .name{ font-weight:700; font-size:13px; }
   .name-edit{ background:transparent; border:none; color:var(--white); font-weight:800; }
   .name-edit:focus{ outline:none; border-bottom:1px dashed var(--dim); }
-  .amount{ font-family:'Bebas Neue', sans-serif; font-size:19px; margin-top:3px; letter-spacing:1px; }
+  .amount{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:19px; margin-top:3px; letter-spacing:1px; }
   .amount.l{ color:var(--left-glow); }
   .amount.r{ color:var(--right-glow); }
   .amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px;}
@@ -131,7 +131,7 @@
   .tag.l{ background:rgba(46,111,242,0.18); color:var(--left-glow); }
   .tag.r{ background:rgba(255,75,62,0.18); color:var(--right-glow); }
   .ticker-item b{ color:var(--white); }
-  .ticker-item .amt{ margin-left:auto; font-family:'Bebas Neue'; font-size:16px; color:var(--gold); flex-shrink:0; }
+  .ticker-item .amt{ margin-left:auto; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:16px; color:var(--gold); flex-shrink:0; }
   /* ---- Donor name shine: a moving light sweep + a soft pulsing glow, kept
          running continuously so newly-added names keep catching the eye ---- */
   .donor-name{
@@ -183,10 +183,10 @@
   @keyframes celebPop{ 0%{transform:scale(0.6) translateY(10px);} 10%{transform:scale(1.1);} 18%{transform:scale(1);} 88%{transform:scale(1);} 100%{transform:scale(0.96);} }
   @keyframes celebGlowPulse{ 0%,100%{ box-shadow: 0 0 45px rgba(255,197,61,0.3), 0 20px 60px rgba(0,0,0,0.5); } 50%{ box-shadow: 0 0 85px rgba(255,197,61,0.75), 0 20px 60px rgba(0,0,0,0.5); } }
   .celeb-tag{ font-size:12px; letter-spacing:3px; color:var(--gold); text-transform:uppercase; font-weight:700; }
-  .celeb-name{ font-family:'Bebas Neue', sans-serif; font-size: clamp(36px, 6vw, 58px); letter-spacing:1px; margin-top:6px; color: var(--white); }
+  .celeb-name{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size: clamp(36px, 6vw, 58px); letter-spacing:1px; margin-top:6px; color: var(--white); }
   .celeb-line{ font-size:16px; color:var(--dim); margin-top:6px; }
   .celeb-line b{ color:var(--white); }
-  .celeb-amount{ font-family:'Bebas Neue', sans-serif; font-size: clamp(48px, 9vw, 84px); margin-top:10px; letter-spacing:1px; }
+  .celeb-amount{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size: clamp(48px, 9vw, 84px); margin-top:10px; letter-spacing:1px; }
   .celeb-amount.side-left{ color: var(--left-glow); text-shadow: 0 0 30px rgba(46,111,242,0.6); }
   .celeb-amount.side-right{ color: var(--right-glow); text-shadow: 0 0 30px rgba(255,75,62,0.6); }
   .qr-title{ margin-top:6px; font-size:12px; letter-spacing:1px; color:var(--gold); text-transform:none; text-align:center; flex-shrink:0; font-weight:800; }
@@ -203,7 +203,7 @@
     50%{ box-shadow:0 0 22px rgba(255,75,62,0.55); }
   }
   .qr-card canvas{ background:#fff; border-radius:8px; padding:4px; max-width:100%; height:auto; width:74px !important; }
-  .qr-label{ font-family:'Bebas Neue', sans-serif; font-size:13px; letter-spacing:1px; margin-top:4px; }
+  .qr-label{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; letter-spacing:1px; margin-top:4px; }
   .qr-card.l .qr-label{ color:var(--left-glow); }
   .qr-card.r .qr-label{ color:var(--right-glow); }
   .qr-hint{ font-size:9px; color:var(--white); margin-top:1px; line-height:1.2; font-weight:600; }
@@ -211,7 +211,7 @@
   #setupScreen{ position:fixed; inset:0; z-index:1000; background: radial-gradient(ellipse at 50% -10%, #1a2140 0%, var(--bg) 55%);
     display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
   .setup-box{ width:100%; max-width:440px; margin: 4vh auto; background: var(--bg-soft); border:1px solid var(--line); border-radius:20px; padding:32px 28px; text-align:center; }
-  .setup-box h2{ font-family:'Bebas Neue', sans-serif; font-size:30px; letter-spacing:1px; margin-bottom:6px; }
+  .setup-box h2{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:30px; letter-spacing:1px; margin-bottom:6px; }
   .setup-box p{ font-size:13.5px; color:var(--dim); margin-bottom:24px; }
   .setup-field{ text-align:left; margin-bottom:16px; }
   .setup-field label{ font-size:12px; color:var(--dim); letter-spacing:1px; text-transform:uppercase; }
@@ -228,7 +228,7 @@
   .affiliate-spotlight{ position:absolute; right:14px; bottom:14px; width:150px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:14px; padding:10px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; }
   .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
   .affiliate-spotlight img.aff-product-img{ width:100%; height:110px; object-fit:cover; border-radius:8px; background:var(--bg); display:block; }
-  .affiliate-spotlight .aff-price{ font-family:'Bebas Neue', sans-serif; font-size:20px; color:var(--gold); margin-top:6px; }
+  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:20px; color:var(--gold); margin-top:6px; }
   .affiliate-spotlight .aff-platform{ font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:2px; font-weight:700; }
   .affiliate-spotlight canvas.aff-qr{ margin-top:6px; width:46px !important; height:46px !important; background:#fff; border-radius:6px; padding:3px; }
   .affiliate-spotlight .aff-scan-hint{ font-size:8.5px; color:var(--white); margin-top:3px; font-weight:600; }
@@ -603,10 +603,15 @@ function startLive(){
 // ---- Colour preset — the SAME 3 choices you pick from in the Schedule tab's
 // idea list (Blue/Red default, Purple/Gold, Green/Orange) now actually
 // re-colour the live overlay itself, not just the Go-Live wizard page. ----
+// ---- Style preset — 5 choices from the Schedule tab's idea list, each with
+// its OWN colours AND its OWN display font — now actually re-styles the live
+// overlay itself, not just the Go-Live wizard page. ----
 const COLOR_PRESETS = {
-  '1': { left: '#2E6FF2', leftGlow: '#6C9BFF', right: '#FF4B3E', rightGlow: '#FF8A7A', gold: '#FFC53D' },
-  '2': { left: '#A78BFA', leftGlow: '#C4B5FD', right: '#FFC53D', rightGlow: '#FFD873', gold: '#A78BFA' },
-  '3': { left: '#4ADE80', leftGlow: '#86EFAC', right: '#FB923C', rightGlow: '#FDBA74', gold: '#4ADE80' }
+  '1': { left: '#2E6FF2', leftGlow: '#6C9BFF', right: '#FF4B3E', rightGlow: '#FF8A7A', gold: '#FFC53D', font: "'Bebas Neue'" },
+  '2': { left: '#A78BFA', leftGlow: '#C4B5FD', right: '#FFC53D', rightGlow: '#FFD873', gold: '#A78BFA', font: "'Oswald'" },
+  '3': { left: '#4ADE80', leftGlow: '#86EFAC', right: '#FB923C', rightGlow: '#FDBA74', gold: '#4ADE80', font: "'Anton'" },
+  '4': { left: '#F472B6', leftGlow: '#F9A8D4', right: '#2DD4BF', rightGlow: '#5EEAD4', gold: '#F472B6', font: "'Playfair Display'" },
+  '5': { left: '#FDE047', leftGlow: '#FEF08A', right: '#F5F7FA', rightGlow: '#FFFFFF', gold: '#FDE047', font: "'Righteous'" }
 };
 function applyColorPreset(preset){
   const p = COLOR_PRESETS[preset] || COLOR_PRESETS['1'];
@@ -616,6 +621,7 @@ function applyColorPreset(preset){
   root.setProperty('--right', p.right);
   root.setProperty('--right-glow', p.rightGlow);
   root.setProperty('--gold', p.gold);
+  root.setProperty('--display-font', p.font);
 }
 
 async function tryLoadActiveIdea(){
