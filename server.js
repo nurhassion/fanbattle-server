@@ -589,12 +589,21 @@ app.post('/paypal-create-order', async (req, res) => {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: 'Invalid amount' });
     const token = await getPaypalAccessToken();
+    // A donor should see the CHANNEL's name during PayPal checkout, never the
+    // account holder's personal/real name — PayPal's experience_context lets
+    // us set this per-order, so each channel shows its own brand here.
+    const PAYPAL_BRAND_NAME = {
+      left: 'Fan Battle Live', right: 'Fan Battle Live',
+      dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader'
+    };
+    const brandName = PAYPAL_BRAND_NAME[side] || 'Fan Battle Live';
     const orderRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'zerototrader'].includes(side) ? side : 'right' }]
+        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'zerototrader'].includes(side) ? side : 'right' }],
+        payment_source: { paypal: { experience_context: { brand_name: brandName } } }
       })
     });
     const order = await orderRes.json();
@@ -1939,6 +1948,8 @@ app.get('/app', requireDashboardAuth, (req, res) => {
             '<button title="Blue/Red (default)" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='1'||!idea.preset ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#6C9BFF 50%,#FF6B5E 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'1\\')"></button>' +
             '<button title="Purple/Gold" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='2' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#A78BFA 50%,#FFC53D 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'2\\')"></button>' +
             '<button title="Green/Orange" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='3' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#4ADE80 50%,#FB923C 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'3\\')"></button>' +
+            '<button title="Pink/Teal" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='4' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#F472B6 50%,#2DD4BF 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'4\\')"></button>' +
+            '<button title="Yellow/White" style="width:22px; height:22px; border-radius:50%; border:2px solid ' + (idea.preset==='5' ? '#fff' : 'transparent') + '; background:linear-gradient(135deg,#FDE047 50%,#F5F7FA 50%); cursor:pointer; padding:0;" onclick="setPreset(\\'' + idea.id + '\\',\\'5\\')"></button>' +
           '</div>' +
           '<div style="display:flex; gap:8px; margin-top:10px;">' +
             '<a href="' + idea.goLiveUrl + (idea.preset ? '?preset=' + idea.preset : '') + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;" onclick="markLive(\\'' + idea.id + '\\')">▶ Go Live</a>' +
@@ -2515,11 +2526,13 @@ app.get('/go-live/:channel/:id', (req, res) => {
   const gw = loadGatewaySettings();
   const fbStepEnabled = !chConfig.facebookEligibilityIsManual || !!(gw.fbEligibility && gw.fbEligibility[channel]);
 
-  // ====== Three color presets (cosmetic only — same layout/design, just recolored) ======
+  // ====== Five color+font presets (cosmetic only — same layout/design, just recolored) ======
   const PRESETS = {
     '1': { accent: '#FFC53D', badge: '#FFC53D', left: '#6C9BFF', right: '#FF6B5E' },
     '2': { accent: '#A78BFA', badge: '#A78BFA', left: '#A78BFA', right: '#FFC53D' },
-    '3': { accent: '#4ADE80', badge: '#4ADE80', left: '#4ADE80', right: '#FB923C' }
+    '3': { accent: '#4ADE80', badge: '#4ADE80', left: '#4ADE80', right: '#FB923C' },
+    '4': { accent: '#F472B6', badge: '#F472B6', left: '#F9A8D4', right: '#5EEAD4' },
+    '5': { accent: '#FDE047', badge: '#FDE047', left: '#FEF08A', right: '#F5F7FA' }
   };
   const chosenPreset = PRESETS[req.query.preset] || PRESETS[evt.preset] || PRESETS['1'];
   const finalStepNumber = fbStepEnabled ? 3 : 2;
