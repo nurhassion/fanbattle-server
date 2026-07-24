@@ -1768,7 +1768,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       var platformNameOnly = p.label.replace(/^\S+\s/, '');
       html += '<div class="gw-row" style="margin-top:10px;">' +
         '<div><div class="gw-name">' + p.label + '</div><div class="gw-status" id="affStatus_' + p.key + '">' + affProducts[p.key].length + ' / 20 products added</div></div>' +
-        '<label class="switch"><input type="checkbox" id="affToggle_' + p.key + '" onchange="toggleAffPanel(\'' + p.key + '\', this.checked)"><span class="slider"></span></label>' +
+        '<label class="switch"><input type="checkbox" id="affToggle_' + p.key + '" onchange="toggleAffPanel(\\'' + p.key + '\\', this.checked)"><span class="slider"></span></label>' +
         '</div>' +
         '<div id="affPanel_' + p.key + '" style="display:none;">' +
           '<div class="form-card" style="margin-top:6px;">' +
@@ -1781,7 +1781,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
             '<label class="f-label">Product photo</label>' +
             '<input type="file" id="affImage_' + p.key + '" accept="image/*">' +
             '<img id="affImagePreview_' + p.key + '" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">' +
-            '<button class="btn-secondary" style="width:100%; margin-top:12px; padding:10px;" onclick="addAffiliateProduct(\'' + p.key + '\')">+ Add this product</button>' +
+            '<button class="btn-secondary" style="width:100%; margin-top:12px; padding:10px;" onclick="addAffiliateProduct(\\'' + p.key + '\\')">+ Add this product</button>' +
             '<div id="affList_' + p.key + '" style="margin-top:10px;"></div>' +
           '</div>' +
         '</div>';
@@ -1837,7 +1837,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       html += '<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line);">' +
         (prod.imageDataUrl ? '<img src="' + prod.imageDataUrl + '" style="width:34px; height:34px; object-fit:cover; border-radius:6px;">' : '') +
         '<div style="flex:1; min-width:0; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + priceLabel + prod.link + '</div>' +
-        '<button class="pending-del" onclick="removeAffiliateProduct(\'' + key + '\', ' + i + ')">Remove</button>' +
+        '<button class="pending-del" onclick="removeAffiliateProduct(\\'' + key + '\\', ' + i + ')">Remove</button>' +
         '</div>';
     }
     el.innerHTML = html;
