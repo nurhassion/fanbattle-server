@@ -1524,17 +1524,19 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <input type="file" id="schThumbnail" accept="image/*">
       <img id="schThumbPreview" style="display:none; max-width:140px; border-radius:10px; margin-top:8px;">
 
-      <label class="f-label" style="color:var(--left);">🔵 Left side name</label>
+      <label class="f-label" id="schLeftNameLabel" style="color:var(--left);">🔵 Left side name</label>
       <input type="text" id="schLeftName" placeholder="Left side name" maxlength="40">
-      <label class="f-label" style="color:var(--left);">🔵 Left side photo</label>
+      <label class="f-label" id="schLeftPhotoLabel" style="color:var(--left);">🔵 Left side photo</label>
       <input type="file" id="schLeftPhoto" accept="image/*">
       <img id="schLeftPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
 
-      <label class="f-label" style="color:var(--right); margin-top:16px;">🔴 Right side name</label>
-      <input type="text" id="schRightName" placeholder="Right side name" maxlength="40">
-      <label class="f-label" style="color:var(--right);">🔴 Right side photo</label>
-      <input type="file" id="schRightPhoto" accept="image/*">
-      <img id="schRightPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
+      <div id="schRightFieldsWrap">
+        <label class="f-label" style="color:var(--right); margin-top:16px;">🔴 Right side name</label>
+        <input type="text" id="schRightName" placeholder="Right side name" maxlength="40">
+        <label class="f-label" style="color:var(--right);">🔴 Right side photo</label>
+        <input type="file" id="schRightPhoto" accept="image/*">
+        <img id="schRightPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
+      </div>
 
       <label class="f-label" style="margin-top:16px;">🎙️ Voice commentary (pick multiple — e.g. one per language, played back-to-back each cycle)</label>
       <input type="file" id="schIntroVoice" accept="audio/*" multiple>
@@ -1859,6 +1861,15 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     document.querySelectorAll('.channel-pill').forEach(p => p.classList.toggle('active', p.dataset.channel === channel));
     document.getElementById('zeroToTraderFbBox').style.display = (channel === 'zerototrader') ? 'block' : 'none';
     document.getElementById('zttLossFieldWrap').style.display = (channel === 'zerototrader') ? 'block' : 'none';
+    // Daily Needle / Zero to Trader have no "sides" at all — the Left-side
+    // fields are relabeled as the channel's own name/logo (this is exactly
+    // what their overlay reads), and the Right-side fields are hidden
+    // entirely since they'd never be used.
+    const isSingleTotalChannel = (channel === 'dailyneedle' || channel === 'zerototrader');
+    document.getElementById('schRightFieldsWrap').style.display = isSingleTotalChannel ? 'none' : 'block';
+    document.getElementById('schLeftNameLabel').textContent = isSingleTotalChannel ? '📛 Channel name' : '🔵 Left side name';
+    document.getElementById('schLeftPhotoLabel').textContent = isSingleTotalChannel ? '🖼️ Channel logo' : '🔵 Left side photo';
+    document.getElementById('schLeftName').placeholder = isSingleTotalChannel ? 'e.g. Daily Needle' : 'Left side name';
     if(channel === 'zerototrader') loadZttFbEligibility();
     resetAffiliateProducts();
     loadIdeas();
