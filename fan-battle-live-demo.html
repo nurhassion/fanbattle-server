@@ -225,6 +225,15 @@
   .setup-photo-btn{ flex:1; background:var(--bg); border:1px solid var(--line); color:var(--white); padding:10px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-align:left; }
   .setup-photo-btn:hover{ border-color:var(--gold); }
   .panel-outside{ width:100%; max-width:480px; margin:16px auto 40px; padding:0 16px; }
+  .affiliate-spotlight{ position:absolute; right:14px; bottom:14px; width:150px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:14px; padding:10px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; }
+  .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
+  .affiliate-spotlight img.aff-product-img{ width:100%; height:110px; object-fit:cover; border-radius:8px; background:var(--bg); display:block; }
+  .affiliate-spotlight .aff-price{ font-family:'Bebas Neue', sans-serif; font-size:20px; color:var(--gold); margin-top:6px; }
+  .affiliate-spotlight .aff-platform{ font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:2px; font-weight:700; }
+  .affiliate-spotlight canvas.aff-qr{ margin-top:6px; width:46px !important; height:46px !important; background:#fff; border-radius:6px; padding:3px; }
+  .affiliate-spotlight .aff-scan-hint{ font-size:8.5px; color:var(--white); margin-top:3px; font-weight:600; }
+  .affiliate-spotlight .aff-orig-price{ font-size:11px; color:var(--dim); text-decoration:line-through; margin-top:4px; display:none; }
+  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:10px; font-weight:800; padding:2px 7px; border-radius:6px; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -302,6 +311,15 @@
     <div class="celeb-line">backed <b id="celebSide">Messi</b></div>
     <div class="celeb-amount" id="celebAmount">₹100</div>
   </div>
+</div>
+<div class="affiliate-spotlight" id="affiliateSpotlight">
+  <img class="aff-product-img" id="affProductImg">
+  <div class="aff-orig-price" id="affOrigPrice"></div>
+  <div class="aff-price" id="affProductPrice"></div>
+  <div class="aff-discount-badge" id="affDiscountBadge"></div>
+  <div class="aff-platform" id="affProductPlatform"></div>
+  <canvas class="aff-qr" id="affProductQr"></canvas>
+  <div class="aff-scan-hint">📲 Scan to buy</div>
 </div>
 <div class="stadium-lines"></div>
 <button id="muteBtn" onclick="toggleMusicMute()" style="position:absolute; top:12px; right:12px; z-index:1000; width:34px; height:34px; border-radius:50%; background:rgba(18,23,40,0.8); border:1px solid var(--line); color:var(--white); font-size:15px; padding:0; cursor:pointer;">🔊</button>
@@ -584,7 +602,7 @@ function startLive(){
 // re-type names or re-upload the photo/voice/music here. ----
 async function tryLoadActiveIdea(){
   try{
-    const res = await fetch(SERVER_URL + '/api/active-idea');
+    const res = await fetch(SERVER_URL + '/api/active-idea/fanbattle');
     const data = await res.json();
     if(data && data.found){
       beginLiveWithData({
@@ -595,6 +613,7 @@ async function tryLoadActiveIdea(){
         clipsLeft: data.leftClipUrls, clipsRight: data.rightClipUrls
       });
       console.log('✅ Auto-started from your saved Content Idea (marked LIVE).');
+      if(data.affiliateProducts){ buildAffiliateRotation(data.affiliateProducts); startAffiliateRotation(); }
       return true;
     }
   }catch(err){ console.error('Active Content Idea check failed:', err.message); }
@@ -1171,6 +1190,70 @@ document.getElementById('nameRight').addEventListener('input', e => {
 
 updateUI();
 renderLeaderboard();
+
+// =====================================================================
+// ============  AFFILIATE MARKETING — product QR rotation  ============
+// =====================================================================
+// A livestream's video can never contain an actually-clickable link — this
+// panel shows a large product photo + price, and a small QR code the viewer
+// scans with their own phone camera to open the product directly (in the
+// Amazon/Flipkart/Meesho/Myntra app if installed, else their browser) —
+// exactly the same proven mechanism as the donation QR codes above.
+let affiliateProducts = [];
+let affIndex = 0;
+const AFF_PLATFORM_LABEL = { amazon:'Amazon', flipkart:'Flipkart', meesho:'Meesho', myntra:'Myntra' };
+function buildAffiliateRotation(raw){
+  const platforms = ['amazon','flipkart','meesho','myntra'];
+  const lists = platforms.map(p => (raw && raw[p]) ? raw[p] : []);
+  const maxLen = Math.max(0, ...lists.map(l => l.length));
+  const combined = [];
+  for(let i = 0; i < maxLen; i++){
+    platforms.forEach((p, idx) => { if(lists[idx][i]) combined.push(Object.assign({ platform: p }, lists[idx][i])); });
+  }
+  affiliateProducts = combined;
+  affIndex = 0;
+}
+function showNextAffiliateProduct(){
+  if(!affiliateProducts.length) return;
+  const item = affiliateProducts[affIndex % affiliateProducts.length];
+  affIndex++;
+  const el = document.getElementById('affiliateSpotlight');
+  if(item.imageDataUrl) document.getElementById('affProductImg').src = item.imageDataUrl;
+  const origEl = document.getElementById('affOrigPrice');
+  const priceEl = document.getElementById('affProductPrice');
+  const badgeEl = document.getElementById('affDiscountBadge');
+  const origNum = parseFloat(item.originalPrice);
+  const discNum = parseFloat(item.discountedPrice);
+  origEl.style.display = 'none'; badgeEl.style.display = 'none';
+  if(!isNaN(discNum) && item.discountedPrice){
+    priceEl.textContent = '₹' + item.discountedPrice;
+    if(!isNaN(origNum) && item.originalPrice && origNum > discNum){
+      origEl.textContent = '₹' + item.originalPrice;
+      origEl.style.display = 'block';
+      const pct = Math.round((1 - discNum / origNum) * 100);
+      badgeEl.textContent = pct + '% OFF';
+      badgeEl.style.display = 'inline-block';
+    }
+  } else if(!isNaN(origNum) && item.originalPrice){
+    priceEl.textContent = '₹' + item.originalPrice;
+  } else {
+    priceEl.textContent = '';
+  }
+  document.getElementById('affProductPlatform').textContent = AFF_PLATFORM_LABEL[item.platform] || item.platform;
+  if(item.link){
+    new QRious({ element: document.getElementById('affProductQr'), value: item.link, size: 46, background:'#fff', foreground:'#0B0F19' });
+  }
+  el.classList.add('show');
+  clearTimeout(window.__affHideTimeout);
+  window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 20000); // visible ~20s out of every 2 minutes
+}
+function startAffiliateRotation(){
+  if(!affiliateProducts.length) return;
+  showNextAffiliateProduct();
+  if(window.__affTicker) clearInterval(window.__affTicker);
+  window.__affTicker = setInterval(showNextAffiliateProduct, 120000); // every 2 minutes
+}
+
 </script>
 </body>
 </html>
