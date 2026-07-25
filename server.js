@@ -2537,6 +2537,23 @@ app.get('/go-live/:channel/:id', (req, res) => {
   const chosenPreset = PRESETS[req.query.preset] || PRESETS[evt.preset] || PRESETS['1'];
   const finalStepNumber = fbStepEnabled ? 3 : 2;
 
+  // ====== Numbered affiliate product list — SAME order/numbering the ======
+  // ====== overlay itself uses for its rotating "#N" badge, so a viewer  ======
+  // who sees "#3" on screen can find that exact numbered link here in the
+  // description box you paste into YouTube/Facebook.
+  function buildNumberedAffiliateList(affiliateProducts) {
+    const platforms = ['amazon', 'flipkart', 'meesho', 'myntra'];
+    const lists = platforms.map(p => (affiliateProducts && affiliateProducts[p]) ? affiliateProducts[p] : []);
+    const maxLen = Math.max(0, ...lists.map(l => l.length));
+    const lines = [];
+    let n = 1;
+    for (let i = 0; i < maxLen; i++) {
+      platforms.forEach((p, idx) => { if (lists[idx][i]) { lines.push(`${n}. ${lists[idx][i].link}`); n++; } });
+    }
+    return lines.join('\n');
+  }
+  const affiliateLinksText = buildNumberedAffiliateList(evt.affiliateProducts);
+
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Go live: ${evt.title}</title>
@@ -2571,6 +2588,7 @@ app.get('/go-live/:channel/:id', (req, res) => {
     </div>` : ''}
     <div class="box"><div class="box-label">Title (copy this into YouTube${fbStepEnabled ? '/Facebook' : ''})</div><div id="titleText">${evt.title}</div><button class="copy-btn" onclick="copyText('titleText')">Copy</button></div>
     <div class="box"><div class="box-label">Description + hashtags</div><div id="descText" style="white-space:pre-wrap;">${evt.description || ''}</div><button class="copy-btn" onclick="copyText('descText')">Copy</button></div>
+    ${affiliateLinksText ? `<div class="box"><div class="box-label">Affiliate product links (numbered — paste this into the description too, below the text above)</div><div id="affLinksText" style="white-space:pre-wrap; font-size:12.5px;">${affiliateLinksText}</div><button class="copy-btn" onclick="copyText('affLinksText')">Copy</button></div>` : ''}
     ${evt.thumbnailDataUrl ? `<div class="box"><div class="box-label">Thumbnail (save this image, upload manually)</div><img src="${evt.thumbnailDataUrl}"></div>` : ''}
 
     <div class="step active" id="step1">
