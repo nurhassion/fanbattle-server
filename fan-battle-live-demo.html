@@ -234,6 +234,7 @@
   .affiliate-spotlight .aff-scan-hint{ font-size:8.5px; color:var(--white); margin-top:3px; font-weight:600; }
   .affiliate-spotlight .aff-orig-price{ font-size:11px; color:var(--dim); text-decoration:line-through; margin-top:4px; display:none; }
   .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:10px; font-weight:800; padding:2px 7px; border-radius:6px; margin-top:4px; }
+  .affiliate-spotlight .aff-number-badge{ position:absolute; top:-8px; left:-8px; width:26px; height:26px; border-radius:50%; background:#0B0F19; border:2px solid var(--gold, var(--accent)); color:#fff; font-family:'Bebas Neue', sans-serif; font-size:14px; display:flex; align-items:center; justify-content:center; z-index:2; }
 </style>
 </head>
 <body>
@@ -312,7 +313,8 @@
     <div class="celeb-amount" id="celebAmount">₹100</div>
   </div>
 </div>
-<div class="affiliate-spotlight" id="affiliateSpotlight">
+<div class="affiliate-spotlight" id="affiliateSpotlight" style="position:absolute;">
+  <div class="aff-number-badge" id="affNumberBadge">#1</div>
   <img class="aff-product-img" id="affProductImg">
   <div class="aff-orig-price" id="affOrigPrice"></div>
   <div class="aff-price" id="affProductPrice"></div>
@@ -1235,6 +1237,11 @@ function buildAffiliateRotation(raw){
   for(let i = 0; i < maxLen; i++){
     platforms.forEach((p, idx) => { if(lists[idx][i]) combined.push(Object.assign({ platform: p }, lists[idx][i])); });
   }
+  // Give each product a stable display number (1, 2, 3...) in this exact
+  // rotation order — the SAME numbering the Go-Live page lists in the
+  // description box, so a viewer who sees "#3" on screen can find link #3
+  // in the video description without needing to scan right away.
+  combined.forEach((item, idx) => { item.number = idx + 1; });
   affiliateProducts = combined;
   affIndex = 0;
 }
@@ -1243,6 +1250,7 @@ function showNextAffiliateProduct(){
   const item = affiliateProducts[affIndex % affiliateProducts.length];
   affIndex++;
   const el = document.getElementById('affiliateSpotlight');
+  document.getElementById('affNumberBadge').textContent = '#' + item.number;
   if(item.imageDataUrl) document.getElementById('affProductImg').src = item.imageDataUrl;
   const origEl = document.getElementById('affOrigPrice');
   const priceEl = document.getElementById('affProductPrice');
