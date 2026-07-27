@@ -214,11 +214,24 @@ const PAYMENT_LINK = SERVER_URL + '/pay/' + CHANNEL;
 
 new QRious({ element: document.getElementById('qrCode'), value: PAYMENT_LINK, size: 112, background:'#fff', foreground:'#0B0F19' });
 
+let overlayAlreadyStarted = false;
 function startOverlay(){
+  if(overlayAlreadyStarted) return;
+  overlayAlreadyStarted = true;
   document.getElementById('setupScreen').style.display = 'none';
   startServerPolling();
   startAmbientScheduler();
 }
+// ---- Auto-start fallback: some mobile broadcasting apps (e.g. PRISM Live
+// Studio's Web Widget) show this page as a display-only layer and never
+// deliver the streamer's tap into it — if that happens, this page would
+// otherwise get stuck on this setup screen forever. So it starts itself
+// automatically after a short delay regardless. If a real tap DOES land
+// first (OBS, a normal browser, etc.), that tap still wins immediately —
+// this is purely a safety net, not a replacement for the tap. Audio may
+// or may not unlock without a real tap, depending on that browser's own
+// autoplay policy, but the visuals (logo/QR/Top3/ticker) will always work.
+setTimeout(startOverlay, 2500);
 
 let musicPlaylist = [];
 let musicIndex = 0;
