@@ -678,7 +678,24 @@ async function tryLoadTodaysCalendar(){
 // shown by default) stays up, exactly as before.
 (async function autoLoadOnStartup(){
   const loadedFromIdea = await tryLoadActiveIdea();
-  if(!loadedFromIdea) await tryLoadTodaysCalendar();
+  if(!loadedFromIdea){
+    const loadedFromCalendar = await tryLoadTodaysCalendar();
+    // ---- Auto-start fallback: some mobile broadcasting apps (e.g. PRISM
+    // Live Studio's Web Widget) show this page as a display-only layer and
+    // never deliver the streamer's tap into it — if neither a Content Idea
+    // nor today's Calendar row loaded, this page would otherwise get stuck
+    // on the manual "Set Today's Battle" screen forever. So it starts
+    // itself automatically (using whatever is currently in the Left/Right
+    // name fields, even if that's still just the Messi/Ronaldo placeholder
+    // text) after a short delay regardless. If a real tap on "Start Live"
+    // DOES land first (OBS, a normal browser, etc.), that tap still wins
+    // immediately — this is purely a safety net, not a replacement for it.
+    if(!loadedFromCalendar){
+      setTimeout(() => {
+        if(document.getElementById('setupScreen').style.display !== 'none') startLive();
+      }, 4000);
+    }
+  }
 })();
 
 // ---- Guarantees Recent Supporters is ALWAYS fully visible, by directly
