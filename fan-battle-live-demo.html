@@ -36,7 +36,7 @@
     position:relative;
     overflow:hidden;
     background: radial-gradient(ellipse at 50% -10%, #1a2140 0%, var(--bg) 55%);
-    transform-origin: center center;
+    transform-origin: top center; /* top-anchored: scaling shrinks toward the bottom only, so the panel always sits flush against the screen's top edge instead of centering with empty space above it */
     box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
   .stadium-lines{
@@ -104,8 +104,11 @@
   .top3-rows{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; flex:1 1 auto; min-height:0; }
   .top3-row{ display:flex; flex-direction:column; align-items:center; gap:2px; padding:3px; border-radius:9px;
     border:1.5px solid var(--line); background:var(--bg); transition: box-shadow 300ms ease, border-color 300ms ease;
-    text-align:center; min-height:0; height:100%; }
-  .top3-row .top3-photo-wrap{ position:relative; width:100%; flex:1 1 auto; min-height:0; }
+    text-align:center; min-height:0; height:100%; overflow:hidden; }
+  /* overflow:hidden here is the hard safety net — whatever a donor's uploaded
+     photo's real shape/size is, it can never expand this box or push its
+     neighbors around; it's always cropped to exactly the space this row has. */
+  .top3-row .top3-photo-wrap{ position:relative; width:100%; flex:1 1 auto; min-height:0; overflow:hidden; }
   .top3-row .top3-rank{ position:absolute; top:2px; left:2px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:12px; color:var(--gold);
     line-height:1; background:rgba(11,15,25,0.8); padding:1px 5px; border-radius:5px; z-index:2; }
   .top3-row .top3-photo{ width:100%; height:100%; border-radius:8px; object-fit:cover; background:var(--bg-soft); display:block; }
