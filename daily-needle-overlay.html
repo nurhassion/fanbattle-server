@@ -258,6 +258,7 @@ function toggleMusicMute(){
 }
 
 let introVoiceUrls = [];
+let introVoiceRotationIndex = 0; // which clip plays next — advances by 1 each time, so multiple clips (e.g. one per language) genuinely alternate turn by turn with a full gap between each, rather than all playing back-to-back in one burst.
 let introVoiceIsPlaying = false;
 
 // ---- Load whichever Content Idea you marked "🔴 LIVE" for this channel ----
@@ -522,14 +523,12 @@ function playIntroVoiceOnce(onDone){
   const voice = document.getElementById('introVoice');
   introVoiceIsPlaying = true;
   duckAudioForAnnouncement();
-  let i = 0;
-  function playNext(){
-    if(i >= introVoiceUrls.length){ introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone(); return; }
-    voice.src = introVoiceUrls[i]; voice.volume = 1.0;
-    voice.play().catch(() => { i++; playNext(); });
-    voice.onended = function(){ i++; playNext(); };
-  }
-  playNext();
+  const clip = introVoiceUrls[introVoiceRotationIndex % introVoiceUrls.length];
+  introVoiceRotationIndex++;
+  function done(){ introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone(); }
+  voice.src = clip; voice.volume = 1.0;
+  voice.play().catch(done);
+  voice.onended = done;
 }
 function playTop3Announcement(onDone){
   const myGen = ambientGeneration;
