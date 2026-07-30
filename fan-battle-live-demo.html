@@ -469,6 +469,8 @@ document.getElementById('musicFile').addEventListener('change', function(e){
 });
 
 let introVoiceUrls = [];
+let introVoiceRotationIndex = 0; // which clip in introVoiceUrls plays next — advances by 1 each time, so multiple clips (e.g. one per language) genuinely alternate turn by turn, each with a full breathing gap in between, rather than all playing back-to-back in one burst.
+let voiceRepeatMs = 40000; // how long to wait before the NEXT single clip plays — actually wired to the streamer's "Repeat every (seconds)" field now (it used to be silently ignored and hardcoded).
 let introVoiceRepeatTimer = null;
 document.getElementById('introVoiceFile').addEventListener('change', function(e){
   introVoiceUrls.forEach(u => URL.revokeObjectURL(u));
@@ -578,7 +580,7 @@ function beginLiveWithData(cfg){
   // Calendar), so both paths keep working without breaking each other.
   if(cfg.introVoiceUrls && cfg.introVoiceUrls.length) introVoiceUrls = cfg.introVoiceUrls;
   else if(cfg.introVoiceUrl) introVoiceUrls = [cfg.introVoiceUrl];
-  if(cfg.voiceRepeatSeconds) document.getElementById('voiceRepeatSeconds').value = cfg.voiceRepeatSeconds;
+  if(cfg.voiceRepeatSeconds){ document.getElementById('voiceRepeatSeconds').value = cfg.voiceRepeatSeconds; voiceRepeatMs = Number(cfg.voiceRepeatSeconds) * 1000; }
   document.getElementById('setupScreen').style.display = 'none';
   startServerPolling();
   startAmbientScheduler();
@@ -839,17 +841,12 @@ function playIntroVoiceOnce(onDone){
   const voice = document.getElementById('introVoice');
   introVoiceIsPlaying = true;
   duckAudioForAnnouncement();
-  let i = 0;
-  function playNext(){
-    if(i >= introVoiceUrls.length){
-      introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone();
-      return;
-    }
-    voice.src = introVoiceUrls[i]; voice.volume = 1.0;
-    voice.play().catch(() => { i++; playNext(); }); // skip a clip that fails to play rather than getting stuck
-    voice.onended = function(){ i++; playNext(); };
-  }
-  playNext();
+  const clip = introVoiceUrls[introVoiceRotationIndex % introVoiceUrls.length];
+  introVoiceRotationIndex++;
+  function done(){ introVoiceIsPlaying = false; restoreAudioAfterAnnouncement(); onDone(); }
+  voice.src = clip; voice.volume = 1.0;
+  voice.play().catch(done); // if this one clip fails to play, just move on rather than getting stuck
+  voice.onended = done;
 }
 
 // Speaks all current Top-3 names one after another, lighting up each box
@@ -891,7 +888,7 @@ function checkAmbientSchedule(){
   const myGen = ambientGeneration;
   function finishIntro(){
     if(myGen !== ambientGeneration) return; // interrupted — a new schedule will be set by the interrupt handler
-    introDueAt = Date.now() + AMBIENT_GAP_MS + 40000;
+    introDueAt = Date.now() + AMBIENT_GAP_MS + voiceRepeatMs;
     ambientBusy = false;
   }
   function finishTop3(){
@@ -907,7 +904,7 @@ function checkAmbientSchedule(){
 
 function startAmbientScheduler(){
   const now = Date.now();
-  introDueAt = now + 40000;
+  introDueAt = now + voiceRepeatMs;
   top3DueAt = now + 90000;
   if(window.__ambientTicker) clearInterval(window.__ambientTicker);
   window.__ambientTicker = setInterval(checkAmbientSchedule, 1000);
