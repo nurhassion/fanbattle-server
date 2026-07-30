@@ -33,29 +33,24 @@ const NOTIFY_SETTINGS_FILE = path.join(__dirname, 'notify-settings.json');
 const SCHEDULED_EVENTS_FILE = path.join(__dirname, 'scheduled-events.json');
 
 // ====== Multi-channel config (Fan Battle Live / Zero to Trader / Daily Needle) ======
-// Each channel gets its OWN saved-ideas file, its own Google Drive backup
-// destination (so Render restarts never lose any channel's ideas), and its
-// own YouTube/Facebook links for the Go-Live wizard. Fan Battle Live and
-// Zero to Trader share the original Google account's backup webhook;
-// Daily Needle uses a separate, dedicated Google account/webhook (set up
-// specifically to avoid one account's storage/quota being shared across
-// everything).
+// Each channel gets its OWN saved-ideas file and its own YouTube/Facebook
+// links for the Go-Live wizard. Google Drive backup is split by DATA TYPE,
+// not by channel — see GSHEET_WEBHOOK_URL / GSHEET_WEBHOOK_URL_CH3 further
+// down: one dedicated account holds donation records + donor photos for
+// ALL three channels (kept for legal/record-keeping purposes), and the
+// other dedicated account holds Content Ideas for ALL three channels.
 const CHANNELS = {
   fanbattle: {
     label: 'Fan Battle Live',
     file: path.join(__dirname, 'scheduled-events-fanbattle.json'),
     youtubeUrl: 'https://www.youtube.com/@supportyourfavourite',
-    facebookUrl: 'https://www.facebook.com/share/18Av6gds4G/',
-    webhookUrl: () => GSHEET_WEBHOOK_URL,
-    secret: () => GSHEET_SECRET
+    facebookUrl: 'https://www.facebook.com/share/18Av6gds4G/'
   },
   zerototrader: {
     label: 'Zero to Trader',
     file: path.join(__dirname, 'scheduled-events-zerototrader.json'),
     youtubeUrl: 'https://www.youtube.com/@ZerotoTrader-y6k',
     facebookUrl: 'https://www.facebook.com/share/1YovxyeAcD/',
-    webhookUrl: () => GSHEET_WEBHOOK_URL,
-    secret: () => GSHEET_SECRET,
     // Facebook Live requires 100 followers + the Page being 60 days old —
     // rather than guessing this automatically, you flip this switch
     // yourself from the app once Facebook itself shows you're eligible.
@@ -66,9 +61,7 @@ const CHANNELS = {
     label: 'Daily Needle',
     file: path.join(__dirname, 'scheduled-events-dailyneedle.json'),
     youtubeUrl: 'https://www.youtube.com/@DailyNeedle',
-    facebookUrl: 'https://www.facebook.com/share/1D9aN6mMPv/',
-    webhookUrl: () => GSHEET_WEBHOOK_URL_CH3,
-    secret: () => GSHEET_SECRET_CH3
+    facebookUrl: 'https://www.facebook.com/share/1D9aN6mMPv/'
   }
 };
 function channelOrDefault(channel) { return CHANNELS[channel] ? channel : 'fanbattle'; }
@@ -170,36 +163,31 @@ async function backupToGoogleSheet(record) {
   } catch (e) { console.error('Could not back up record to Google Sheet:', e.message); }
 }
 
-// ====== Content Ideas — durable cross-device backup, per channel ======
+// ====== Content Ideas — durable cross-device backup, ALL channels share ======
+// ====== ONE dedicated Google account (kept separate from the donation- ======
+// ====== records account below on purpose — see the note by GSHEET_WEBHOOK_URL_CH3). ======
 // Render's free-tier disk can be wiped on restart/redeploy — so each
 // channel's local scheduled-events-*.json file alone is only a fast,
 // same-session cache, not the source of truth. Every save/delete is ALSO
-// pushed to that channel's own Google Drive (as a JSON text file, via its
-// Apps Script webhook) which survives any server restart AND is reachable
-// from any device — this is what makes ideas durable and "the same
-// everywhere", not tied to one laptop/phone's local storage. Fan Battle
-// Live and Zero to Trader share the original account's webhook; Daily
-// Needle uses its own separate one (see CHANNELS config above).
+// pushed to Drive (as a JSON text file per channel, via this account's Apps
+// Script webhook) which survives any server restart AND is reachable from
+// any device — this is what makes ideas durable and "the same everywhere".
 async function backupContentIdeasToSheet(events, channel) {
   const ch = channelOrDefault(channel);
-  const webhookUrl = CHANNELS[ch].webhookUrl();
-  const secret = CHANNELS[ch].secret();
-  if (!webhookUrl) return;
+  if (!GSHEET_WEBHOOK_URL_CH3) return;
   try {
-    await fetch(webhookUrl, {
+    await fetch(GSHEET_WEBHOOK_URL_CH3, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'content-ideas', ideas: events, secret })
+      body: JSON.stringify({ type: 'content-ideas', channel: ch, ideas: events, secret: GSHEET_SECRET_CH3 })
     });
   } catch (e) { console.error(`Could not back up content ideas to Google Drive (${ch}):`, e.message); }
 }
 async function fetchContentIdeasFromSheet(channel) {
   const ch = channelOrDefault(channel);
-  const webhookUrl = CHANNELS[ch].webhookUrl();
-  const secret = CHANNELS[ch].secret();
-  if (!webhookUrl) return null;
+  if (!GSHEET_WEBHOOK_URL_CH3) return null;
   try {
-    const res = await fetch(`${webhookUrl}?type=content-ideas&secret=${encodeURIComponent(secret)}`);
+    const res = await fetch(`${GSHEET_WEBHOOK_URL_CH3}?type=content-ideas&channel=${encodeURIComponent(ch)}&secret=${encodeURIComponent(GSHEET_SECRET_CH3)}`);
     const data = await res.json();
     return Array.isArray(data.ideas) ? data.ideas : null;
   } catch (e) { console.error(`Could not restore content ideas from Google Drive (${ch}):`, e.message); return null; }
@@ -212,8 +200,7 @@ async function restoreContentIdeasOnStartup() {
   for (const ch of Object.keys(CHANNELS)) {
     const local = loadScheduledEvents(ch);
     if (local.length > 0) continue; // this channel's local file already has data this boot — nothing to restore
-    const webhookUrl = CHANNELS[ch].webhookUrl();
-    if (!webhookUrl) { console.log(`ℹ️ No backup webhook configured for "${ch}" — its content ideas will only persist for this server session.`); continue; }
+    if (!GSHEET_WEBHOOK_URL_CH3) { console.log(`ℹ️ No content-ideas backup webhook configured — "${ch}"'s content ideas will only persist for this server session.`); continue; }
     const restored = await fetchContentIdeasFromSheet(ch);
     if (restored && restored.length > 0) {
       saveScheduledEvents(restored, ch);
