@@ -345,8 +345,6 @@ const AUTH_TOKEN = process.env.IM_AUTH_TOKEN || 'PASTE_YOUR_PRIVATE_AUTH_TOKEN_H
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://fanbattle-server-yqo5.onrender.com';
 const STREAM_BACK_URL = process.env.STREAM_BACK_URL || ''; // e.g. your YouTube Live URL, for the ✕ skip button
 const POLL_INTERVAL_MS = 5000;
-let seenPaymentIds = new Set();
-let isFirstRun = true;
 
 async function fetchInstamojoPayment(paymentId) {
   const res = await fetch(`https://www.instamojo.com/api/1.1/payments/${paymentId}/`, {
@@ -389,16 +387,19 @@ async function fetchRecentPayments() {
     if (!data.success) { console.error('Instamojo API error:', data.message || data); return; }
     const payments = data.payments || [];
 
-    if (isFirstRun) {
-      console.log(`Startup check: found ${payments.length} Instamojo payment(s) on this account.`);
-      payments.forEach(p => seenPaymentIds.add(p.payment_id));
-      isFirstRun = false;
-      return;
-    }
+    // Check against what's actually SAVED TO DISK, not an in-memory "seen"
+    // set — an in-memory set resets to empty every time this free-tier
+    // server restarts (which Render does often, after ~15 min idle), and
+    // the OLD version of this code treated that empty reset as "nothing's
+    // been recorded before, so silently mark everything that currently
+    // exists as already-seen" — which meant any payment made shortly before
+    // a restart was silently swallowed forever. Checking the persisted
+    // records file instead means a restart can never cause a real payment
+    // to be skipped.
+    const alreadyRecordedIds = new Set(loadRecords().map(r => r.id));
 
     for (const p of payments) {
-      if (p.status === 'Credit' && !seenPaymentIds.has(p.payment_id)) {
-        seenPaymentIds.add(p.payment_id);
+      if (p.status === 'Credit' && !alreadyRecordedIds.has(p.payment_id)) {
         const purposeRaw = p.purpose || '';
         let side = parseSideFromPurpose(purposeRaw);
         if (!side && p.payment_request) side = await resolveSideFromPaymentRequest(p.payment_request);
@@ -1547,7 +1548,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
         <img id="schRightPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
       </div>
 
-      <label class="f-label" style="margin-top:16px;">🎙️ Voice commentary (pick multiple — e.g. one per language, played back-to-back each cycle)</label>
+      <label class="f-label" style="margin-top:16px;">🎙️ Voice commentary (pick multiple — e.g. one per language — they take turns, with a full gap between each one)</label>
       <input type="file" id="schIntroVoice" accept="audio/*" multiple>
       <div id="schIntroVoiceList" style="font-size:11.5px; color:var(--dim); margin-top:6px;"></div>
       <label class="f-label">Repeat every (seconds)</label>
