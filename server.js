@@ -330,8 +330,25 @@ function isCurrentlyTopThree(name) {
 const API_KEY = process.env.IM_API_KEY || 'PASTE_YOUR_PRIVATE_API_KEY_HERE';
 const AUTH_TOKEN = process.env.IM_AUTH_TOKEN || 'PASTE_YOUR_PRIVATE_AUTH_TOKEN_HERE';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://fanbattle-server-yqo5.onrender.com';
-const STREAM_BACK_URL = process.env.STREAM_BACK_URL || ''; // e.g. your YouTube Live URL, for the ✕ skip button
+const STREAM_BACK_URL = process.env.STREAM_BACK_URL || ''; // fallback only — used if a channel has no youtubeUrl configured at all
 const POLL_INTERVAL_MS = 5000;
+
+// ====== Per-channel "back to stream" link ======
+// Every donor must land back on THEIR OWN channel's live page — not a
+// single shared STREAM_BACK_URL for all three channels. Each channel
+// already has its own youtubeUrl in CHANNELS (used by the Go-Live wizard);
+// this reuses that same link. YouTube channel handles don't have one fixed
+// "currently live" URL, so we send the donor to that channel's /live
+// shortcut, which YouTube itself always redirects to whatever is live
+// right now — this works automatically without updating anything each
+// time you go live. Falls back to STREAM_BACK_URL only if a channel is
+// somehow missing a youtubeUrl entirely.
+function streamBackUrlFor(side) {
+  const channel = sideToChannel(side);
+  const base = (CHANNELS[channel] && CHANNELS[channel].youtubeUrl) || STREAM_BACK_URL;
+  if (!base) return '';
+  return base.replace(/\/+$/, '') + '/live';
+}
 
 async function fetchInstamojoPayment(paymentId) {
   const res = await fetch(`https://www.instamojo.com/api/1.1/payments/${paymentId}/`, {
@@ -662,7 +679,7 @@ function paypalPageHtml(side, teamName) {
     #photoSection img{max-width:120px; border-radius:12px; margin-top:8px;}
     .skipBtn{position:fixed; top:14px; right:14px; background:#222; color:#fff; border:none; border-radius:50%; width:34px; height:34px; font-size:18px; cursor:pointer;}
   </style></head><body>
-    ${STREAM_BACK_URL ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
+    ${streamBackUrlFor(side) ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a voluntary show of support, no goods or services are exchanged.</p>
     <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
@@ -686,7 +703,7 @@ function paypalPageHtml(side, teamName) {
       <input type="file" id="photoInput" accept="image/*">
       <div id="photoPreviewWrap"><img id="photoPreview" style="display:none;"></div>
       <br><button onclick="uploadPhoto()"><span id="addPhotoText">Add my photo</span></button>
-      ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
+      ${streamBackUrlFor(side) ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
     </div>
     <script>
       let donorName = '';
@@ -722,7 +739,7 @@ function paypalPageHtml(side, teamName) {
             body: JSON.stringify({ celebrationId })
           }).catch(()=>{});
         }
-        ${STREAM_BACK_URL ? `window.location.href = '${STREAM_BACK_URL}';` : ''}
+        ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''}
       }
       function skipToStream(){ confirmReturnAndGo(); }
       // Catches the phone's back button/swipe, or the tab/browser being
@@ -789,7 +806,7 @@ function paypalPageHtml(side, teamName) {
         fetch('/donor-photo', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ name: donorName, photoDataUrl: img.src, celebrationId })
-        }).finally(() => { ${STREAM_BACK_URL ? `window.location.href = '${STREAM_BACK_URL}';` : ''} });
+        }).finally(() => { ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''} });
       }
     </script>
   </body></html>`;
@@ -825,14 +842,14 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
     .skipBtn{position:fixed; top:14px; right:14px; background:#222; color:#fff; border:none; border-radius:50%; width:34px; height:34px; font-size:18px; cursor:pointer;}
     .lang-note{ font-size:11px; color:#555; margin-top:2px; }
   </style></head><body>
-    ${STREAM_BACK_URL ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
+    ${streamBackUrlFor(side) ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2 id="thankYouHeading">🎉 Thank you, ${name || 'friend'}!</h2>
     <p id="tipReceivedText">${amount ? `Your ${currency || '₹'} ${amount} tip has been received.` : 'Your support has been received.'}</p>
     <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">This is completely optional — skip if you'd rather not.</span></p>
     <div><input type="file" id="photoInput" accept="image/*"></div>
     <img id="photoPreview" style="display:none;">
     <br><button onclick="uploadPhoto()"><span id="addPhotoText">Add my photo</span></button>
-    ${STREAM_BACK_URL ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
+    ${streamBackUrlFor(side) ? `<br><br><a href="javascript:void(0)" onclick="skipToStream()" style="color:#8B93A7;"><span id="skipText">Skip — back to stream</span></a>` : ''}
     <div id="doneMsg"></div>
     <script>
       const donorName = ${JSON.stringify(name || 'Anonymous')};
@@ -869,7 +886,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
             body: JSON.stringify({ celebrationId })
           }).catch(()=>{});
         }
-        ${STREAM_BACK_URL ? `window.location.href = '${STREAM_BACK_URL}';` : ''}
+        ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''}
       }
       function skipToStream(){ confirmReturnAndGo(); }
       // Catches the phone's back button/swipe, or the tab/browser being
@@ -893,7 +910,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
         fetch('/donor-photo', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ name: donorName, photoDataUrl: img.src, celebrationId })
-        }).finally(() => { ${STREAM_BACK_URL ? `window.location.href = '${STREAM_BACK_URL}';` : ''} });
+        }).finally(() => { ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''} });
       }
     </script>
   </body></html>`;
