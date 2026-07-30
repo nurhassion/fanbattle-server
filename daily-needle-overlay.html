@@ -30,7 +30,7 @@
   #stageFrame{
     width:480px; height:853px; position:relative; overflow:hidden;
     background: transparent;
-    transform-origin: center center;
+    transform-origin: top center; /* top-anchored: scaling shrinks toward the bottom only, so the panel always sits flush against the screen's top edge instead of centering with empty space above it */
   }
   .wrap{ position:relative; z-index:1; height:100%; display:flex; flex-direction:column; }
 
@@ -64,10 +64,15 @@
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:4px; text-align:center; }
   .top3-rows{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; }
   .top3-row{ display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px; border-radius:9px; border:1.5px solid var(--line); background:var(--bg); text-align:center; transition: box-shadow 300ms ease, border-color 300ms ease; }
-  .top3-row .top3-photo-wrap{ position:relative; width:100%; aspect-ratio:1; }
+  /* padding-top:100% forces a perfect square from the box's OWN width, in
+     every browser (unlike aspect-ratio, which some in-app/webview browsers
+     silently ignore) — the box's size never depends on the photo at all.
+     overflow:hidden is the safety net: whatever the photo's real shape is,
+     it can never poke outside this fixed square. */
+  .top3-row .top3-photo-wrap{ position:relative; width:100%; padding-top:100%; overflow:hidden; }
   .top3-row .top3-rank{ position:absolute; top:2px; left:2px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:11px; color:var(--accent); line-height:1; background:rgba(11,15,25,0.85); padding:1px 5px; border-radius:5px; z-index:2; }
-  .top3-row .top3-photo{ width:100%; height:100%; border-radius:8px; object-fit:cover; background:var(--bg-soft); display:block; }
-  .top3-row .top3-placeholder{ width:100%; height:100%; border-radius:8px; background:var(--bg-soft); display:flex; align-items:center; justify-content:center; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:22px; color:var(--dim); }
+  .top3-row .top3-photo{ position:absolute; inset:0; width:100%; height:100%; border-radius:8px; object-fit:cover; background:var(--bg-soft); display:block; }
+  .top3-row .top3-placeholder{ position:absolute; inset:0; width:100%; height:100%; border-radius:8px; background:var(--bg-soft); display:flex; align-items:center; justify-content:center; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:22px; color:var(--dim); }
   .top3-row .top3-name{ font-size:11px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .top3-row .top3-amt{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; color:var(--accent); line-height:1; }
   .top3-row.highlight{ border-color:var(--accent); box-shadow:0 0 16px rgba(255,197,61,0.7); }
