@@ -1578,7 +1578,8 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <div class="section-title" style="margin-top:20px;">🛍️ Affiliate marketing (optional — up to 20 products per platform)</div>
       <div id="affPlatformsWrap"></div>
 
-      <button class="btn-primary" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
+      <button class="btn-primary" id="submitScheduleBtn" style="width:100%; margin-top:16px; padding:13px;" onclick="submitSchedule()">Save idea</button>
+      <button class="btn-secondary" id="cancelEditBtn" style="width:100%; margin-top:8px; padding:11px; display:none;" onclick="cancelEditIdea()">Cancel edit</button>
       <div id="scheduleStatus" style="margin-top:14px; font-size:13px;"></div>
     </div>
 
@@ -1721,6 +1722,8 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     fetch('/gateway-settings/remove-gateway?id=' + encodeURIComponent(id), { method:'DELETE' }).then(loadData);
   }
 
+  let editingIdeaId = null; // null = "Save idea" creates a new one; set = "Update idea" edits this existing idea
+  let lastLoadedIdeas = []; // cached from the last loadIdeas() call, so Edit doesn't need a second fetch
   let schThumbDataUrl = null, schLeftPhotoDataUrl = null, schRightPhotoDataUrl = null;
   function setupPhotoPreview(inputId, previewId, setter){
     document.getElementById(inputId).addEventListener('change', function(e){
@@ -1888,7 +1891,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     document.getElementById('schLeftPhotoLabel').textContent = isSingleTotalChannel ? '🖼️ Channel logo' : '🔵 Left side photo';
     document.getElementById('schLeftName').placeholder = isSingleTotalChannel ? 'e.g. Daily Needle' : 'Left side name';
     if(channel === 'zerototrader') loadZttFbEligibility();
-    resetAffiliateProducts();
+    cancelEditIdea(); // also resets affiliate products — switching channels mid-edit would otherwise save to the wrong channel
     loadIdeas();
   }
 
@@ -1906,36 +1909,116 @@ app.get('/app', requireDashboardAuth, (req, res) => {
 
     if(!title){ statusEl.innerHTML = '<span style="color:var(--right);">Please enter a title.</span>'; return; }
 
-    statusEl.textContent = 'Saving...';
-    fetch('/schedule/' + currentScheduleChannel + '/create', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+    const isEditing = !!editingIdeaId;
+    const url = isEditing ? ('/schedule/' + currentScheduleChannel + '/' + editingIdeaId) : ('/schedule/' + currentScheduleChannel + '/create');
+    const method = isEditing ? 'PUT' : 'POST';
+
+    statusEl.textContent = isEditing ? 'Updating...' : 'Saving...';
+    fetch(url, {
+      method, headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ title, description, hashtags, thumbnailDataUrl: schThumbDataUrl, leftName, rightName, leftPhotoDataUrl: schLeftPhotoDataUrl, rightPhotoDataUrl: schRightPhotoDataUrl, introVoiceDataUrls: schIntroVoiceUrls, voiceRepeatSeconds, musicDataUrls: schMusicUrls, leftVideoUrls, rightVideoUrls, startingLossAmount, affiliateProducts: affProducts })
     }).then(r => r.json()).then(d => {
       if(!d.ok){ statusEl.innerHTML = '<span style="color:var(--right);">' + (d.error || 'Something went wrong.') + '</span>'; return; }
-      statusEl.innerHTML = '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
-      document.getElementById('schTitle').value = '';
-      document.getElementById('schDescription').value = '';
-      document.getElementById('schHashtags').value = '';
-      document.getElementById('schLeftName').value = '';
-      document.getElementById('schRightName').value = '';
-      document.getElementById('schLeftVideoLinks').value = '';
-      document.getElementById('schRightVideoLinks').value = '';
-      document.getElementById('schStartingLoss').value = '';
-      ['schThumbnail','schLeftPhoto','schRightPhoto','schIntroVoice','schMusic'].forEach(id => document.getElementById(id).value = '');
-      ['schThumbPreview','schLeftPhotoPreview','schRightPhotoPreview'].forEach(id => document.getElementById(id).style.display = 'none');
-      document.getElementById('schIntroVoiceList').textContent = '';
-      document.getElementById('schMusicList').textContent = '';
-      schThumbDataUrl = schLeftPhotoDataUrl = schRightPhotoDataUrl = null;
-      schIntroVoiceUrls = []; schMusicUrls = [];
-      resetAffiliateProducts();
+      statusEl.innerHTML = isEditing ? '<span style="color:var(--green);">✅ Idea updated.</span>' : '<span style="color:var(--green);">✅ Idea saved — find it in the list below anytime.</span>';
+      cancelEditIdea(); // clears editingIdeaId, resets button label, clears the form
       loadIdeas();
     }).catch(() => { statusEl.innerHTML = '<span style="color:var(--right);">Network error — try again.</span>'; });
+  }
+
+  // ====== Cancel edit mode / reset the form back to "new idea" state ======
+  // Shared by: pressing "Cancel edit", and automatically after a successful
+  // save or update, and when switching channels mid-edit.
+  function cancelEditIdea(){
+    editingIdeaId = null;
+    document.getElementById('submitScheduleBtn').textContent = 'Save idea';
+    document.getElementById('cancelEditBtn').style.display = 'none';
+    document.getElementById('schTitle').value = '';
+    document.getElementById('schDescription').value = '';
+    document.getElementById('schHashtags').value = '';
+    document.getElementById('schLeftName').value = '';
+    document.getElementById('schRightName').value = '';
+    document.getElementById('schLeftVideoLinks').value = '';
+    document.getElementById('schRightVideoLinks').value = '';
+    document.getElementById('schStartingLoss').value = '';
+    ['schThumbnail','schLeftPhoto','schRightPhoto','schIntroVoice','schMusic'].forEach(id => document.getElementById(id).value = '');
+    ['schThumbPreview','schLeftPhotoPreview','schRightPhotoPreview'].forEach(id => document.getElementById(id).style.display = 'none');
+    document.getElementById('schIntroVoiceList').textContent = '';
+    document.getElementById('schMusicList').textContent = '';
+    schThumbDataUrl = schLeftPhotoDataUrl = schRightPhotoDataUrl = null;
+    schIntroVoiceUrls = []; schMusicUrls = [];
+    resetAffiliateProducts();
+  }
+
+  // ====== Load a saved idea's full data into the form for editing ======
+  // Every field — title, both sides, media, affiliate links — gets filled
+  // in exactly as saved. Pressing "Update idea" afterwards (submitSchedule,
+  // in edit mode) saves changes back onto this SAME idea — nothing is
+  // duplicated, and its id/createdAt/live-status are untouched.
+  function editIdea(id){
+    const idea = lastLoadedIdeas.find(i => i.id === id);
+    if(!idea) return;
+    editingIdeaId = id;
+    document.getElementById('submitScheduleBtn').textContent = 'Update idea';
+    document.getElementById('cancelEditBtn').style.display = 'block';
+
+    document.getElementById('schTitle').value = idea.title || '';
+    // The saved idea's description has its hashtags appended at the very
+    // end (that's how Go Live's description box gets everything in one
+    // place) — strip that exact suffix back off here so re-editing doesn't
+    // end up with the hashtags duplicated once saved again.
+    let baseDescription = idea.description || '';
+    if(idea.hashtags && baseDescription.endsWith('\n\n' + idea.hashtags)){
+      baseDescription = baseDescription.slice(0, -('\n\n' + idea.hashtags).length);
+    }
+    document.getElementById('schDescription').value = baseDescription;
+    document.getElementById('schHashtags').value = idea.hashtags || '';
+    document.getElementById('schLeftName').value = idea.leftName || '';
+    document.getElementById('schRightName').value = idea.rightName || '';
+    document.getElementById('schVoiceRepeat').value = idea.voiceRepeatSeconds || 40;
+    document.getElementById('schLeftVideoLinks').value = (idea.leftVideoUrls || []).join('\n');
+    document.getElementById('schRightVideoLinks').value = (idea.rightVideoUrls || []).join('\n');
+    document.getElementById('schStartingLoss').value = idea.startingLossAmount != null ? idea.startingLossAmount : '';
+
+    schThumbDataUrl = idea.thumbnailDataUrl || null;
+    schLeftPhotoDataUrl = idea.leftPhotoDataUrl || null;
+    schRightPhotoDataUrl = idea.rightPhotoDataUrl || null;
+    const setPreviewIfAny = (previewId, dataUrl) => {
+      const img = document.getElementById(previewId);
+      if(dataUrl){ img.src = dataUrl; img.style.display = 'block'; } else { img.style.display = 'none'; }
+    };
+    setPreviewIfAny('schThumbPreview', schThumbDataUrl);
+    setPreviewIfAny('schLeftPhotoPreview', schLeftPhotoDataUrl);
+    setPreviewIfAny('schRightPhotoPreview', schRightPhotoDataUrl);
+
+    schIntroVoiceUrls = idea.introVoiceDataUrls || [];
+    schMusicUrls = idea.musicDataUrls || [];
+    document.getElementById('schIntroVoiceList').textContent = schIntroVoiceUrls.length ? (schIntroVoiceUrls.length + ' voice clip(s) already saved — pick new files to replace them') : '';
+    document.getElementById('schMusicList').textContent = schMusicUrls.length ? (schMusicUrls.length + ' music track(s) already saved — pick new files to replace them') : '';
+
+    affProducts = idea.affiliateProducts ? JSON.parse(JSON.stringify(idea.affiliateProducts)) : { amazon: [], flipkart: [], meesho: [], myntra: [] };
+    renderAffiliatePanel();
+
+    document.getElementById('scheduleStatus').innerHTML = '<span style="color:var(--gold);">✏️ Editing "' + idea.title + '" — change what you need, then press Update idea.</span>';
+    document.querySelector('.section-title[style*="margin-top:22px"]').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ====== Duplicate a saved idea ======
+  // One click makes an exact copy (new id, "(Copy)" added to the title) —
+  // affiliate links, teams, videos, everything carries over. Open the copy
+  // with Edit afterwards to change only the topic/teams/videos.
+  function duplicateIdea(id){
+    fetch('/schedule/' + currentScheduleChannel + '/' + id + '/duplicate', { method: 'POST' })
+      .then(r => r.json()).then(d => {
+        if(!d.ok){ alert(d.error || 'Could not duplicate this idea.'); return; }
+        loadIdeas();
+      }).catch(() => alert('Network error — try again.'));
   }
 
   async function loadIdeas(){
     try {
       const res = await fetch('/api/content-ideas/' + currentScheduleChannel);
       const d = await res.json();
+      lastLoadedIdeas = d.ideas; // cached so editIdea() can populate the form without a second fetch
       document.getElementById('ideaCount').textContent = d.ideas.length;
       const listEl = document.getElementById('ideasList');
       listEl.innerHTML = d.ideas.length ? d.ideas.map(idea =>
@@ -1959,7 +2042,11 @@ app.get('/app', requireDashboardAuth, (req, res) => {
           '<div style="display:flex; gap:8px; margin-top:10px;">' +
             '<a href="' + idea.goLiveUrl + (idea.preset ? '?preset=' + idea.preset : '') + '" target="_blank" class="btn-primary" style="flex:1; text-align:center; text-decoration:none; padding:11px;" onclick="markLive(\\'' + idea.id + '\\')">▶ Go Live</a>' +
             (idea.isLive ? '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="endLive()">End Live</button>' : '') +
-            '<button class="btn-secondary" style="flex:0 0 auto; padding:11px 16px;" onclick="deleteIdea(\\'' + idea.id + '\\')">Delete</button>' +
+          '</div>' +
+          '<div style="display:flex; gap:8px; margin-top:8px;">' +
+            '<button class="btn-secondary" style="flex:1; padding:10px;" onclick="editIdea(\\'' + idea.id + '\\')">✏️ Edit</button>' +
+            '<button class="btn-secondary" style="flex:1; padding:10px;" onclick="duplicateIdea(\\'' + idea.id + '\\')">📋 Copy</button>' +
+            '<button class="btn-secondary" style="flex:0 0 auto; padding:10px 16px;" onclick="deleteIdea(\\'' + idea.id + '\\')">Delete</button>' +
           '</div>' +
         '</div>'
       ).join('') : '<div class="empty">No saved ideas yet — add one above.</div>';
@@ -2216,6 +2303,70 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 // it walks you through YouTube then Facebook, one tap each, entirely on your
 // own schedule. Nothing here calls the YouTube or Facebook API at all, so
 // there's no OAuth/billing/App-Review dependency of any kind.
+// ====== Shared field-sanitizing logic for content ideas ======
+// Used by CREATE, EDIT (PUT), and DUPLICATE — one place defines what a
+// valid saved idea looks like, so all three stay in sync automatically.
+const AFFILIATE_PLATFORMS = ['amazon', 'flipkart', 'meesho', 'myntra'];
+function sanitizeAffiliateProducts(raw) {
+  const out = {};
+  for (const platform of AFFILIATE_PLATFORMS) {
+    const list = (raw && Array.isArray(raw[platform])) ? raw[platform] : [];
+    out[platform] = list
+      .filter(p => p && p.link && p.link.trim())
+      .slice(0, 20)
+      .map(p => ({
+        link: p.link.trim(),
+        originalPrice: p.originalPrice != null ? String(p.originalPrice).trim() : '',
+        discountedPrice: p.discountedPrice != null ? String(p.discountedPrice).trim() : '',
+        imageDataUrl: p.imageDataUrl || null
+      }));
+  }
+  return out;
+}
+// Video LINKS only (not uploaded files) — this is the safe way to include
+// several clips per side without risking the server's memory/disk, since
+// we're just storing short text URLs, never the video data itself.
+const parseVideoLinks = (raw) => (raw || '')
+  .split(/[\n,]+/).map(u => u.trim()).filter(Boolean).slice(0, 10);
+
+function buildIdeaFieldsFromBody(body) {
+  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls, startingLossAmount, affiliateProducts } = body;
+  if (!title || !title.trim()) return { error: 'Title is required.' };
+
+  const hashtagLine = (hashtags || '')
+    .split(',').map(h => h.trim()).filter(Boolean)
+    .map(h => h.startsWith('#') ? h : '#' + h).join(' ');
+  const fullDescription = hashtagLine ? `${description || ''}\n\n${hashtagLine}` : (description || '');
+
+  return {
+    fields: {
+      title, description: fullDescription, hashtags: hashtagLine,
+      thumbnailDataUrl: thumbnailDataUrl || null,
+      leftName: leftName || '', rightName: rightName || '',
+      leftPhotoDataUrl: leftPhotoDataUrl || null, rightPhotoDataUrl: rightPhotoDataUrl || null,
+      // Multiple intro-voice clips (e.g. one per language) played back-to-back
+      // every repeat cycle — same idea as the AI-generated bilingual clip
+      // discussed earlier, just via separate uploaded files instead.
+      introVoiceDataUrls: Array.isArray(introVoiceDataUrls) ? introVoiceDataUrls.slice(0, 5) : [],
+      voiceRepeatSeconds: Number(voiceRepeatSeconds) || 40,
+      // Multiple background music tracks — played as a playlist, looping
+      // through all of them instead of just one repeating track.
+      musicDataUrls: Array.isArray(musicDataUrls) ? musicDataUrls.slice(0, 5) : [],
+      // Up to 10 video LINKS per side (e.g. Streamable links) — rotates
+      // through them just like the overlay's own manual video upload already did.
+      leftVideoUrls: parseVideoLinks(leftVideoUrls),
+      rightVideoUrls: parseVideoLinks(rightVideoUrls),
+      // Zero to Trader only: the "loss" figure you set by hand, which then
+      // counts DOWN live on the overlay as tips come in (see /api/active-idea/:channel).
+      startingLossAmount: startingLossAmount != null && startingLossAmount !== '' ? Number(startingLossAmount) : null,
+      // Affiliate marketing products, up to 20 per platform (Amazon/Flipkart/
+      // Meesho/Myntra) — see /api/active-idea/:channel for how the overlay
+      // consumes these.
+      affiliateProducts: sanitizeAffiliateProducts(affiliateProducts)
+    }
+  };
+}
+
 const MAX_CONTENT_IDEAS = 20;
 
 // ====== Per-channel "which idea is live" + Zero to Trader's manual  ======
@@ -2231,80 +2382,75 @@ function setActiveIdeaId(gw, channel, id) {
 
 app.post('/schedule/:channel/create', requireDashboardAuth, async (req, res) => {
   const channel = channelOrDefault(req.params.channel);
-  const { title, description, hashtags, thumbnailDataUrl, leftName, rightName, leftPhotoDataUrl, rightPhotoDataUrl, introVoiceDataUrls, voiceRepeatSeconds, musicDataUrls, leftVideoUrls, rightVideoUrls, startingLossAmount, affiliateProducts } = req.body;
-  if (!title || !title.trim()) return res.status(400).json({ ok: false, error: 'Title is required.' });
-
-  const hashtagLine = (hashtags || '')
-    .split(',').map(h => h.trim()).filter(Boolean)
-    .map(h => h.startsWith('#') ? h : '#' + h).join(' ');
-  const fullDescription = hashtagLine ? `${description || ''}\n\n${hashtagLine}` : (description || '');
-
-  // Video LINKS only (not uploaded files) — this is the safe way to include
-  // several clips per side without risking the server's memory/disk, since
-  // we're just storing short text URLs, never the video data itself.
-  const parseVideoLinks = (raw) => (raw || '')
-    .split(/[\n,]+/).map(u => u.trim()).filter(Boolean).slice(0, 10);
-
-  // ====== Affiliate marketing products — up to 20 per platform, 4 platforms ======
-  // Each product is { link, originalPrice, discountedPrice, imageDataUrl } —
-  // both prices are OPTIONAL and only shown/percentage-calculated on the
-  // overlay if both are present and the discount is real (never a fabricated
-  // "% off" — see the honesty discussion this was designed around). The
-  // overlay generates its OWN QR code from `link` at render time (never a
-  // clickable video overlay, since livestream video can never be clickable).
-  const AFFILIATE_PLATFORMS = ['amazon', 'flipkart', 'meesho', 'myntra'];
-  function sanitizeAffiliateProducts(raw) {
-    const out = {};
-    for (const platform of AFFILIATE_PLATFORMS) {
-      const list = (raw && Array.isArray(raw[platform])) ? raw[platform] : [];
-      out[platform] = list
-        .filter(p => p && p.link && p.link.trim())
-        .slice(0, 20)
-        .map(p => ({
-          link: p.link.trim(),
-          originalPrice: p.originalPrice != null ? String(p.originalPrice).trim() : '',
-          discountedPrice: p.discountedPrice != null ? String(p.discountedPrice).trim() : '',
-          imageDataUrl: p.imageDataUrl || null
-        }));
-    }
-    return out;
-  }
+  const built = buildIdeaFieldsFromBody(req.body);
+  if (built.error) return res.status(400).json({ ok: false, error: built.error });
 
   const events = loadScheduledEvents(channel);
   if (events.length >= MAX_CONTENT_IDEAS) {
     return res.status(400).json({ ok: false, error: `You already have ${MAX_CONTENT_IDEAS} saved ideas — delete one first from the list below.` });
   }
   const eventId = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-  events.push({
-    id: eventId, title, description: fullDescription, hashtags: hashtagLine,
-    thumbnailDataUrl: thumbnailDataUrl || null,
-    leftName: leftName || '', rightName: rightName || '',
-    leftPhotoDataUrl: leftPhotoDataUrl || null, rightPhotoDataUrl: rightPhotoDataUrl || null,
-    // Multiple intro-voice clips (e.g. one per language) played back-to-back
-    // every repeat cycle — same idea as the AI-generated bilingual clip
-    // discussed earlier, just via separate uploaded files instead.
-    introVoiceDataUrls: Array.isArray(introVoiceDataUrls) ? introVoiceDataUrls.slice(0, 5) : [],
-    voiceRepeatSeconds: Number(voiceRepeatSeconds) || 40,
-    // Multiple background music tracks — played as a playlist, looping
-    // through all of them instead of just one repeating track.
-    musicDataUrls: Array.isArray(musicDataUrls) ? musicDataUrls.slice(0, 5) : [],
-    // Up to 10 video LINKS per side (e.g. Streamable links) — rotates
-    // through them just like the overlay's own manual video upload already did.
-    leftVideoUrls: parseVideoLinks(leftVideoUrls),
-    rightVideoUrls: parseVideoLinks(rightVideoUrls),
-    // Zero to Trader only: the "loss" figure you set by hand, which then
-    // counts DOWN live on the overlay as tips come in (see /api/active-idea/:channel).
-    startingLossAmount: startingLossAmount != null && startingLossAmount !== '' ? Number(startingLossAmount) : null,
-    // Affiliate marketing products, up to 20 per platform (Amazon/Flipkart/
-    // Meesho/Myntra) — see /api/active-idea/:channel for how the overlay
-    // consumes these.
-    affiliateProducts: sanitizeAffiliateProducts(affiliateProducts),
-    createdAt: new Date().toISOString()
-  });
+  events.push({ id: eventId, ...built.fields, createdAt: new Date().toISOString() });
   saveScheduledEvents(events, channel);
   backupContentIdeasToSheet(events, channel); // fire-and-forget durable cross-device backup
 
   res.json({ ok: true, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${channel}/${eventId}` });
+});
+
+// ====== Edit an existing saved idea in place ======
+// Same id, same createdAt, same "live"/preset state — only the content
+// fields (title, description, sides, media, affiliate links, etc.) change.
+// This is what lets you duplicate an idea once (see /duplicate below) and
+// then tweak just the topic/teams/videos on the copy, without re-typing
+// every affiliate link from scratch.
+app.put('/schedule/:channel/:id', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
+  const built = buildIdeaFieldsFromBody(req.body);
+  if (built.error) return res.status(400).json({ ok: false, error: built.error });
+
+  const events = loadScheduledEvents(channel);
+  const idx = events.findIndex(e => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ ok: false, error: 'Idea not found — it may have been deleted.' });
+
+  // Preserve id, createdAt, preset, and any other bookkeeping fields already
+  // on the saved idea — only the content fields from the form are replaced.
+  events[idx] = { ...events[idx], ...built.fields, updatedAt: new Date().toISOString() };
+  saveScheduledEvents(events, channel);
+  backupContentIdeasToSheet(events, channel);
+
+  res.json({ ok: true, goLiveUrl: `${PUBLIC_BASE_URL}/go-live/${channel}/${req.params.id}` });
+});
+
+// ====== Duplicate a saved idea ======
+// Makes an exact copy (new id, "(Copy)" appended to the title so it's easy
+// to tell apart in the list) — everything including affiliate links, teams,
+// videos, voice/music carries over untouched. From there, open the copy in
+// Edit and change only what's different (new topic, new team names, new
+// video clips) — the affiliate links never need re-entering.
+app.post('/schedule/:channel/:id/duplicate', requireDashboardAuth, (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
+  const events = loadScheduledEvents(channel);
+  const original = events.find(e => e.id === req.params.id);
+  if (!original) return res.status(404).json({ ok: false, error: 'Idea not found — it may have been deleted.' });
+  if (events.length >= MAX_CONTENT_IDEAS) {
+    return res.status(400).json({ ok: false, error: `You already have ${MAX_CONTENT_IDEAS} saved ideas — delete one first before duplicating.` });
+  }
+
+  const newId = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  // Deep clone via JSON round-trip — safe here since every field on a saved
+  // idea is plain JSON-serializable data (strings, numbers, arrays, and
+  // base64 data-URLs), never functions or other non-serializable values.
+  const copy = JSON.parse(JSON.stringify(original));
+  copy.id = newId;
+  copy.title = /\(Copy\)\s*$/.test(copy.title) ? copy.title : `${copy.title} (Copy)`;
+  copy.createdAt = new Date().toISOString();
+  delete copy.updatedAt;
+  delete copy.preset; // start the copy on the default theme, not forced to match the original
+  events.push(copy);
+  saveScheduledEvents(events, channel);
+  backupContentIdeasToSheet(events, channel);
+
+  res.json({ ok: true, id: newId });
 });
 
 app.delete('/schedule/:channel/:id', requireDashboardAuth, (req, res) => {
