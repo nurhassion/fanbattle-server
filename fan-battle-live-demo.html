@@ -229,16 +229,14 @@
   .setup-photo-btn{ flex:1; background:var(--bg); border:1px solid var(--line); color:var(--white); padding:10px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-align:left; }
   .setup-photo-btn:hover{ border-color:var(--gold); }
   .panel-outside{ width:100%; max-width:480px; margin:16px auto 40px; padding:0 16px; }
-  .affiliate-spotlight{ position:absolute; right:14px; bottom:14px; width:150px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:14px; padding:10px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; }
+  .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:100px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:11px; padding:7px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; }
   .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
-  .affiliate-spotlight img.aff-product-img{ width:100%; height:110px; object-fit:cover; border-radius:8px; background:var(--bg); display:block; }
-  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:20px; color:var(--gold); margin-top:6px; }
-  .affiliate-spotlight .aff-platform{ font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:2px; font-weight:700; }
-  .affiliate-spotlight canvas.aff-qr{ margin-top:6px; width:46px !important; height:46px !important; background:#fff; border-radius:6px; padding:3px; }
-  .affiliate-spotlight .aff-scan-hint{ font-size:8.5px; color:var(--white); margin-top:3px; font-weight:600; }
-  .affiliate-spotlight .aff-orig-price{ font-size:11px; color:var(--dim); text-decoration:line-through; margin-top:4px; display:none; }
-  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:10px; font-weight:800; padding:2px 7px; border-radius:6px; margin-top:4px; }
-  .affiliate-spotlight .aff-number-badge{ position:absolute; top:-8px; left:-8px; width:26px; height:26px; border-radius:50%; background:#0B0F19; border:2px solid var(--gold, var(--accent)); color:#fff; font-family:'Bebas Neue', sans-serif; font-size:14px; display:flex; align-items:center; justify-content:center; z-index:2; }
+  .affiliate-spotlight img.aff-product-img{ width:100%; height:62px; object-fit:contain; border-radius:6px; background:#fff; display:block; }
+  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:15px; color:var(--gold); margin-top:4px; }
+  .affiliate-spotlight .aff-platform{ font-size:8.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:2px; font-weight:700; }
+  .affiliate-spotlight .aff-orig-price{ font-size:9px; color:var(--dim); text-decoration:line-through; margin-top:3px; display:none; }
+  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:8.5px; font-weight:800; padding:1px 5px; border-radius:5px; margin-top:3px; }
+  .affiliate-spotlight .aff-number-badge{ position:absolute; top:-7px; left:-7px; width:21px; height:21px; border-radius:50%; background:#0B0F19; border:2px solid var(--gold, var(--accent)); color:#fff; font-family:'Bebas Neue', sans-serif; font-size:11px; display:flex; align-items:center; justify-content:center; z-index:2; }
 </style>
 </head>
 <body>
@@ -324,8 +322,6 @@
   <div class="aff-price" id="affProductPrice"></div>
   <div class="aff-discount-badge" id="affDiscountBadge"></div>
   <div class="aff-platform" id="affProductPlatform"></div>
-  <canvas class="aff-qr" id="affProductQr"></canvas>
-  <div class="aff-scan-hint">📲 Scan to buy</div>
 </div>
 <div class="stadium-lines"></div>
 <button id="muteBtn" onclick="toggleMusicMute()" style="position:absolute; top:12px; right:12px; z-index:1000; width:34px; height:34px; border-radius:50%; background:rgba(18,23,40,0.8); border:1px solid var(--line); color:var(--white); font-size:15px; padding:0; cursor:pointer;">🔊</button>
@@ -402,6 +398,26 @@
       <label style="font-size:13px; color:var(--dim); white-space:nowrap;">🎬 Clip video volume</label>
       <input type="range" id="clipVolumeSlider" min="0" max="1" step="0.05" value="0.8" style="width:160px;">
       <span id="clipVolumeValue" style="font-size:12px; color:var(--dim); min-width:32px;">80%</span>
+    </div>
+    <div class="panel-row" style="margin-top:10px; align-items:center;">
+      <label style="font-size:13px; color:var(--dim); white-space:nowrap;">🔍 Clip zoom</label>
+      <input type="range" id="clipZoomSlider" min="100" max="220" step="2" value="100" style="width:160px;">
+      <span id="clipZoomValue" style="font-size:12px; color:var(--dim); min-width:38px;">100%</span>
+    </div>
+    <div class="panel-row" style="margin-top:10px; align-items:center;">
+      <label style="font-size:13px; color:var(--dim); white-space:nowrap;">↕️ Clip vertical position</label>
+      <input type="range" id="clipPanYSlider" min="-50" max="50" step="1" value="0" style="width:160px;">
+      <span id="clipPanYValue" style="font-size:12px; color:var(--dim); min-width:38px;">0</span>
+    </div>
+    <div class="panel-row" style="margin-top:10px; align-items:center;">
+      <label style="font-size:13px; color:var(--dim); white-space:nowrap;">↔️ Clip horizontal position</label>
+      <input type="range" id="clipPanXSlider" min="-50" max="50" step="1" value="0" style="width:160px;">
+      <span id="clipPanXValue" style="font-size:12px; color:var(--dim); min-width:38px;">0</span>
+    </div>
+    <div class="note">
+      উপরের ৩টা স্লাইডার শুধু <b>Google Drive লিংক থেকে আসা ক্লিপে</b> কাজ করে (Streamable/direct video
+      লিংকে এমনিতেই পুরো বক্স ভরে যায়, দরকার হয় না) — Drive-এর প্লেয়ারের চারপাশে যে কালো অংশ দেখা যায়
+      সেটা ঢাকতে জুম বাড়ান, তারপর ভিডিওটা যেদিকে সরাতে চান সেদিকে উপর-নিচ/ডানে-বামে স্লাইডার টানুন।
     </div>
     <div class="note">
       এটা একটা <b>ডেমো</b> — এখানে "Simulate payment received" বাটন সেই কাজটা করছে যেটা বাস্তবে আপনার
@@ -485,6 +501,8 @@ document.getElementById('introVoiceFile').addEventListener('change', function(e)
 
 let clipUrlsLeft = [];
 let clipUrlsRight = [];
+let clipDurationsLeft = [];  // parallel to clipUrlsLeft — seconds, auto-fetched from Google Drive, null if unknown
+let clipDurationsRight = []; // parallel to clipUrlsRight
 document.getElementById('clipLeft').addEventListener('change', function(e){
   clipUrlsLeft = Array.from(e.target.files).map(f => URL.createObjectURL(f));
   document.getElementById('clipLeftFileName').textContent = `🎬 ${e.target.files.length} clip(s) selected`;
@@ -497,13 +515,13 @@ document.getElementById('clipRight').addEventListener('change', function(e){
 let clipPlaylist = [];
 let clipIndex = 0;
 let clipVideoVolume = 0.8; // controlled by the streamer-only slider in the outside panel
-const DRIVE_ROTATE_MS = 60000; // Drive-embedded clips can't signal "ended" across origins, so rotate on a fixed timer instead
+let driveClipFallbackSec = 3600; // used ONLY if a real duration couldn't be auto-detected (e.g. no API key configured) — generous on purpose so a clip is never cut off early
 function buildClipPlaylist(leftName, rightName){
   const playlist = [];
   const max = Math.max(clipUrlsLeft.length, clipUrlsRight.length);
   for(let i = 0; i < max; i++){
-    if(clipUrlsRight[i]) playlist.push({ url: clipUrlsRight[i], tag: rightName });
-    if(clipUrlsLeft[i])  playlist.push({ url: clipUrlsLeft[i],  tag: leftName });
+    if(clipUrlsRight[i]) playlist.push({ url: clipUrlsRight[i], tag: rightName, durationSec: clipDurationsRight[i] || null });
+    if(clipUrlsLeft[i])  playlist.push({ url: clipUrlsLeft[i],  tag: leftName,  durationSec: clipDurationsLeft[i]  || null });
   }
   return playlist;
 }
@@ -533,7 +551,8 @@ function playClipAt(index){
     video.style.display = 'none';
     frame.style.display = 'block';
     frame.src = driveUrl + '?autoplay=1&mute=0';
-    window.__driveClipTimer = setTimeout(() => { clipIndex++; playClipAt(clipIndex); }, DRIVE_ROTATE_MS);
+    applyClipFrameTransform();
+    window.__driveClipTimer = setTimeout(() => { clipIndex++; playClipAt(clipIndex); }, (item.durationSec || driveClipFallbackSec) * 1000);
   } else {
     // Normal path: any direct, playable video link (Streamable, etc.).
     frame.style.display = 'none';
@@ -561,6 +580,32 @@ document.getElementById('clipVolumeSlider').addEventListener('input', function(e
   document.getElementById('clipVolumeValue').textContent = Math.round(clipVideoVolume * 100) + '%';
   const video = document.getElementById('clipVideo');
   if(video) video.volume = clipVideoVolume;
+});
+// ====== Drive-clip zoom/position — compensates for Google Drive's own
+// letterboxing (black bars) around the embedded video, entirely from the
+// overlay UI, no re-export needed. Only visually affects the iframe used
+// for Google Drive links; direct video links already fill the box exactly.
+let clipZoomPct = 100, clipPanYPct = 0, clipPanXPct = 0;
+function applyClipFrameTransform(){
+  const frame = document.getElementById('clipVideoFrame');
+  if(!frame) return;
+  frame.style.transform = `scale(${clipZoomPct / 100}) translate(${clipPanXPct}%, ${clipPanYPct}%)`;
+  frame.style.transformOrigin = 'center center';
+}
+document.getElementById('clipZoomSlider').addEventListener('input', function(e){
+  clipZoomPct = parseFloat(e.target.value);
+  document.getElementById('clipZoomValue').textContent = clipZoomPct + '%';
+  applyClipFrameTransform();
+});
+document.getElementById('clipPanYSlider').addEventListener('input', function(e){
+  clipPanYPct = parseFloat(e.target.value);
+  document.getElementById('clipPanYValue').textContent = clipPanYPct;
+  applyClipFrameTransform();
+});
+document.getElementById('clipPanXSlider').addEventListener('input', function(e){
+  clipPanXPct = parseFloat(e.target.value);
+  document.getElementById('clipPanXValue').textContent = clipPanXPct;
+  applyClipFrameTransform();
 });
 
 function applyAvatarPhoto(side, dataUrl){
@@ -605,6 +650,8 @@ function beginLiveWithData(cfg){
   if(cfg.rightPhoto) applyAvatarPhoto('right', cfg.rightPhoto);
   if(cfg.clipsLeft && cfg.clipsLeft.length) clipUrlsLeft = cfg.clipsLeft;
   if(cfg.clipsRight && cfg.clipsRight.length) clipUrlsRight = cfg.clipsRight;
+  clipDurationsLeft = cfg.clipsLeftDurations || [];
+  clipDurationsRight = cfg.clipsRightDurations || [];
   startClipPlayer(leftName, rightName);
   if(cfg.musicUrls && cfg.musicUrls.length){
     startMusicPlaylist(cfg.musicUrls);
@@ -675,11 +722,12 @@ async function tryLoadActiveIdea(){
         leftPhoto: data.leftPhotoUrl, rightPhoto: data.rightPhotoUrl,
         introVoiceUrls: data.introVoiceUrls, voiceRepeatSeconds: data.voiceRepeatSeconds,
         musicUrls: data.musicUrls,
-        clipsLeft: data.leftClipUrls, clipsRight: data.rightClipUrls
+        clipsLeft: data.leftClipUrls, clipsRight: data.rightClipUrls,
+        clipsLeftDurations: data.leftClipDurationsSec, clipsRightDurations: data.rightClipDurationsSec
       });
       console.log('✅ Auto-started from your saved Content Idea (marked LIVE).');
       if(data.preset) applyColorPreset(data.preset);
-      if(data.affiliateProducts){ buildAffiliateRotation(data.affiliateProducts); startAffiliateRotation(); }
+      if(data.affiliateProductsOrdered || data.affiliateProducts){ buildAffiliateRotation(data.affiliateProductsOrdered || data.affiliateProducts); startAffiliateRotation(); }
       return true;
     }
   }catch(err){ console.error('Active Content Idea check failed:', err.message); }
@@ -1280,19 +1328,25 @@ renderLeaderboard();
 let affiliateProducts = [];
 let affIndex = 0;
 const AFF_PLATFORM_LABEL = { amazon:'Amazon', flipkart:'Flipkart', meesho:'Meesho', myntra:'Myntra' };
-function buildAffiliateRotation(raw){
-  const platforms = ['amazon','flipkart','meesho','myntra'];
-  const lists = platforms.map(p => (raw && raw[p]) ? raw[p] : []);
-  const maxLen = Math.max(0, ...lists.map(l => l.length));
-  const combined = [];
-  for(let i = 0; i < maxLen; i++){
-    platforms.forEach((p, idx) => { if(lists[idx][i]) combined.push(Object.assign({ platform: p }, lists[idx][i])); });
+// Accepts EITHER the server's pre-ordered flat array (preferred — guarantees
+// this exact order matches the Go-Live description's numbered links 1:1,
+// since both come from the same server-side function) OR, as a fallback for
+// older cached responses, the raw per-platform object (re-interleaved here
+// the same way the server does it).
+function buildAffiliateRotation(orderedOrRaw){
+  let combined;
+  if(Array.isArray(orderedOrRaw)){
+    combined = orderedOrRaw.slice();
+  } else {
+    const platforms = ['amazon','flipkart','meesho','myntra'];
+    const lists = platforms.map(p => (orderedOrRaw && orderedOrRaw[p]) ? orderedOrRaw[p] : []);
+    const maxLen = Math.max(0, ...lists.map(l => l.length));
+    combined = [];
+    for(let i = 0; i < maxLen; i++){
+      platforms.forEach((p, idx) => { if(lists[idx][i]) combined.push(Object.assign({ platform: p }, lists[idx][i])); });
+    }
+    combined.forEach((item, idx) => { item.number = idx + 1; });
   }
-  // Give each product a stable display number (1, 2, 3...) in this exact
-  // rotation order — the SAME numbering the Go-Live page lists in the
-  // description box, so a viewer who sees "#3" on screen can find link #3
-  // in the video description without needing to scan right away.
-  combined.forEach((item, idx) => { item.number = idx + 1; });
   affiliateProducts = combined;
   affIndex = 0;
 }
@@ -1324,9 +1378,6 @@ function showNextAffiliateProduct(){
     priceEl.textContent = '';
   }
   document.getElementById('affProductPlatform').textContent = AFF_PLATFORM_LABEL[item.platform] || item.platform;
-  if(item.link){
-    new QRious({ element: document.getElementById('affProductQr'), value: item.link, size: 66, background:'#fff', foreground:'#0B0F19' });
-  }
   el.classList.add('show');
   clearTimeout(window.__affHideTimeout);
   window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 9500); // visible ~9.5s of every 10s cycle — brief fade gap before the next product
