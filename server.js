@@ -1967,16 +1967,16 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     // place) — strip that exact suffix back off here so re-editing doesn't
     // end up with the hashtags duplicated once saved again.
     let baseDescription = idea.description || '';
-    if(idea.hashtags && baseDescription.endsWith('\n\n' + idea.hashtags)){
-      baseDescription = baseDescription.slice(0, -('\n\n' + idea.hashtags).length);
+    if(idea.hashtags && baseDescription.endsWith('\\n\\n' + idea.hashtags)){
+      baseDescription = baseDescription.slice(0, -('\\n\\n' + idea.hashtags).length);
     }
     document.getElementById('schDescription').value = baseDescription;
     document.getElementById('schHashtags').value = idea.hashtags || '';
     document.getElementById('schLeftName').value = idea.leftName || '';
     document.getElementById('schRightName').value = idea.rightName || '';
     document.getElementById('schVoiceRepeat').value = idea.voiceRepeatSeconds || 40;
-    document.getElementById('schLeftVideoLinks').value = (idea.leftVideoUrls || []).join('\n');
-    document.getElementById('schRightVideoLinks').value = (idea.rightVideoUrls || []).join('\n');
+    document.getElementById('schLeftVideoLinks').value = (idea.leftVideoUrls || []).join('\\n');
+    document.getElementById('schRightVideoLinks').value = (idea.rightVideoUrls || []).join('\\n');
     document.getElementById('schStartingLoss').value = idea.startingLossAmount != null ? idea.startingLossAmount : '';
 
     schThumbDataUrl = idea.thumbnailDataUrl || null;
