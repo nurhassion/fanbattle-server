@@ -697,13 +697,13 @@ function showNextAffiliateProduct(){
   }
   el.classList.add('show');
   clearTimeout(window.__affHideTimeout);
-  window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 20000);
+  window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 9500); // ~9.5s visible of every 10s cycle
 }
 function startAffiliateRotation(){
   if(!affiliateProducts.length) return;
   showNextAffiliateProduct();
   if(window.__affTicker) clearInterval(window.__affTicker);
-  window.__affTicker = setInterval(showNextAffiliateProduct, 120000);
+  window.__affTicker = setInterval(showNextAffiliateProduct, 10000); // every 10 seconds
 }
 </script>
 </body>
