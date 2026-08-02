@@ -359,6 +359,47 @@ function facebookBackUrlFor(side) {
   return base ? base.replace(/\/+$/, '') : '';
 }
 
+// ====== Automatic Google Drive video duration lookup ======
+// Replaces any manual "how many seconds is this clip" setting entirely.
+// Given a Drive file's ID, asks Google's own Drive API for the video's
+// REAL length (videoMediaMetadata.durationMillis) — works for any file,
+// any length, any number of clips, with zero manual entry. Requires a
+// Google Cloud API key with the Drive API enabled (set as GOOGLE_API_KEY
+// in Render) — the video must already be shared "Anyone with the link",
+// which every clip here already is. Results are cached in memory so the
+// same file is never looked up twice.
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
+const driveDurationCache = {}; // { fileId: durationSeconds }
+function extractDriveFileId(url) {
+  if (!url || !/drive\.google\.com/i.test(url)) return null;
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+async function getDriveClipDurationSec(url) {
+  const fileId = extractDriveFileId(url);
+  if (!fileId) return null; // not a Drive link at all — caller falls back to its own default
+  if (driveDurationCache[fileId] != null) return driveDurationCache[fileId];
+  if (!GOOGLE_API_KEY) return null; // no key configured — caller uses a safe fallback instead of guessing
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=videoMediaMetadata&key=${GOOGLE_API_KEY}`);
+    const data = await res.json();
+    const ms = data && data.videoMediaMetadata && data.videoMediaMetadata.durationMillis;
+    if (!ms) return null;
+    const seconds = Math.ceil(Number(ms) / 1000);
+    driveDurationCache[fileId] = seconds;
+    return seconds;
+  } catch (e) {
+    console.error('Could not fetch Drive video duration:', e.message);
+    return null;
+  }
+}
+// Looks up durations for a whole list of clip URLs in parallel, returning
+// an array the same length/order as the input (null for any that aren't
+// Drive links, or whose duration couldn't be determined).
+async function getClipDurationsSec(urls) {
+  return Promise.all((urls || []).map(getDriveClipDurationSec));
+}
+
 async function fetchInstamojoPayment(paymentId) {
   const res = await fetch(`https://www.instamojo.com/api/1.1/payments/${paymentId}/`, {
     headers: { 'X-Api-Key': API_KEY, 'X-Auth-Token': AUTH_TOKEN }
@@ -1609,6 +1650,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
         <img id="schRightPhotoPreview" style="display:none; max-width:100px; border-radius:10px; margin-top:8px;">
       </div>
 
+      <div style="display:none;">
       <label class="f-label" style="margin-top:16px;">🎙️ Voice commentary (pick multiple — e.g. one per language — they take turns, with a full gap between each one)</label>
       <input type="file" id="schIntroVoice" accept="audio/*" multiple>
       <div id="schIntroVoiceList" style="font-size:11.5px; color:var(--dim); margin-top:6px;"></div>
@@ -1618,6 +1660,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <label class="f-label" style="margin-top:16px;">🎵 Background music (pick multiple for a playlist, optional)</label>
       <input type="file" id="schMusic" accept="audio/*" multiple>
       <div id="schMusicList" style="font-size:11.5px; color:var(--dim); margin-top:6px;"></div>
+      </div>
 
       <div id="schVideoLinksWrap">
         <label class="f-label" style="color:var(--left); margin-top:16px;">🔵 Left side video links (one per line, up to 10)</label>
@@ -2364,6 +2407,24 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
 // Used by CREATE, EDIT (PUT), and DUPLICATE — one place defines what a
 // valid saved idea looks like, so all three stay in sync automatically.
 const AFFILIATE_PLATFORMS = ['amazon', 'flipkart', 'meesho', 'myntra'];
+// ====== Single source of truth for affiliate product ORDER + numbering ======
+// Both the Go-Live page's numbered link list (for the video description) and
+// the overlay's on-screen rotation call THIS SAME function — so "#3 on
+// screen" and "3. <link>" in the description are always, guaranteed, the
+// same product. Order interleaves one product per platform at a time
+// (Amazon #1, Flipkart #1, Meesho #1, Myntra #1, Amazon #2, ...) rather than
+// finishing one platform before starting the next.
+function orderedAffiliateProducts(affiliateProducts) {
+  const lists = AFFILIATE_PLATFORMS.map(p => (affiliateProducts && affiliateProducts[p]) ? affiliateProducts[p] : []);
+  const maxLen = Math.max(0, ...lists.map(l => l.length));
+  const out = [];
+  for (let i = 0; i < maxLen; i++) {
+    AFFILIATE_PLATFORMS.forEach((p, idx) => {
+      if (lists[idx][i]) out.push({ ...lists[idx][i], platform: p, number: out.length + 1 });
+    });
+  }
+  return out;
+}
 function sanitizeAffiliateProducts(raw) {
   const out = {};
   for (const platform of AFFILIATE_PLATFORMS) {
@@ -2581,13 +2642,16 @@ app.get('/api/content-ideas/:channel', requireDashboardAuth, (req, res) => {
 // readable without a login, same as /events and /calendar-today already
 // are. It only ever exposes whatever YOU chose to mark live from that
 // channel's Schedule panel — nothing donors/visitors submit ends up here.
-app.get('/api/active-idea/:channel', (req, res) => {
+app.get('/api/active-idea/:channel', async (req, res) => {
   const channel = channelOrDefault(req.params.channel);
   const gw = loadGatewaySettings();
   const activeId = getActiveIdeaId(gw, channel);
   if (!activeId) return res.json({ found: false });
   const evt = loadScheduledEvents(channel).find(e => e.id === activeId);
   if (!evt) return res.json({ found: false });
+  const [leftClipDurationsSec, rightClipDurationsSec] = await Promise.all([
+    getClipDurationsSec(evt.leftVideoUrls), getClipDurationsSec(evt.rightVideoUrls)
+  ]);
   res.json({
     found: true,
     title: evt.title,
@@ -2598,8 +2662,10 @@ app.get('/api/active-idea/:channel', (req, res) => {
     musicUrls: evt.musicDataUrls || [],
     leftClipUrls: evt.leftVideoUrls || [],
     rightClipUrls: evt.rightVideoUrls || [],
+    leftClipDurationsSec, rightClipDurationsSec,
     startingLossAmount: evt.startingLossAmount != null ? evt.startingLossAmount : null,
     affiliateProducts: evt.affiliateProducts || { amazon: [], flipkart: [], meesho: [], myntra: [] },
+    affiliateProductsOrdered: orderedAffiliateProducts(evt.affiliateProducts),
     preset: evt.preset || '1'
   });
 });
@@ -2607,13 +2673,16 @@ app.get('/api/active-idea/:channel', (req, res) => {
 // ====== Backward-compatible aliases (old links/bookmarks without a  ======
 // ====== :channel segment) — always resolve to Fan Battle Live, so    ======
 // nothing that was already saved/bookmarked before this update breaks. ======
-app.get('/api/active-idea', (req, res) => {
+app.get('/api/active-idea', async (req, res) => {
   const channel = 'fanbattle';
   const gw = loadGatewaySettings();
   const activeId = getActiveIdeaId(gw, channel);
   if (!activeId) return res.json({ found: false });
   const evt = loadScheduledEvents(channel).find(e => e.id === activeId);
   if (!evt) return res.json({ found: false });
+  const [leftClipDurationsSec, rightClipDurationsSec] = await Promise.all([
+    getClipDurationsSec(evt.leftVideoUrls), getClipDurationsSec(evt.rightVideoUrls)
+  ]);
   res.json({
     found: true, title: evt.title,
     leftName: evt.leftName, rightName: evt.rightName,
@@ -2623,7 +2692,9 @@ app.get('/api/active-idea', (req, res) => {
     musicUrls: evt.musicDataUrls || [],
     leftClipUrls: evt.leftVideoUrls || [],
     rightClipUrls: evt.rightVideoUrls || [],
+    leftClipDurationsSec, rightClipDurationsSec,
     affiliateProducts: evt.affiliateProducts || { amazon: [], flipkart: [], meesho: [], myntra: [] },
+    affiliateProductsOrdered: orderedAffiliateProducts(evt.affiliateProducts),
     preset: evt.preset || '1'
   });
 });
@@ -2750,15 +2821,11 @@ app.get('/go-live/:channel/:id', (req, res) => {
   // who sees "#3" on screen can find that exact numbered link here in the
   // description box you paste into YouTube/Facebook.
   function buildNumberedAffiliateList(affiliateProducts) {
-    const platforms = ['amazon', 'flipkart', 'meesho', 'myntra'];
-    const lists = platforms.map(p => (affiliateProducts && affiliateProducts[p]) ? affiliateProducts[p] : []);
-    const maxLen = Math.max(0, ...lists.map(l => l.length));
-    const lines = [];
-    let n = 1;
-    for (let i = 0; i < maxLen; i++) {
-      platforms.forEach((p, idx) => { if (lists[idx][i]) { lines.push(`${n}. ${lists[idx][i].link}`); n++; } });
-    }
-    return lines.join('\n');
+    const ordered = orderedAffiliateProducts(affiliateProducts);
+    // A blank line between every link — enough visual/tap separation on a
+    // phone screen that a viewer aiming for link #2 doesn't accidentally
+    // land on #1 or #3 right above/below it.
+    return ordered.map(item => `#${item.number} ${item.link}`).join('\n\n');
   }
   const affiliateLinksText = buildNumberedAffiliateList(evt.affiliateProducts);
 
