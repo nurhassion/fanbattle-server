@@ -349,6 +349,15 @@ function streamBackUrlFor(side) {
   if (!base) return '';
   return base.replace(/\/+$/, '') + '/live';
 }
+// Same idea, for Facebook — Facebook Pages don't have a universal "/live"
+// shortcut like YouTube does, so this just sends the donor back to the
+// Page itself; the live video is normally the first thing shown there
+// while it's actually live.
+function facebookBackUrlFor(side) {
+  const channel = sideToChannel(side);
+  const base = CHANNELS[channel] && CHANNELS[channel].facebookUrl;
+  return base ? base.replace(/\/+$/, '') : '';
+}
 
 async function fetchInstamojoPayment(paymentId) {
   const res = await fetch(`https://www.instamojo.com/api/1.1/payments/${paymentId}/`, {
@@ -678,6 +687,9 @@ function paypalPageHtml(side, teamName) {
     #photoSection{display:none; margin-top:22px; border-top:1px solid #333; padding-top:18px;}
     #photoSection img{max-width:120px; border-radius:12px; margin-top:8px;}
     .skipBtn{position:fixed; top:14px; right:14px; background:#222; color:#fff; border:none; border-radius:50%; width:34px; height:34px; font-size:18px; cursor:pointer;}
+    .platformRow{display:flex; gap:10px; justify-content:center; margin-top:10px;}
+    .platformBtn{flex:1; max-width:140px; padding:10px 8px; border-radius:10px; border:1.5px solid #333; background:#121728; color:#F5F7FA; font-size:13px; font-weight:600; cursor:pointer;}
+    .platformBtn.active{border-color:#FFC53D; background:rgba(255,197,61,0.12);}
   </style></head><body>
     ${streamBackUrlFor(side) ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2>Support ${teamName} 🔥</h2>
@@ -699,6 +711,11 @@ function paypalPageHtml(side, teamName) {
     <div id="paypal-button-container"></div>
     <div id="status"></div>
     <div id="photoSection">
+      <p><b id="platformQuestionText">Which platform are you watching on?</b></p>
+      <div class="platformRow">
+        <button type="button" class="platformBtn" id="platformBtnYoutube" onclick="selectPlatform('youtube')">📺 YouTube</button>
+        <button type="button" class="platformBtn" id="platformBtnFacebook" onclick="selectPlatform('facebook')">📘 Facebook</button>
+      </div>
       <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">Totally optional — skip if you'd rather not.</span></p>
       <input type="file" id="photoInput" accept="image/*">
       <div id="photoPreviewWrap"><img id="photoPreview" style="display:none;"></div>
@@ -709,6 +726,21 @@ function paypalPageHtml(side, teamName) {
       let donorName = '';
       let celebrationId = null;
       let returnAlreadyTriggered = false; // guards against firing twice (e.g. button click AND pagehide both firing)
+      const youtubeBackUrl = ${JSON.stringify(streamBackUrlFor(side))};
+      const facebookBackUrl = ${JSON.stringify(facebookBackUrlFor(side))};
+      let chosenPlatform = null; // null = not chosen — defaults to YouTube, never left on a broken page
+      function selectPlatform(p){
+        chosenPlatform = p;
+        document.getElementById('platformBtnYoutube').classList.toggle('active', p === 'youtube');
+        document.getElementById('platformBtnFacebook').classList.toggle('active', p === 'facebook');
+      }
+      // If the donor never picked (or picked Facebook but this channel has no
+      // Facebook link configured), default to YouTube — always a safe target,
+      // never the broken "channel does not exist" page this replaces.
+      function getBackUrl(){
+        if(chosenPlatform === 'facebook' && facebookBackUrl) return facebookBackUrl;
+        return youtubeBackUrl;
+      }
 
       // ---- Auto-detect the visitor's OWN device/browser language and show
       // it ALONGSIDE English (never replacing it) — based on navigator.language.
@@ -718,6 +750,7 @@ function paypalPageHtml(side, teamName) {
         const t = translations[browserLang];
         if (!t) return;
         const addBilingual = (el, translated) => { if (el && translated) el.innerHTML = el.innerHTML + '<br><span style="opacity:0.8;">' + translated + '</span>'; };
+        addBilingual(document.getElementById('platformQuestionText'), t.platformQuestion);
         addBilingual(document.getElementById('photoQuestionText'), t.photoQuestion);
         addBilingual(document.getElementById('photoNoteText'), t.photoNote);
         addBilingual(document.getElementById('addPhotoText'), t.addPhoto);
@@ -739,7 +772,7 @@ function paypalPageHtml(side, teamName) {
             body: JSON.stringify({ celebrationId })
           }).catch(()=>{});
         }
-        ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''}
+        if(getBackUrl()){ window.location.href = getBackUrl(); }
       }
       function skipToStream(){ confirmReturnAndGo(); }
       // Catches the phone's back button/swipe, or the tab/browser being
@@ -806,7 +839,7 @@ function paypalPageHtml(side, teamName) {
         fetch('/donor-photo', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ name: donorName, photoDataUrl: img.src, celebrationId })
-        }).finally(() => { ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''} });
+        }).finally(() => { if(getBackUrl()){ window.location.href = getBackUrl(); } });
       }
     </script>
   </body></html>`;
@@ -821,12 +854,12 @@ function paypalPageHtml(side, teamName) {
 // listed here. Each entry is [thankYou(name), tipReceived(amount,currency),
 // photoQuestion, photoNote, addPhotoBtn, skipLink].
 const THANKS_TRANSLATIONS = {
-  hi: { thankYou: 'धन्यवाद', tipReceived: 'आपका टिप प्राप्त हो गया है।', photoQuestion: 'क्या आप अपनी फोटो लाइव स्ट्रीम पर दिखाना चाहेंगे?', photoNote: 'यह पूरी तरह वैकल्पिक है — चाहें तो स्किप करें।', addPhoto: 'मेरी फोटो जोड़ें', skip: 'स्किप करें — स्ट्रीम पर वापस जाएं' },
-  bn: { thankYou: 'ধন্যবাদ', tipReceived: 'আপনার টিপ পাওয়া গেছে।', photoQuestion: 'আপনি কি আপনার ছবি লাইভ স্ট্রিমে দেখাতে চান?', photoNote: 'এটা সম্পূর্ণ ঐচ্ছিক — না চাইলে স্কিপ করুন।', addPhoto: 'আমার ছবি যোগ করুন', skip: 'স্কিপ করুন — স্ট্রিমে ফিরে যান' },
-  ur: { thankYou: 'شکریہ', tipReceived: 'آپ کا ٹپ موصول ہو گیا ہے۔', photoQuestion: 'کیا آپ اپنی تصویر لائیو اسٹریم پر دکھانا چاہیں گے؟', photoNote: 'یہ مکمل طور پر اختیاری ہے — چاہیں تو چھوڑ دیں۔', addPhoto: 'میری تصویر شامل کریں', skip: 'چھوڑیں — اسٹریم پر واپس جائیں' },
-  es: { thankYou: 'Gracias', tipReceived: 'Tu propina ha sido recibida.', photoQuestion: '¿Quieres mostrar tu foto en la transmisión en vivo?', photoNote: 'Esto es completamente opcional — omite si prefieres.', addPhoto: 'Añadir mi foto', skip: 'Omitir — volver a la transmisión' },
-  ar: { thankYou: 'شكراً لك', tipReceived: 'تم استلام إكراميتك.', photoQuestion: 'هل ترغب في عرض صورتك على البث المباشر؟', photoNote: 'هذا اختياري تماماً — تخطَّ إذا أردت.', addPhoto: 'أضف صورتي', skip: 'تخطَّ — العودة إلى البث' },
-  pt: { thankYou: 'Obrigado', tipReceived: 'Sua gorjeta foi recebida.', photoQuestion: 'Quer mostrar sua foto na transmissão ao vivo?', photoNote: 'Isso é totalmente opcional — pule se preferir.', addPhoto: 'Adicionar minha foto', skip: 'Pular — voltar para a transmissão' }
+  hi: { thankYou: 'धन्यवाद', tipReceived: 'आपका टिप प्राप्त हो गया है।', platformQuestion: 'आप कहाँ से देख रहे हैं?', photoQuestion: 'क्या आप अपनी फोटो लाइव स्ट्रीम पर दिखाना चाहेंगे?', photoNote: 'यह पूरी तरह वैकल्पिक है — चाहें तो स्किप करें।', addPhoto: 'मेरी फोटो जोड़ें', skip: 'स्किप करें — स्ट्रीम पर वापस जाएं' },
+  bn: { thankYou: 'ধন্যবাদ', tipReceived: 'আপনার টিপ পাওয়া গেছে।', platformQuestion: 'আপনি কোথা থেকে দেখছেন?', photoQuestion: 'আপনি কি আপনার ছবি লাইভ স্ট্রিমে দেখাতে চান?', photoNote: 'এটা সম্পূর্ণ ঐচ্ছিক — না চাইলে স্কিপ করুন।', addPhoto: 'আমার ছবি যোগ করুন', skip: 'স্কিপ করুন — স্ট্রিমে ফিরে যান' },
+  ur: { thankYou: 'شکریہ', tipReceived: 'آپ کا ٹپ موصول ہو گیا ہے۔', platformQuestion: 'آپ کہاں سے دیکھ رہے ہیں؟', photoQuestion: 'کیا آپ اپنی تصویر لائیو اسٹریم پر دکھانا چاہیں گے؟', photoNote: 'یہ مکمل طور پر اختیاری ہے — چاہیں تو چھوڑ دیں۔', addPhoto: 'میری تصویر شامل کریں', skip: 'چھوڑیں — اسٹریم پر واپس جائیں' },
+  es: { thankYou: 'Gracias', tipReceived: 'Tu propina ha sido recibida.', platformQuestion: '¿Desde dónde estás viendo?', photoQuestion: '¿Quieres mostrar tu foto en la transmisión en vivo?', photoNote: 'Esto es completamente opcional — omite si prefieres.', addPhoto: 'Añadir mi foto', skip: 'Omitir — volver a la transmisión' },
+  ar: { thankYou: 'شكراً لك', tipReceived: 'تم استلام إكراميتك.', platformQuestion: 'من أين تشاهد؟', photoQuestion: 'هل ترغب في عرض صورتك على البث المباشر؟', photoNote: 'هذا اختياري تماماً — تخطَّ إذا أردت.', addPhoto: 'أضف صورتي', skip: 'تخطَّ — العودة إلى البث' },
+  pt: { thankYou: 'Obrigado', tipReceived: 'Sua gorjeta foi recebida.', platformQuestion: 'De onde você está assistindo?', photoQuestion: 'Quer mostrar sua foto na transmissão ao vivo?', photoNote: 'Isso é totalmente opcional — pule se preferir.', addPhoto: 'Adicionar minha foto', skip: 'Pular — voltar para a transmissão' }
 };
 
 function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
@@ -841,10 +874,18 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
     img{max-width:120px; border-radius:12px; margin-top:8px;}
     .skipBtn{position:fixed; top:14px; right:14px; background:#222; color:#fff; border:none; border-radius:50%; width:34px; height:34px; font-size:18px; cursor:pointer;}
     .lang-note{ font-size:11px; color:#555; margin-top:2px; }
+    .platformRow{display:flex; gap:10px; justify-content:center; margin-top:10px;}
+    .platformBtn{flex:1; max-width:140px; padding:10px 8px; border-radius:10px; border:1.5px solid #333; background:#121728; color:#F5F7FA; font-size:13px; font-weight:600; cursor:pointer;}
+    .platformBtn.active{border-color:#FFC53D; background:rgba(255,197,61,0.12);}
   </style></head><body>
     ${streamBackUrlFor(side) ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2 id="thankYouHeading">🎉 Thank you, ${name || 'friend'}!</h2>
     <p id="tipReceivedText">${amount ? `Your ${currency || '₹'} ${amount} tip has been received.` : 'Your support has been received.'}</p>
+    <p><b id="platformQuestionText">Which platform are you watching on?</b></p>
+    <div class="platformRow">
+      <button type="button" class="platformBtn" id="platformBtnYoutube" onclick="selectPlatform('youtube')">📺 YouTube</button>
+      <button type="button" class="platformBtn" id="platformBtnFacebook" onclick="selectPlatform('facebook')">📘 Facebook</button>
+    </div>
     <p><b id="photoQuestionText">Want to show your photo on the live stream?</b><br><span id="photoNoteText">This is completely optional — skip if you'd rather not.</span></p>
     <div><input type="file" id="photoInput" accept="image/*"></div>
     <img id="photoPreview" style="display:none;">
@@ -855,6 +896,21 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
       const donorName = ${JSON.stringify(name || 'Anonymous')};
       const celebrationId = ${JSON.stringify(celebrationId || null)};
       let returnAlreadyTriggered = false; // guards against firing twice (e.g. button click AND pagehide both firing)
+      const youtubeBackUrl = ${JSON.stringify(streamBackUrlFor(side))};
+      const facebookBackUrl = ${JSON.stringify(facebookBackUrlFor(side))};
+      let chosenPlatform = null; // null = not chosen — defaults to YouTube, never left on a broken page
+      function selectPlatform(p){
+        chosenPlatform = p;
+        document.getElementById('platformBtnYoutube').classList.toggle('active', p === 'youtube');
+        document.getElementById('platformBtnFacebook').classList.toggle('active', p === 'facebook');
+      }
+      // If the donor never picked (or picked Facebook but this channel has no
+      // Facebook link configured), default to YouTube — always a safe target,
+      // never the broken "channel does not exist" page this replaces.
+      function getBackUrl(){
+        if(chosenPlatform === 'facebook' && facebookBackUrl) return facebookBackUrl;
+        return youtubeBackUrl;
+      }
 
       // ---- Auto-detect the visitor's OWN device/browser language and show
       // it ALONGSIDE English (never replacing it) — based on navigator.language,
@@ -866,6 +922,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
         if (!t) return; // no match — English-only stays as-is, which is a safe fallback
         const addBilingual = (el, translated) => { if (el && translated) el.innerHTML = el.innerHTML + '<br><span style="opacity:0.8;">' + translated + '</span>'; };
         addBilingual(document.getElementById('tipReceivedText'), t.tipReceived);
+        addBilingual(document.getElementById('platformQuestionText'), t.platformQuestion);
         addBilingual(document.getElementById('photoQuestionText'), t.photoQuestion);
         addBilingual(document.getElementById('photoNoteText'), t.photoNote);
         addBilingual(document.getElementById('addPhotoText'), t.addPhoto);
@@ -886,7 +943,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
             body: JSON.stringify({ celebrationId })
           }).catch(()=>{});
         }
-        ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''}
+        if(getBackUrl()){ window.location.href = getBackUrl(); }
       }
       function skipToStream(){ confirmReturnAndGo(); }
       // Catches the phone's back button/swipe, or the tab/browser being
@@ -910,7 +967,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId }) {
         fetch('/donor-photo', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ name: donorName, photoDataUrl: img.src, celebrationId })
-        }).finally(() => { ${streamBackUrlFor(side) ? `window.location.href = '${streamBackUrlFor(side)}';` : ''} });
+        }).finally(() => { if(getBackUrl()){ window.location.href = getBackUrl(); } });
       }
     </script>
   </body></html>`;
