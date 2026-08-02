@@ -2792,6 +2792,24 @@ setInterval(checkGoLiveReminders, 30000);
 // tapped straight from a WhatsApp/SMS/email notification on your phone,
 // possibly without an active browser session. The event id itself
 // (long, random, unguessable) is what keeps this from being public.
+// ====== Short links for affiliate products ======
+// Real affiliate tracking URLs (from linksredirect.com etc.) can run to
+// hundreds of characters each — with 30-40 products that blows straight
+// through YouTube's 5000-character description limit. This route gives
+// every product a short, FIXED-length link instead
+// (e.g. /l/<eventId>/<number>) that simply 302-redirects to the real one —
+// the description only ever needs to hold these short links, never the
+// long originals.
+app.get('/l/:channel/:id/:number', (req, res) => {
+  const channel = channelOrDefault(req.params.channel);
+  const evt = loadScheduledEvents(channel).find(e => e.id === req.params.id);
+  if (!evt) return res.status(404).send('This link is no longer valid.');
+  const ordered = orderedAffiliateProducts(evt.affiliateProducts);
+  const item = ordered.find(p => p.number === Number(req.params.number));
+  if (!item || !item.link) return res.status(404).send('This product link is no longer valid.');
+  res.redirect(302, item.link);
+});
+
 app.get('/go-live/:channel/:id', (req, res) => {
   const channel = channelOrDefault(req.params.channel);
   const chConfig = CHANNELS[channel];
@@ -2824,8 +2842,11 @@ app.get('/go-live/:channel/:id', (req, res) => {
     const ordered = orderedAffiliateProducts(affiliateProducts);
     // A blank line between every link — enough visual/tap separation on a
     // phone screen that a viewer aiming for link #2 doesn't accidentally
-    // land on #1 or #3 right above/below it.
-    return ordered.map(item => `#${item.number} ${item.link}`).join('\n\n');
+    // land on #1 or #3 right above/below it. Uses the short /l/ redirect
+    // link (fixed length) instead of the real affiliate URL (which can run
+    // to hundreds of characters) — keeps 30-40 products well under
+    // YouTube's 5000-character description limit.
+    return ordered.map(item => `#${item.number} ${PUBLIC_BASE_URL}/l/${channel}/${evt.id}/${item.number}`).join('\n\n');
   }
   const affiliateLinksText = buildNumberedAffiliateList(evt.affiliateProducts);
 
