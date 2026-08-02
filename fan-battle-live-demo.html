@@ -61,6 +61,7 @@
   .clip-player{ position:relative; margin-top:6px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
     flex-shrink:0; background:#000; width:100%; height:150px; }
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
+  .clip-player iframe{ width:100%; height:100%; border:none; display:block; }
   .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
     background:rgba(11,15,25,0.8); padding:3px 10px; border-radius:7px; }
   .total-shell{ text-align:center; background: var(--bg-soft); border:1px solid var(--line); border-radius:10px;
@@ -363,6 +364,7 @@
   </div>
   <div class="clip-player" id="clipPlayer" style="display:none;">
     <video id="clipVideo" playsinline autoplay></video>
+    <iframe id="clipVideoFrame" style="display:none;" allow="autoplay" src=""></iframe>
     <div class="clip-tag" id="clipTag">Messi</div>
   </div>
   <div class="leaderboard">
@@ -495,6 +497,7 @@ document.getElementById('clipRight').addEventListener('change', function(e){
 let clipPlaylist = [];
 let clipIndex = 0;
 let clipVideoVolume = 0.8; // controlled by the streamer-only slider in the outside panel
+const DRIVE_ROTATE_MS = 60000; // Drive-embedded clips can't signal "ended" across origins, so rotate on a fixed timer instead
 function buildClipPlaylist(leftName, rightName){
   const playlist = [];
   const max = Math.max(clipUrlsLeft.length, clipUrlsRight.length);
@@ -504,14 +507,43 @@ function buildClipPlaylist(leftName, rightName){
   }
   return playlist;
 }
+// A Google Drive SHARE or direct-download link (drive.google.com/file/d/ID/view,
+// or drive.google.com/uc?id=ID) can't be dropped straight into a <video> tag —
+// large files trigger Drive's "can't scan this file for viruses" interstitial
+// instead of the actual video stream. Drive's own /preview embed viewer does
+// NOT have that limit (it's the same player Drive uses for in-page previews),
+// so any Drive link gets rewritten to that format and shown in an iframe.
+function driveEmbedUrlIfApplicable(url){
+  if(!/drive\.google\.com/i.test(url)) return null;
+  const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if(!idMatch) return null;
+  return `https://drive.google.com/file/d/${idMatch[1]}/preview`;
+}
 function playClipAt(index){
   if(clipPlaylist.length === 0) return;
   const item = clipPlaylist[index % clipPlaylist.length];
   const video = document.getElementById('clipVideo');
-  video.src = item.url;
-  video.volume = clipVideoVolume;
+  const frame = document.getElementById('clipVideoFrame');
+  clearTimeout(window.__driveClipTimer);
+  const driveUrl = driveEmbedUrlIfApplicable(item.url);
+  if(driveUrl){
+    // Drive path: use the iframe, pause/hide the <video> tag, and rotate on
+    // a fixed timer (we can't detect the embedded player's own "ended" event).
+    video.pause();
+    video.style.display = 'none';
+    frame.style.display = 'block';
+    frame.src = driveUrl + '?autoplay=1&mute=0';
+    window.__driveClipTimer = setTimeout(() => { clipIndex++; playClipAt(clipIndex); }, DRIVE_ROTATE_MS);
+  } else {
+    // Normal path: any direct, playable video link (Streamable, etc.).
+    frame.style.display = 'none';
+    frame.src = '';
+    video.style.display = 'block';
+    video.src = item.url;
+    video.volume = clipVideoVolume;
+    video.play().catch(() => {});
+  }
   document.getElementById('clipTag').textContent = item.tag;
-  video.play().catch(() => {});
 }
 function startClipPlayer(leftName, rightName){
   clipPlaylist = buildClipPlaylist(leftName, rightName);
@@ -520,6 +552,8 @@ function startClipPlayer(leftName, rightName){
   clipIndex = 0;
   playClipAt(clipIndex);
   const video = document.getElementById('clipVideo');
+  // Only fires for the non-Drive (<video>) path — Drive clips are rotated by
+  // the fixed timer set inside playClipAt() instead.
   video.onended = function(){ clipIndex++; playClipAt(clipIndex); };
 }
 document.getElementById('clipVolumeSlider').addEventListener('input', function(e){
@@ -1295,13 +1329,13 @@ function showNextAffiliateProduct(){
   }
   el.classList.add('show');
   clearTimeout(window.__affHideTimeout);
-  window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 20000); // visible ~20s out of every 2 minutes
+  window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 9500); // visible ~9.5s of every 10s cycle — brief fade gap before the next product
 }
 function startAffiliateRotation(){
   if(!affiliateProducts.length) return;
   showNextAffiliateProduct();
   if(window.__affTicker) clearInterval(window.__affTicker);
-  window.__affTicker = setInterval(showNextAffiliateProduct, 120000); // every 2 minutes
+  window.__affTicker = setInterval(showNextAffiliateProduct, 10000); // every 10 seconds — fast enough that all 30-40 saved products actually get seen within a few minutes
 }
 
 </script>
