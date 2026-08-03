@@ -175,6 +175,20 @@ async function backupToGoogleSheet(record) {
 async function backupContentIdeasToSheet(events, channel) {
   const ch = channelOrDefault(channel);
   if (!GSHEET_WEBHOOK_URL_CH3) return;
+  // SAFETY GUARD: never push an EMPTY list to the Drive backup. The one
+  // realistic way this function gets called with an empty `events` array
+  // is exactly the dangerous one — the local disk got wiped by a Render
+  // restart, restore-on-startup silently failed or was skipped, and some
+  // unrelated save/edit/duplicate/preset action on this channel then fired
+  // using that now-empty in-memory list, permanently clobbering a perfectly
+  // good backup with nothing. A genuine "I deleted my very last idea on
+  // purpose" case is rare and easily fixed by re-adding it — that's a far
+  // smaller cost than silently destroying everything after a restart, which
+  // is exactly what happened to the fanbattle channel's saved ideas.
+  if (!events || events.length === 0) {
+    console.log(`⚠️ Skipped backing up an EMPTY content-ideas list for "${ch}" — refusing to overwrite a good Drive backup with nothing.`);
+    return;
+  }
   try {
     await fetch(GSHEET_WEBHOOK_URL_CH3, {
       method: 'POST',
@@ -199,12 +213,19 @@ async function fetchContentIdeasFromSheet(channel) {
 async function restoreContentIdeasOnStartup() {
   for (const ch of Object.keys(CHANNELS)) {
     const local = loadScheduledEvents(ch);
-    if (local.length > 0) continue; // this channel's local file already has data this boot — nothing to restore
-    if (!GSHEET_WEBHOOK_URL_CH3) { console.log(`ℹ️ No content-ideas backup webhook configured — "${ch}"'s content ideas will only persist for this server session.`); continue; }
+    if (!GSHEET_WEBHOOK_URL_CH3) {
+      if (local.length === 0) console.log(`ℹ️ No content-ideas backup webhook configured — "${ch}"'s content ideas will only persist for this server session.`);
+      continue;
+    }
+    // Always check Drive and take whichever side has MORE ideas, rather than
+    // skipping the check just because SOME local data exists — for the
+    // "fanbattle" channel specifically, a stale old legacy file can make
+    // `local` non-empty even when the real per-channel data was wiped, which
+    // used to cause this restore step to be skipped entirely.
     const restored = await fetchContentIdeasFromSheet(ch);
-    if (restored && restored.length > 0) {
+    if (restored && restored.length > local.length) {
       saveScheduledEvents(restored, ch);
-      console.log(`♻️ Restored ${restored.length} content idea(s) for "${ch}" from Google Drive backup after restart.`);
+      console.log(`♻️ Restored ${restored.length} content idea(s) for "${ch}" from Google Drive backup after restart (had ${local.length} locally).`);
     }
   }
 }
