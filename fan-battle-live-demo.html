@@ -59,7 +59,7 @@
   .fact-bar span{ display:inline-block; opacity:1; transition: opacity 400ms ease; }
   .fact-bar span.fading{ opacity:0; }
   .clip-player{ position:relative; margin-top:4px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
-    flex-shrink:0; background:#000; width:100%; height:204px; } /* was 188px — grown by the height freed up when the ₹ amount moved onto the same line as the percentage instead of its own row */
+    flex-shrink:0; background:#000; width:100%; height:194px; } /* was 204px — trimmed a little (the ~10% "from video" share) to help fund the bigger product panel; the other ~90% comes from the leaderboard/Top 3 area shrinking instead */
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
   .clip-player iframe{ width:100%; height:100%; border:none; display:block; }
   .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
@@ -99,34 +99,30 @@
   .support-pct-amt.l{ color:var(--left-glow); }
   .support-pct-amt.r{ color:var(--right-glow); }
   .leaderboard{ position:relative; margin-top:3px; border:1px solid var(--line); border-radius:12px; background: var(--bg-soft); padding:6px 7px; flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
-  /* ---- Recent Supporters — now shown as floating "live comment" bubbles
-     drifting up over the Top 3 box (like YouTube/TikTok live chat), instead
-     of a fixed list. This means Recent Supporters no longer reserves any
-     permanent screen space of its own — that freed space is exactly what
-     lets the Top 3 box below grow bigger. ---- */
-  .donor-float-layer{ position:absolute; left:5px; right:5px; bottom:4px; top:4px; overflow:hidden; pointer-events:none;
-    z-index:40; display:flex; flex-direction:column-reverse; align-items:flex-start; gap:4px; }
+  /* ---- Recent Supporters — a PERSISTENT list of exactly the latest 4
+     donors, newest at top. Names do NOT auto-expire on any timer — a name
+     only leaves once a 5th (or later) donor pushes it out, at which point
+     everyone shifts up by one and the oldest name is removed. This sits in
+     its own fixed-height slot below Top 3 (no longer floating on top of
+     it), so Top 3's photos stay fully visible at all times. ---- */
+  .recent-title{ font-size:9px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-top:5px; margin-bottom:3px; text-align:center; flex-shrink:0; }
+  .donor-float-layer{ flex-shrink:0; height:100px; overflow:hidden; display:flex; flex-direction:column; align-items:stretch; gap:3px; }
   .donor-float-item{ font-size:11px; font-weight:700; color:#fff; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-    background:rgba(11,15,25,0.62); padding:4px 10px; border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,0.35);
-    border:1px solid rgba(255,255,255,0.08); animation: donorFloatUp 4600ms ease-out forwards; }
+    background:rgba(255,255,255,0.05); padding:4px 10px; border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,0.25);
+    border:1px solid rgba(255,255,255,0.08); animation: donorSlideIn 420ms ease-out both; flex-shrink:0; }
+  .donor-float-item.leaving{ opacity:0; transform:translateY(6px) scale(0.96); transition: opacity 240ms ease, transform 240ms ease; }
   .donor-float-item .tag{ font-size:9px; padding:2px 6px; margin-right:5px; }
   .donor-float-item .donor-name{ font-size:11px; }
   .donor-float-item .amt{ margin-left:6px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; color:var(--gold); }
-  @keyframes donorFloatUp{
-    0%{ opacity:0; transform:translateY(16px) scale(0.92); }
-    10%{ opacity:1; transform:translateY(0) scale(1); }
-    72%{ opacity:1; transform:translateY(-4px) scale(1); }
-    100%{ opacity:0; transform:translateY(-60px) scale(0.98); }
+  @keyframes donorSlideIn{
+    0%{ opacity:0; transform:translateY(-10px) scale(0.94); }
+    100%{ opacity:1; transform:translateY(0) scale(1); }
   }
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:2px; text-align:center; flex-shrink:0; }
-  /* Three supporters side by side, spanning the full width of this box
-     (same width as the "Total support so far" box above it) — not stacked.
-     The rank number sits as a small badge on the photo's own corner (not a
-     separate text line above it) — that freed line is exactly what lets the
-     photo grow both taller (upward) and wider (outward, symmetrically) to
-     fill almost the whole column, so donor faces read clearly. This whole
-     box can also shrink itself first if the screen is tight (see .leaderboard
-     above) — Recent Supporters always keeps its space, this box adapts. */
+  /* Three supporters side by side, spanning the full width of this box. This
+     row auto-shrinks first (flex:1 1 auto) to make room for the Recent
+     Supporters list below it, which now keeps a fixed height of its own —
+     see .donor-float-layer further down. */
   .top3-rows{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; flex:1 1 auto; min-height:0; }
   .top3-row{ display:flex; flex-direction:column; align-items:center; gap:2px; padding:3px; border-radius:9px;
     border:1.5px solid var(--line); background:var(--bg); transition: box-shadow 300ms ease, border-color 300ms ease;
@@ -260,14 +256,25 @@
   .setup-photo-btn{ flex:1; background:var(--bg); border:1px solid var(--line); color:var(--white); padding:10px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-align:left; }
   .setup-photo-btn:hover{ border-color:var(--gold); }
   .panel-outside{ width:100%; max-width:480px; margin:16px auto 40px; padding:0 16px; }
-  .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:100px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:11px; padding:7px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; }
+  /* ---- Product spotlight — a BIG, FIXED-size panel (not scaled/flexible)
+     so a viewer can actually see and recognize the product on stream. Sized
+     to reach up close to the video box's top edge. Of the extra size vs the
+     old small version, ~90% comes from shrinking non-video elements (the
+     leaderboard/Top 3 area), only ~10% comes from trimming the video box
+     itself a little (see .clip-player below) — same left/right/bottom gaps
+     from the frame edge and neighboring boxes as before. ---- */
+  .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:158px; height:230px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:13px; padding:8px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; display:flex; flex-direction:column; }
   .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
-  .affiliate-spotlight img.aff-product-img{ width:100%; height:62px; object-fit:contain; border-radius:6px; background:#fff; display:block; }
-  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:15px; color:var(--gold); margin-top:4px; }
-  .affiliate-spotlight .aff-platform{ font-size:8.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:2px; font-weight:700; }
-  .affiliate-spotlight .aff-orig-price{ font-size:9px; color:var(--dim); text-decoration:line-through; margin-top:3px; display:none; }
-  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:8.5px; font-weight:800; padding:1px 5px; border-radius:5px; margin-top:3px; }
-  .affiliate-spotlight .aff-number-badge{ position:absolute; top:-7px; left:-7px; width:21px; height:21px; border-radius:50%; background:#0B0F19; border:2px solid var(--gold, var(--accent)); color:#fff; font-family:'Bebas Neue', sans-serif; font-size:11px; display:flex; align-items:center; justify-content:center; z-index:2; }
+  /* object-fit:cover (not contain) — fills the ENTIRE panel edge to edge,
+     cropped centered, instead of shrinking to fit and leaving white space
+     around it. This is what makes the product actually look big and clear
+     rather than a small image floating in a mostly-empty white box. */
+  .affiliate-spotlight img.aff-product-img{ width:100%; height:150px; object-fit:cover; border-radius:8px; background:#fff; display:block; flex-shrink:0; }
+  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:22px; color:var(--gold); margin-top:5px; }
+  .affiliate-spotlight .aff-platform{ font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:3px; font-weight:700; }
+  .affiliate-spotlight .aff-orig-price{ font-size:11px; color:var(--dim); text-decoration:line-through; margin-top:3px; display:none; }
+  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:6px; margin-top:4px; align-self:center; }
+  .affiliate-spotlight .aff-number-badge{ position:absolute; top:-8px; left:-8px; width:26px; height:26px; border-radius:50%; background:#0B0F19; border:2px solid var(--gold, var(--accent)); color:#fff; font-family:'Bebas Neue', sans-serif; font-size:13px; display:flex; align-items:center; justify-content:center; z-index:2; }
 </style>
 </head>
 <body>
@@ -413,9 +420,10 @@
       <div class="top3-row" id="top3box-1"><span class="top3-placeholder">?</span></div>
       <div class="top3-row" id="top3box-2"><span class="top3-placeholder">?</span></div>
     </div>
-    <!-- Recent Supporters — floats as live-comment-style bubbles over this
-         box (see .donor-float-layer CSS) instead of taking its own fixed
-         space, so Top 3's photos can be as big as possible. -->
+    <!-- Recent Supporters — a persistent 4-slot list of its own now,
+         separate from and below Top 3, so Top 3's photos always stay
+         fully visible (see .donor-float-layer CSS). -->
+    <div class="recent-title">🎉 Recent supporters</div>
     <div class="donor-float-layer" id="donorFloatLayer"></div>
   </div>
 </div>
@@ -1153,9 +1161,10 @@ function renderLeaderboard(){
   }
 }
 
-// Recent Supporters — a fresh bubble appears at the bottom of the
-// leaderboard box, floats upward while fading (like YouTube/TikTok live
-// comments), then removes itself. No fixed list, no permanent screen space.
+// Recent Supporters — a persistent list of exactly the latest 4 donors,
+// newest inserted at the TOP. Nothing here removes itself on a timer; a
+// name only ever leaves once a 5th (or later) donor arrives and pushes the
+// oldest one out — matching how the streamer wants this to behave.
 function spawnDonorFloat(name, side, amount, currency, country){
   const layer = document.getElementById('donorFloatLayer');
   if(!layer) return;
@@ -1164,13 +1173,16 @@ function spawnDonorFloat(name, side, amount, currency, country){
   const el = document.createElement('div');
   el.className = 'donor-float-item';
   el.innerHTML = `<span class="tag ${side==='left'?'l':'r'}">${side==='left'?'L':'R'}</span>${flag}<span class="donor-name">${name}</span> → <b>${sideName}</b><span class="amt">${formatMoney(amount, currency)}</span>`;
-  layer.appendChild(el);
-  // Matches the CSS animation duration — always clean up after itself so
-  // the layer never silently accumulates hidden elements.
-  setTimeout(() => { if(el.parentNode) el.parentNode.removeChild(el); }, 4700);
-  // Keep at most a handful of bubbles rising at once, in case donations are
-  // arriving in a fast burst — prevents them piling up unreadably.
-  while(layer.children.length > 5){ layer.removeChild(layer.firstChild); }
+  layer.insertBefore(el, layer.firstChild); // newest always goes to the top
+
+  // Keep exactly the latest 4 visible — anything beyond that (now sitting
+  // at the bottom, since newest goes to the top) fades out and is removed.
+  const existing = Array.from(layer.children);
+  for(let i = 4; i < existing.length; i++){
+    const oldest = existing[i];
+    oldest.classList.add('leaving');
+    setTimeout(() => { if(oldest.parentNode) oldest.parentNode.removeChild(oldest); }, 260);
+  }
 }
 
 const confettiCanvas = document.getElementById('confettiCanvas');
