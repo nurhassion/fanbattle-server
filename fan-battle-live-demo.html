@@ -44,7 +44,7 @@
     background:
       repeating-linear-gradient(100deg, transparent 0 120px, rgba(255,255,255,0.02) 120px 122px);
   }
-  .wrap{ position:relative; z-index:1; height:100%; margin:0 auto; padding: 12px 16px 0; display:flex; flex-direction:column; }
+  .wrap{ position:relative; z-index:1; height:100%; margin:0 auto; padding: 8px 16px 0; display:flex; flex-direction:column; }
   .eyebrow{ display:flex; align-items:center; justify-content:center; gap:8px; font-size:10px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; }
   .dot{width:6px;height:6px;border-radius:50%; background:#FF4B3E; box-shadow:0 0 10px #FF4B3E; animation:pulse 1.4s infinite;}
   @keyframes pulse{0%,100%{opacity:1} 50%{opacity:0.25}}
@@ -54,12 +54,12 @@
   .sub{ text-align:center; color:var(--dim); font-size:10.5px; margin-top:0px; margin-bottom:2px;}
   .legal-note{ text-align:center; margin-bottom:4px; letter-spacing:0.2px; font-size:10.5px; font-weight:700; color:var(--gold);
     background: rgba(255,197,61,0.10); border:1px solid rgba(255,197,61,0.35); border-radius:8px; padding:4px 10px; }
-  .fact-bar{ background: var(--bg-soft); border:1px solid var(--line); border-radius:10px; padding:6px 14px; margin-bottom:10px;
-    text-align:center; flex-shrink:0; font-size:12px; min-height:30px; display:flex; align-items:center; justify-content:center; }
+  .fact-bar{ background: var(--bg-soft); border:1px solid var(--line); border-radius:10px; padding:5px 14px; margin-bottom:7px;
+    text-align:center; flex-shrink:0; font-size:12px; min-height:26px; display:flex; align-items:center; justify-content:center; }
   .fact-bar span{ display:inline-block; opacity:1; transition: opacity 400ms ease; }
   .fact-bar span.fading{ opacity:0; }
-  .clip-player{ position:relative; margin-top:6px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
-    flex-shrink:0; background:#000; width:100%; height:150px; }
+  .clip-player{ position:relative; margin-top:4px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
+    flex-shrink:0; background:#000; width:100%; height:204px; } /* was 188px — grown by the height freed up when the ₹ amount moved onto the same line as the percentage instead of its own row */
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
   .clip-player iframe{ width:100%; height:100%; border:none; display:block; }
   .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
@@ -69,7 +69,7 @@
   .total-label{ font-size:10px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; }
   .total-amount{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:26px; letter-spacing:1px; color:var(--gold); margin-top:2px; }
   .total-amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px; }
-  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; flex-shrink:0; }
+  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:3px; flex-shrink:0; }
   .card{ background: var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:8px; position:relative; }
   .name-row{ display:flex; flex-direction:row; align-items:center; gap:10px; text-align:left; }
   .avatar{ width:88px; height:88px; flex-shrink:0; border-radius:12px; display:flex; align-items:center; justify-content:center;
@@ -88,11 +88,36 @@
      given real visual weight (large, glowing, filling the space next to
      the name) instead of a small pill, since there was empty room there. ---- */
   .support-pct-row{ margin-top:6px; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding-left:2px; }
+  .support-pct-line{ display:flex; align-items:baseline; gap:7px; }
   .support-pct{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:30px; letter-spacing:1.5px; padding:3px 14px; border-radius:12px; line-height:1.2; }
   .support-pct.l{ background: linear-gradient(90deg, rgba(46,111,242,0.4), rgba(46,111,242,0.15)); color:var(--left-glow); border:1.5px solid rgba(46,111,242,0.65); box-shadow:0 0 16px rgba(46,111,242,0.3); }
   .support-pct.r{ background: linear-gradient(90deg, rgba(255,75,62,0.4), rgba(255,75,62,0.15)); color:var(--right-glow); border:1.5px solid rgba(255,75,62,0.65); box-shadow:0 0 16px rgba(255,75,62,0.3); }
   .support-pct-note{ font-size:9px; color:var(--dim); font-style:italic; margin-top:2px; }
-  .leaderboard{ margin-top:3px; border:1px solid var(--line); border-radius:12px; background: var(--bg-soft); padding:6px 7px; flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+  /* ---- Real ₹ amount raised by each side, shown right next to its playful
+     fan-power percentage — a factual figure sitting beside the fun one. ---- */
+  .support-pct-amt{ font-family:'Inter'; font-size:12.5px; font-weight:800; }
+  .support-pct-amt.l{ color:var(--left-glow); }
+  .support-pct-amt.r{ color:var(--right-glow); }
+  .leaderboard{ position:relative; margin-top:3px; border:1px solid var(--line); border-radius:12px; background: var(--bg-soft); padding:6px 7px; flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+  /* ---- Recent Supporters — now shown as floating "live comment" bubbles
+     drifting up over the Top 3 box (like YouTube/TikTok live chat), instead
+     of a fixed list. This means Recent Supporters no longer reserves any
+     permanent screen space of its own — that freed space is exactly what
+     lets the Top 3 box below grow bigger. ---- */
+  .donor-float-layer{ position:absolute; left:5px; right:5px; bottom:4px; top:4px; overflow:hidden; pointer-events:none;
+    z-index:40; display:flex; flex-direction:column-reverse; align-items:flex-start; gap:4px; }
+  .donor-float-item{ font-size:11px; font-weight:700; color:#fff; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    background:rgba(11,15,25,0.62); padding:4px 10px; border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,0.35);
+    border:1px solid rgba(255,255,255,0.08); animation: donorFloatUp 4600ms ease-out forwards; }
+  .donor-float-item .tag{ font-size:9px; padding:2px 6px; margin-right:5px; }
+  .donor-float-item .donor-name{ font-size:11px; }
+  .donor-float-item .amt{ margin-left:6px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; color:var(--gold); }
+  @keyframes donorFloatUp{
+    0%{ opacity:0; transform:translateY(16px) scale(0.92); }
+    10%{ opacity:1; transform:translateY(0) scale(1); }
+    72%{ opacity:1; transform:translateY(-4px) scale(1); }
+    100%{ opacity:0; transform:translateY(-60px) scale(0.98); }
+  }
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:2px; text-align:center; flex-shrink:0; }
   /* Three supporters side by side, spanning the full width of this box
      (same width as the "Total support so far" box above it) — not stacked.
@@ -112,11 +137,14 @@
   .top3-row .top3-photo-wrap{ position:relative; width:100%; flex:1 1 auto; min-height:0; overflow:hidden; }
   .top3-row .top3-rank{ position:absolute; top:2px; left:2px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:12px; color:var(--gold);
     line-height:1; background:rgba(11,15,25,0.8); padding:1px 5px; border-radius:5px; z-index:2; }
-  .top3-row .top3-photo{ width:100%; height:100%; border-radius:8px; object-fit:cover; background:var(--bg-soft); display:block; }
+  /* object-fit:contain (not cover) — whatever shape/size a donor's uploaded
+     photo really is, the WHOLE photo always shows, scaled down to fit this
+     box exactly; it is never cropped. */
+  .top3-row .top3-photo{ width:100%; height:100%; border-radius:8px; object-fit:contain; background:var(--bg-soft); display:block; }
   .top3-row .top3-placeholder{ width:100%; height:100%; border-radius:8px; background:var(--bg-soft);
     display:flex; align-items:center; justify-content:center; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:24px; color:var(--dim); }
-  .top3-row .top3-name{ font-size:11px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
-  .top3-row .top3-amt{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; color:var(--gold); line-height:1; flex-shrink:0; }
+  .top3-row .top3-name{ font-size:12px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
+  .top3-row .top3-amt{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14.5px; color:var(--gold); line-height:1; flex-shrink:0; }
   .top3-row.highlight{ border-color:var(--gold); box-shadow:0 0 16px rgba(255,197,61,0.7); }
   .name{ font-weight:700; font-size:13px; }
   .name-edit{ background:transparent; border:none; color:var(--white); font-weight:800; }
@@ -194,10 +222,15 @@
   .celeb-amount.side-left{ color: var(--left-glow); text-shadow: 0 0 30px rgba(46,111,242,0.6); }
   .celeb-amount.side-right{ color: var(--right-glow); text-shadow: 0 0 30px rgba(255,75,62,0.6); }
   .qr-title{ margin-top:6px; font-size:12px; letter-spacing:1px; color:var(--gold); text-transform:none; text-align:center; flex-shrink:0; font-weight:800; }
-  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; flex-shrink:0; }
-  .qr-card{ background: var(--bg-soft); border:2px solid var(--line); border-radius:12px; padding:6px; text-align:center; position:relative; }
-  .qr-card.l{ border-color: rgba(46,111,242,0.6); animation: qrPulseL 1.8s ease-in-out infinite; }
-  .qr-card.r{ border-color: rgba(255,75,62,0.6); animation: qrPulseR 1.8s ease-in-out infinite; }
+  /* ---- TWO QR boxes shown (left + right, for visual symmetry with each
+     side's colors) but BOTH encode the exact SAME link (see regenerateChooseQr
+     in the script below). Whichever one a viewer's phone camera happens to
+     detect in a screenshot/gallery photo, the result is identical — no more
+     "which code do I scan" confusion, since there's really only one code. ---- */
+  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px; flex-shrink:0; }
+  .qr-card{ background: var(--bg-soft); border-radius:14px; padding:8px 14px; text-align:center; position:relative; }
+  .qr-card.l{ border:2px solid var(--left-glow); animation: qrPulseL 1.8s ease-in-out infinite; }
+  .qr-card.r{ border:2px solid var(--right-glow); animation: qrPulseR 1.8s ease-in-out infinite; }
   @keyframes qrPulseL{
     0%,100%{ box-shadow:0 0 0px rgba(46,111,242,0.0); }
     50%{ box-shadow:0 0 22px rgba(46,111,242,0.55); }
@@ -206,11 +239,9 @@
     0%,100%{ box-shadow:0 0 0px rgba(255,75,62,0.0); }
     50%{ box-shadow:0 0 22px rgba(255,75,62,0.55); }
   }
-  .qr-card canvas{ background:#fff; border-radius:8px; padding:4px; max-width:100%; height:auto; width:74px !important; }
-  .qr-label{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; letter-spacing:1px; margin-top:4px; }
-  .qr-card.l .qr-label{ color:var(--left-glow); }
-  .qr-card.r .qr-label{ color:var(--right-glow); }
-  .qr-hint{ font-size:9px; color:var(--white); margin-top:1px; line-height:1.2; font-weight:600; }
+  .qr-card canvas{ background:#fff; border-radius:8px; padding:5px; max-width:100%; height:auto; width:96px !important; }
+  .qr-label{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; letter-spacing:1px; margin-top:5px; color:var(--gold); }
+  .qr-hint{ font-size:9.5px; color:var(--white); margin-top:2px; line-height:1.3; font-weight:600; }
   .qr-hint-highlight{ color:var(--gold); font-weight:800; }
   #setupScreen{ position:fixed; inset:0; z-index:1000; background: radial-gradient(ellipse at 50% -10%, #1a2140 0%, var(--bg) 55%);
     display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
@@ -338,24 +369,36 @@
   <div class="cards">
     <div class="card" id="cardLeft">
       <div class="name-row"><div class="avatar l">L</div><input class="name-edit" id="nameLeft" value="Messi" /></div>
-      <div class="support-pct-row"><span class="support-pct l" id="pctLeft">50%</span><span class="support-pct-note">fan power 🔥</span></div>
+      <div class="support-pct-row">
+        <div class="support-pct-line">
+          <span class="support-pct l" id="pctLeft">50%</span>
+          <span class="support-pct-amt l" id="amtLeftSide">₹0</span>
+        </div>
+        <span class="support-pct-note">fan power 🔥</span>
+      </div>
     </div>
     <div class="card" id="cardRight">
       <div class="name-row"><div class="avatar r">R</div><input class="name-edit" id="nameRight" value="Ronaldo" /></div>
-      <div class="support-pct-row"><span class="support-pct r" id="pctRight">50%</span><span class="support-pct-note">fan power 🔥</span></div>
+      <div class="support-pct-row">
+        <div class="support-pct-line">
+          <span class="support-pct r" id="pctRight">50%</span>
+          <span class="support-pct-amt r" id="amtRightSide">₹0</span>
+        </div>
+        <span class="support-pct-note">fan power 🔥</span>
+      </div>
     </div>
   </div>
   <div class="qr-title">📲 SCAN. PAY. PICK YOUR SIDE.</div>
   <div class="qr-cards">
     <div class="qr-card l">
-      <canvas id="qrLeft"></canvas>
-      <div class="qr-label" id="qrLeftLabel">Messi</div>
-      <div class="qr-hint"><span class="qr-hint-highlight">Scan with your camera</span> — choose any amount and send it, it's that quick</div>
+      <canvas id="qrLeftScan"></canvas>
+      <div class="qr-label" id="qrLeftScanLabel">Messi</div>
+      <div class="qr-hint"><span class="qr-hint-highlight">Scan either code</span> — you'll pick your side next</div>
     </div>
     <div class="qr-card r">
-      <canvas id="qrRight"></canvas>
-      <div class="qr-label" id="qrRightLabel">Ronaldo</div>
-      <div class="qr-hint"><span class="qr-hint-highlight">Scan with your camera</span> — choose any amount and send it, it's that quick</div>
+      <canvas id="qrRightScan"></canvas>
+      <div class="qr-label" id="qrRightScanLabel">Ronaldo</div>
+      <div class="qr-hint"><span class="qr-hint-highlight">Scan either code</span> — you'll pick your side next</div>
     </div>
   </div>
   <div class="clip-player" id="clipPlayer" style="display:none;">
@@ -370,9 +413,11 @@
       <div class="top3-row" id="top3box-1"><span class="top3-placeholder">?</span></div>
       <div class="top3-row" id="top3box-2"><span class="top3-placeholder">?</span></div>
     </div>
+    <!-- Recent Supporters — floats as live-comment-style bubbles over this
+         box (see .donor-float-layer CSS) instead of taking its own fixed
+         space, so Top 3's photos can be as big as possible. -->
+    <div class="donor-float-layer" id="donorFloatLayer"></div>
   </div>
-  <div class="ticker-title">Recent supporters</div>
-  <div class="ticker" id="ticker"><div class="ticker-item" style="color:var(--dim)">Waiting for the first supporter…</div></div>
 </div>
 </div>
 
@@ -436,11 +481,37 @@
 // visitor's country, whether to send them to Instamojo (India) or
 // PayPal.Me (everyone else). QR code images/positions are unchanged. =====
 const SERVER_URL = 'https://fanbattle-server-yqo5.onrender.com';
-const PAYMENT_LINK_LEFT  = SERVER_URL + '/pay-left';
-const PAYMENT_LINK_RIGHT = SERVER_URL + '/pay-right';
 
-new QRious({ element: document.getElementById('qrLeft'),  value: PAYMENT_LINK_LEFT,  size: 74, background:'#fff', foreground:'#0B0F19' });
-new QRious({ element: document.getElementById('qrRight'), value: PAYMENT_LINK_RIGHT, size: 74, background:'#fff', foreground:'#0B0F19' });
+// ===== TWO QR boxes are shown (left + right, matching each side's colors)
+// but BOTH are generated from the exact SAME link — /pay-choose, a "pick
+// your side" page that shows the CURRENT contest's two names as buttons
+// (e.g. Kohli/Babar, or Real Madrid/Barcelona — whatever nameLeft/nameRight
+// are set to right now) and only THEN sends the viewer on to /pay-left or
+// /pay-right. Since both codes decode to the identical URL, it no longer
+// matters which of the two a viewer's phone camera happens to grab from a
+// screenshot — the result is always the same, correct destination. Both
+// are regenerated any time either side's name changes. =====
+let qrLeftScanInstance = null, qrRightScanInstance = null;
+function regenerateChooseQr(){
+  const leftName = document.getElementById('nameLeft').value || 'Left';
+  const rightName = document.getElementById('nameRight').value || 'Right';
+  const chooseUrl = SERVER_URL + '/pay-choose?left=' + encodeURIComponent(leftName) + '&right=' + encodeURIComponent(rightName);
+  if (!qrLeftScanInstance) {
+    qrLeftScanInstance = new QRious({ element: document.getElementById('qrLeftScan'), value: chooseUrl, size: 74, background:'#fff', foreground:'#0B0F19' });
+  } else {
+    qrLeftScanInstance.value = chooseUrl;
+  }
+  if (!qrRightScanInstance) {
+    qrRightScanInstance = new QRious({ element: document.getElementById('qrRightScan'), value: chooseUrl, size: 74, background:'#fff', foreground:'#0B0F19' });
+  } else {
+    qrRightScanInstance.value = chooseUrl;
+  }
+  const leftLabel = document.getElementById('qrLeftScanLabel');
+  const rightLabel = document.getElementById('qrRightScanLabel');
+  if (leftLabel) leftLabel.textContent = leftName;
+  if (rightLabel) rightLabel.textContent = rightName;
+}
+regenerateChooseQr();
 
 let photoDataLeft = null;
 let photoDataRight = null;
@@ -644,8 +715,7 @@ function beginLiveWithData(cfg){
   nameRightInput.value = rightName;
   nameLeftInput.dispatchEvent(new Event('input'));
   nameRightInput.dispatchEvent(new Event('input'));
-  document.getElementById('qrLeftLabel').textContent = leftName;
-  document.getElementById('qrRightLabel').textContent = rightName;
+  regenerateChooseQr();
   if(cfg.leftPhoto) applyAvatarPhoto('left', cfg.leftPhoto);
   if(cfg.rightPhoto) applyAvatarPhoto('right', cfg.rightPhoto);
   if(cfg.clipsLeft && cfg.clipsLeft.length) clipUrlsLeft = cfg.clipsLeft;
@@ -796,19 +866,14 @@ async function tryLoadTodaysCalendar(){
 const STAGE_HEIGHT = 853;
 function fitLayoutToScreen(){
   const leaderboard = document.querySelector('.leaderboard');
-  const tickerTitle = document.querySelector('.ticker-title');
-  const ticker = document.getElementById('ticker');
-  if(!leaderboard || !tickerTitle || !ticker) return;
+  if(!leaderboard) return;
   leaderboard.style.maxHeight = 'none'; // remeasure natural position first
-  // Real measured footprint of everything below the leaderboard — Recent
-  // Supporters' actual reserved space, never a guessed number.
-  const tickerTitleStyle = getComputedStyle(tickerTitle);
-  const tickerStyle = getComputedStyle(ticker);
-  const tickerFootprint =
-    tickerTitle.offsetHeight + parseFloat(tickerTitleStyle.marginTop) +
-    ticker.offsetHeight + parseFloat(tickerStyle.marginTop);
-  const availableForLeaderboard = STAGE_HEIGHT - leaderboard.offsetTop - tickerFootprint - 6;
-  leaderboard.style.maxHeight = Math.max(56, availableForLeaderboard) + 'px';
+  // Recent Supporters no longer reserves its own fixed box (it floats over
+  // the leaderboard instead — see .donor-float-layer), so the leaderboard
+  // is now free to claim essentially all remaining room down to the bottom
+  // of the stage, growing the Top 3 photos as large as truly possible.
+  const availableForLeaderboard = STAGE_HEIGHT - leaderboard.offsetTop - 10;
+  leaderboard.style.maxHeight = Math.max(90, availableForLeaderboard) + 'px';
 }
 window.addEventListener('resize', () => { if(document.getElementById('setupScreen').style.display === 'none') fitLayoutToScreen(); });
 
@@ -1047,6 +1112,13 @@ function updateUI(){
   const pctRightEl = document.getElementById('pctRight');
   if(pctLeftEl) pctLeftEl.textContent = leftPct + '%';
   if(pctRightEl) pctRightEl.textContent = rightPct + '%';
+
+  // Real ₹ amount raised by each side, shown right beside its percentage —
+  // domestic (INR) totals only, same basis as the main total figure above.
+  const amtLeftEl = document.getElementById('amtLeftSide');
+  const amtRightEl = document.getElementById('amtRightSide');
+  if(amtLeftEl) amtLeftEl.textContent = '₹' + totals.left.toLocaleString('en-IN');
+  if(amtRightEl) amtRightEl.textContent = '₹' + totals.right.toLocaleString('en-IN');
 }
 
 // ---- Top-supporters leaderboard: a single ranked list (not split by side),
@@ -1081,22 +1153,24 @@ function renderLeaderboard(){
   }
 }
 
-function addTickerItem(name, side, amount, currency, country){
-  const ticker = document.getElementById('ticker');
-  if(ticker.children.length === 1 && ticker.children[0].style.color === 'var(--dim)'){ ticker.innerHTML = ''; }
+// Recent Supporters — a fresh bubble appears at the bottom of the
+// leaderboard box, floats upward while fading (like YouTube/TikTok live
+// comments), then removes itself. No fixed list, no permanent screen space.
+function spawnDonorFloat(name, side, amount, currency, country){
+  const layer = document.getElementById('donorFloatLayer');
+  if(!layer) return;
   const sideName = side === 'left' ? document.getElementById('nameLeft').value : document.getElementById('nameRight').value;
   const flag = (country && country !== 'IN') ? (countryFlag(country) + ' ') : '';
   const el = document.createElement('div');
-  el.className = 'ticker-item';
-  el.innerHTML = `<span class="tag ${side==='left'?'l':'r'}">${side==='left'?'LEFT':'RIGHT'}</span>
-    <span>${flag}<span class="donor-name">${name}</span> backed <b>${sideName}</b> — you next? 🔥</span>
-    <span class="amt">${formatMoney(amount, currency)}</span>`;
-  ticker.insertBefore(el, ticker.firstChild);
-  // Keep exactly the most recent 3 supporters visible — older ones slide
-  // out as new ones come in, separate from the Top 3 leaderboard above.
-  while(ticker.children.length > 3){
-    ticker.removeChild(ticker.lastChild);
-  }
+  el.className = 'donor-float-item';
+  el.innerHTML = `<span class="tag ${side==='left'?'l':'r'}">${side==='left'?'L':'R'}</span>${flag}<span class="donor-name">${name}</span> → <b>${sideName}</b><span class="amt">${formatMoney(amount, currency)}</span>`;
+  layer.appendChild(el);
+  // Matches the CSS animation duration — always clean up after itself so
+  // the layer never silently accumulates hidden elements.
+  setTimeout(() => { if(el.parentNode) el.parentNode.removeChild(el); }, 4700);
+  // Keep at most a handful of bubbles rising at once, in case donations are
+  // arriving in a fast burst — prevents them piling up unreadably.
+  while(layer.children.length > 5){ layer.removeChild(layer.firstChild); }
 }
 
 const confettiCanvas = document.getElementById('confettiCanvas');
@@ -1261,7 +1335,7 @@ function addDonation(name, side, amount, currency, country){
   if(donorTotals[name].currency !== currency){ donorTotals[name].amount = 0; donorTotals[name].currency = currency; }
   donorTotals[name].amount += amount;
   donorTotals[name].side = side; // most recent side shown alongside their name
-  updateUI(); renderLeaderboard(); addTickerItem(name, side, amount, currency, country); triggerCelebration(name, side, amount, currency, country);
+  updateUI(); renderLeaderboard(); spawnDonorFloat(name, side, amount, currency, country); triggerCelebration(name, side, amount, currency, country);
   const sideName = side === 'left' ? document.getElementById('nameLeft').value : document.getElementById('nameRight').value;
   const isAbroad = country && country !== 'IN';
   const spokenLocation = isAbroad ? `, from ${countryDisplayName(country)}` : '';
@@ -1304,14 +1378,17 @@ function randomBurst(){
 
 function resetAll(){
   totals = { left:0, right:0 }; counts = { left:0, right:0 }; donorTotals = {}; internationalTotals = {}; donorPhotos = {}; top3Cache = []; updateUI(); renderLeaderboard();
-  document.getElementById('ticker').innerHTML = '<div class="ticker-item" style="color:var(--dim)">Waiting for the first supporter…</div>';
+  const layer = document.getElementById('donorFloatLayer');
+  if(layer) layer.innerHTML = '';
 }
 
 document.getElementById('nameLeft').addEventListener('input', e => {
   document.getElementById('titleText').innerHTML = e.target.value.toUpperCase() + ' &nbsp;VS&nbsp; ' + document.getElementById('nameRight').value.toUpperCase();
+  regenerateChooseQr();
 });
 document.getElementById('nameRight').addEventListener('input', e => {
   document.getElementById('titleText').innerHTML = document.getElementById('nameLeft').value.toUpperCase() + ' &nbsp;VS&nbsp; ' + e.target.value.toUpperCase();
+  regenerateChooseQr();
 });
 
 updateUI();
