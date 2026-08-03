@@ -1160,8 +1160,8 @@ function chooseSidePageHtml(leftName, rightName) {
   </style></head><body>
     <h2>Pick your side 🔥</h2>
     <p>Who are you supporting right now?</p>
-    <a class="side-btn left" href="/pay-left"><span class="emoji">🔵</span>Support ${leftName}</a>
-    <a class="side-btn right" href="/pay-right"><span class="emoji">🔴</span>Support ${rightName}</a>
+    <a class="side-btn left" href="/pay-left?name=${encodeURIComponent(leftName)}"><span class="emoji">🔵</span>Support ${leftName}</a>
+    <a class="side-btn right" href="/pay-right?name=${encodeURIComponent(rightName)}"><span class="emoji">🔴</span>Support ${rightName}</a>
   </body></html>`;
 }
 
@@ -1173,42 +1173,48 @@ app.get('/pay-choose', (req, res) => {
 
 app.get('/pay-left', async (req, res) => {
   const gw = loadGatewaySettings(); // read fresh EVERY request — toggle takes effect instantly
+  // The actual side name comes through from the /pay-choose page (which
+  // itself got it from the QR code's own left=/right= params, always kept
+  // in sync with whatever the streamer has set live) — falls back to the
+  // generic label only if this route is ever opened directly without that.
+  const teamName = req.query.name ? decodeURIComponent(req.query.name) : 'the Left side';
   // Manual override for testing — e.g. /pay-left?force=paypal lets you see
   // the PayPal page even from India, and /pay-left?force=instamojo forces
   // the domestic page from anywhere. Real visitors never use this param.
   if (req.query.force === 'paypal') {
-    if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Left side'));
-    return res.send(paypalPageHtml('left', 'the Left side'));
+    if (!gw.internationalEnabled) return res.send(pausedPageHtml(teamName));
+    return res.send(paypalPageHtml('left', teamName));
   }
   if (req.query.force === 'instamojo') {
-    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Left side'));
-    return res.send(instamojoAmountPageHtml('left', 'the Left side'));
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml(teamName));
+    return res.send(instamojoAmountPageHtml('left', teamName));
   }
   const country = await lookupCountry(getVisitorIp(req));
   if (country === 'IN') {
-    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Left side'));
-    return res.send(instamojoAmountPageHtml('left', 'the Left side'));
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml(teamName));
+    return res.send(instamojoAmountPageHtml('left', teamName));
   }
-  if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Left side'));
-  res.send(paypalPageHtml('left', 'the Left side'));
+  if (!gw.internationalEnabled) return res.send(pausedPageHtml(teamName));
+  res.send(paypalPageHtml('left', teamName));
 });
 app.get('/pay-right', async (req, res) => {
   const gw = loadGatewaySettings();
+  const teamName = req.query.name ? decodeURIComponent(req.query.name) : 'the Right side';
   if (req.query.force === 'paypal') {
-    if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Right side'));
-    return res.send(paypalPageHtml('right', 'the Right side'));
+    if (!gw.internationalEnabled) return res.send(pausedPageHtml(teamName));
+    return res.send(paypalPageHtml('right', teamName));
   }
   if (req.query.force === 'instamojo') {
-    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Right side'));
-    return res.send(instamojoAmountPageHtml('right', 'the Right side'));
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml(teamName));
+    return res.send(instamojoAmountPageHtml('right', teamName));
   }
   const country = await lookupCountry(getVisitorIp(req));
   if (country === 'IN') {
-    if (!gw.domesticEnabled) return res.send(pausedPageHtml('the Right side'));
-    return res.send(instamojoAmountPageHtml('right', 'the Right side'));
+    if (!gw.domesticEnabled) return res.send(pausedPageHtml(teamName));
+    return res.send(instamojoAmountPageHtml('right', teamName));
   }
-  if (!gw.internationalEnabled) return res.send(pausedPageHtml('the Right side'));
-  res.send(paypalPageHtml('right', 'the Right side'));
+  if (!gw.internationalEnabled) return res.send(pausedPageHtml(teamName));
+  res.send(paypalPageHtml('right', teamName));
 });
 
 // ====== Daily Needle & Zero to Trader — ONE smart-routed QR each ======
