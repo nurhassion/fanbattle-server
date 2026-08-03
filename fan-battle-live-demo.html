@@ -59,7 +59,7 @@
   .fact-bar span{ display:inline-block; opacity:1; transition: opacity 400ms ease; }
   .fact-bar span.fading{ opacity:0; }
   .clip-player{ position:relative; margin-top:4px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
-    flex-shrink:0; background:#000; width:100%; height:262px; } /* grown — half the space freed by Recent Supporters no longer reserving its own block below Top 3 */
+    flex-shrink:0; background:#000; width:100%; height:230px; } /* bigger than the original 204px, but pulled back from 262px which was pushing the frame's total content past its 853px height and clipping Top 3 off entirely */
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
   .clip-player iframe{ width:100%; height:100%; border:none; display:block; }
   .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
@@ -100,13 +100,14 @@
   .support-pct-amt.r{ color:var(--right-glow); }
   .leaderboard{ position:relative; margin-top:3px; border:1px solid var(--line); border-radius:12px; background: var(--bg-soft); padding:6px 7px; flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:2px; text-align:center; flex-shrink:0; }
-  /* Three supporters side by side. FIXED size — no separate space reserved
-     for Recent Supporters anymore (that now floats ON TOP of this box, see
-     .donor-float-layer below) — half of the space that freed up went into
-     making these boxes taller, the other half went into the video above. */
+  /* Three supporters side by side. Height is set by JS at runtime (see
+     fitLayoutToScreen) based on the ACTUAL remaining space in the frame —
+     never a guessed fixed pixel value — so this box can never overflow the
+     853px stage and vanish again. It aims big (up to 190px) but always
+     shrinks gracefully if space is tight instead of disappearing. */
   .top3-rows{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; flex-shrink:0; }
   .top3-row{ position:relative; border-radius:9px; border:1.5px solid var(--line); background:var(--bg);
-    transition: box-shadow 300ms ease, border-color 300ms ease; overflow:hidden; height:180px; flex-shrink:0; }
+    transition: box-shadow 300ms ease, border-color 300ms ease; overflow:hidden; height:100%; flex-shrink:0; }
   .top3-row .top3-photo-wrap{ position:relative; width:100%; height:100%; overflow:hidden; }
   .top3-row .top3-rank{ position:absolute; top:2px; left:2px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:12px; color:var(--gold);
     line-height:1; background:rgba(11,15,25,0.8); padding:1px 5px; border-radius:5px; z-index:2; }
@@ -260,7 +261,7 @@
   .panel-outside{ width:100%; max-width:480px; margin:16px auto 40px; padding:0 16px; }
   /* ---- Product spotlight — kept the SAME size as the Top 3 donor photo
      boxes (whatever size those are, this matches), fixed, not flexible. ---- */
-  .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:140px; height:180px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:11px; padding:8px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; display:flex; flex-direction:column; }
+  .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:140px; height:150px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:11px; padding:8px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; display:flex; flex-direction:column; }
   .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
   .affiliate-spotlight img.aff-product-img{ width:100%; flex:1 1 auto; min-height:0; object-fit:cover; border-radius:7px; background:#fff; display:block; }
   .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:18px; color:var(--gold); margin-top:4px; flex-shrink:0; }
@@ -873,6 +874,23 @@ function fitLayoutToScreen(){
   // of the stage, growing the Top 3 photos as large as truly possible.
   const availableForLeaderboard = STAGE_HEIGHT - leaderboard.offsetTop - 10;
   leaderboard.style.maxHeight = Math.max(90, availableForLeaderboard) + 'px';
+
+  // Top 3's row height is computed here from the REAL remaining space
+  // (never a guessed fixed CSS value) — this is what guarantees it can
+  // never overflow the 853px stage and get clipped invisible again. It
+  // aims big (up to 190px) but shrinks gracefully instead of vanishing if
+  // something above it (title text wrapping, etc.) ever takes more room.
+  const titleEl = document.querySelector('.leaderboard-title');
+  const top3Rows = document.getElementById('top3Grid');
+  const affiliateBox = document.getElementById('affiliateSpotlight');
+  if(titleEl && top3Rows){
+    const leaderboardVerticalPadding = 12; // .leaderboard padding:6px 7px → 6px top + 6px bottom
+    let desiredTop3Height = availableForLeaderboard - titleEl.offsetHeight - leaderboardVerticalPadding;
+    desiredTop3Height = Math.max(90, Math.min(190, desiredTop3Height));
+    top3Rows.style.height = desiredTop3Height + 'px';
+    // Product spotlight box always matches whatever size Top 3's boxes are.
+    if(affiliateBox) affiliateBox.style.height = desiredTop3Height + 'px';
+  }
 }
 window.addEventListener('resize', () => { if(document.getElementById('setupScreen').style.display === 'none') fitLayoutToScreen(); });
 
