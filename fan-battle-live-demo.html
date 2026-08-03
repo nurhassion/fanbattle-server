@@ -786,11 +786,13 @@ function applyColorPreset(preset){
   root.setProperty('--display-font', p.font);
 }
 
+let currentActiveIdeaId = null; // tracks which saved idea is currently loaded, so we can detect when a DIFFERENT one gets marked live later
 async function tryLoadActiveIdea(){
   try{
     const res = await fetch(SERVER_URL + '/api/active-idea/fanbattle');
     const data = await res.json();
     if(data && data.found){
+      currentActiveIdeaId = data.id || null;
       beginLiveWithData({
         leftName: data.leftName, rightName: data.rightName,
         leftPhoto: data.leftPhotoUrl, rightPhoto: data.rightPhotoUrl,
@@ -807,6 +809,35 @@ async function tryLoadActiveIdea(){
   }catch(err){ console.error('Active Content Idea check failed:', err.message); }
   return false;
 }
+
+// ---- Keeps checking every 15s for a DIFFERENT idea being marked live from
+// the /app Schedule tab AFTER this overlay page already loaded (e.g. the
+// streamer opened the overlay in PRISM once, then later picked a fresh
+// Content Idea and pressed "Go Live" for it) — since this overlay page is
+// typically left open in the Browser Source for the whole stream and never
+// itself reloaded, without this it would just silently keep showing
+// whatever it started with, ignoring any later "Go Live" press entirely. ----
+async function pollForActiveIdeaChange(){
+  try{
+    const res = await fetch(SERVER_URL + '/api/active-idea/fanbattle');
+    const data = await res.json();
+    if(data && data.found && data.id && data.id !== currentActiveIdeaId){
+      console.log('🔄 A different Content Idea was marked live — switching the overlay to it now.');
+      currentActiveIdeaId = data.id;
+      beginLiveWithData({
+        leftName: data.leftName, rightName: data.rightName,
+        leftPhoto: data.leftPhotoUrl, rightPhoto: data.rightPhotoUrl,
+        introVoiceUrls: data.introVoiceUrls, voiceRepeatSeconds: data.voiceRepeatSeconds,
+        musicUrls: data.musicUrls,
+        clipsLeft: data.leftClipUrls, clipsRight: data.rightClipUrls,
+        clipsLeftDurations: data.leftClipDurationsSec, clipsRightDurations: data.rightClipDurationsSec
+      });
+      if(data.preset) applyColorPreset(data.preset);
+      if(data.affiliateProductsOrdered || data.affiliateProducts){ buildAffiliateRotation(data.affiliateProductsOrdered || data.affiliateProducts); startAffiliateRotation(); }
+    }
+  }catch(err){ /* a transient network hiccup here should never disturb what's already on screen */ }
+}
+setInterval(pollForActiveIdeaChange, 15000);
 
 // ---- Content Calendar (Step 2): on every load, ask the server whether
 // TODAY has a pre-filled row in the Google Sheet calendar. If so, skip the
