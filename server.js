@@ -2677,6 +2677,7 @@ app.get('/api/active-idea/:channel', async (req, res) => {
   ]);
   res.json({
     found: true,
+    id: evt.id,
     title: evt.title,
     leftName: evt.leftName, rightName: evt.rightName,
     leftPhotoUrl: evt.leftPhotoDataUrl, rightPhotoUrl: evt.rightPhotoDataUrl,
@@ -2707,7 +2708,7 @@ app.get('/api/active-idea', async (req, res) => {
     getClipDurationsSec(evt.leftVideoUrls), getClipDurationsSec(evt.rightVideoUrls)
   ]);
   res.json({
-    found: true, title: evt.title,
+    found: true, id: evt.id, title: evt.title,
     leftName: evt.leftName, rightName: evt.rightName,
     leftPhotoUrl: evt.leftPhotoDataUrl, rightPhotoUrl: evt.rightPhotoDataUrl,
     introVoiceUrls: evt.introVoiceDataUrls || [],
