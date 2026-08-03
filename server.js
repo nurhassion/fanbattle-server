@@ -535,8 +535,6 @@ function instamojoAmountPageHtml(side, teamName) {
     <p>Enter any amount you'd like to tip — this is a completely voluntary show of support, no goods or prizes are exchanged. Minimum ₹9.</p>
     <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
     <div><input type="text" id="donorName" placeholder="Your name" maxlength="40"></div>
-    <label class="fieldLabel">Mobile number <span class="req">*required</span></label>
-    <div><input type="tel" id="donorPhone" placeholder="Your mobile number"></div>
     <label class="fieldLabel">Amount <span class="req">*required</span></label>
     <div style="margin-top:4px;"><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
     <div class="presets">
@@ -560,15 +558,9 @@ function instamojoAmountPageHtml(side, teamName) {
       function pay(){
         const amt = parseFloat(document.getElementById('amt').value);
         const donorName = document.getElementById('donorName').value.trim();
-        const donorPhone = document.getElementById('donorPhone').value.trim();
         if(!donorName){
           document.getElementById('status').textContent = 'Please enter your name — it\\'s required.';
           document.getElementById('donorName').focus();
-          return;
-        }
-        if(!donorPhone){
-          document.getElementById('status').textContent = 'Please enter your mobile number — it\\'s required.';
-          document.getElementById('donorPhone').focus();
           return;
         }
         if(!amt || isNaN(amt) || amt < 9){
@@ -579,7 +571,7 @@ function instamojoAmountPageHtml(side, teamName) {
         document.getElementById('status').textContent = 'Redirecting to payment...';
         fetch('/instamojo-create-request', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ amount: amt, side: '${side}', donorName, donorPhone })
+          body: JSON.stringify({ amount: amt, side: '${side}', donorName })
         }).then(r => r.json()).then(d => {
           if(d.longurl) window.location.href = d.longurl;
           else document.getElementById('status').textContent = 'Something went wrong: ' + (d.error || 'please try again.');
@@ -593,17 +585,16 @@ function instamojoAmountPageHtml(side, teamName) {
 
 app.post('/instamojo-create-request', async (req, res) => {
   try {
-    const { amount, side, donorName, donorPhone } = req.body;
+    const { amount, side, donorName } = req.body;
     const amt = parseFloat(amount);
-    // STEP 3: name + amount are required — enforced here too, not just in
-    // the page's own JS, since this endpoint could in principle be called
-    // directly.
+    // Name + amount are required — enforced here too, not just in the
+    // page's own JS, since this endpoint could in principle be called
+    // directly. Mobile number is no longer collected on this page at all.
     if (!donorName || !donorName.trim()) return res.status(400).json({ error: 'Name is required.' });
-    if (!donorPhone || !donorPhone.trim()) return res.status(400).json({ error: 'Mobile number is required.' });
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
     const validSides = ['left', 'right', 'dailyneedle', 'zerototrader'];
     const safeSide = validSides.includes(side) ? side : 'right';
-    const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), donorPhone);
+    const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), null);
     res.json({ longurl });
   } catch (e) {
     console.error('instamojo-create-request failed:', e.message);
@@ -1122,6 +1113,42 @@ function pausedPageHtml(teamName) {
     <p>Support for ${teamName} is not being accepted at this exact moment.<br>Please try again shortly.</p>
   </body></html>`;
 }
+
+// =====================================================================
+// ==========  NEW: single "Pick your side" landing page (ONE QR)  =====
+// =====================================================================
+// Solves a real confusion problem: when two separate QR codes sit side by
+// side on a phone screenshot, the visitor's camera/QR scanner has no way to
+// know which of the two codes to read — sometimes it grabs the wrong one,
+// sending a tip to the wrong side entirely. This page fixes that by giving
+// the overlay only ONE QR code to show. Scanning it lands here first, the
+// visitor taps their side, and ONLY THEN are they sent on to the existing
+// /pay-left or /pay-right flow (Instamojo/PayPal geo-routing, unchanged).
+function chooseSidePageHtml(leftName, rightName) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pick your side</title>
+  <style>
+    body{font-family:Arial,sans-serif; background:#0B0F19; color:#F5F7FA; text-align:center; padding:40px 20px;}
+    h2{margin-bottom:6px;} p{color:#8B93A7; font-size:14px; margin-bottom:26px;}
+    .side-btn{ display:block; width:100%; max-width:280px; margin:0 auto 16px; padding:20px 16px; border-radius:16px;
+      border:2px solid transparent; text-decoration:none; font-size:19px; font-weight:800; font-family:Arial,sans-serif; }
+    .side-btn.left{ background:rgba(46,111,242,0.15); border-color:#2E6FF2; color:#6C9BFF; }
+    .side-btn.right{ background:rgba(255,75,62,0.15); border-color:#FF4B3E; color:#FF8A7A; }
+    .side-btn .emoji{ display:block; font-size:26px; margin-bottom:4px; }
+  </style></head><body>
+    <h2>Pick your side 🔥</h2>
+    <p>Who are you supporting right now?</p>
+    <a class="side-btn left" href="/pay-left"><span class="emoji">🔵</span>Support ${leftName}</a>
+    <a class="side-btn right" href="/pay-right"><span class="emoji">🔴</span>Support ${rightName}</a>
+  </body></html>`;
+}
+
+app.get('/pay-choose', (req, res) => {
+  const leftName = req.query.left ? decodeURIComponent(req.query.left) : 'the Left side';
+  const rightName = req.query.right ? decodeURIComponent(req.query.right) : 'the Right side';
+  res.send(chooseSidePageHtml(leftName, rightName));
+});
 
 app.get('/pay-left', async (req, res) => {
   const gw = loadGatewaySettings(); // read fresh EVERY request — toggle takes effect instantly
@@ -2393,10 +2420,6 @@ async function createFacebookScheduledLive({ title, description, scheduledTime }
   return { id: data.id, url: `https://www.facebook.com/${FB_PAGE_ID}/videos/${data.id}` };
 }
 
-// Single endpoint the Schedule tab calls — pushes to whichever platform(s)
-// were checked, and reports each platform's own success/failure separately
-// (one platform failing, e.g. Facebook pending approval, never blocks the
-// other from succeeding).
 // ====== Content Ideas Library — no fixed time, click "Go Live" whenever ======
 // You save up to 20 title/description/hashtags/thumbnail sets ahead of time.
 // Whenever you actually want to go live with one, open its "Go Live" link —
