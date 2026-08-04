@@ -665,6 +665,7 @@ function playClipAt(index){
   document.getElementById('clipTag').textContent = item.tag;
 }
 function startClipPlayer(leftName, rightName){
+  if(window.__driveClipTimer) clearTimeout(window.__driveClipTimer); // clear any pending rotation from a PREVIOUS clip list (e.g. mid-stream video update) so it can't fire against the new one
   clipPlaylist = buildClipPlaylist(leftName, rightName);
   if(clipPlaylist.length === 0){ document.getElementById('clipPlayer').style.display = 'none'; return; }
   document.getElementById('clipPlayer').style.display = 'block';
