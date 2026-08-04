@@ -264,7 +264,7 @@
      boxes (whatever size those are, this matches), fixed, not flexible. ---- */
   .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:140px; height:150px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:11px; padding:8px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; display:flex; flex-direction:column; }
   .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
-  .affiliate-spotlight img.aff-product-img{ width:100%; flex:1 1 auto; min-height:0; object-fit:cover; border-radius:7px; background:#fff; display:block; }
+  .affiliate-spotlight img.aff-product-img{ width:100%; flex:1 1 auto; min-height:0; object-fit:contain; border-radius:7px; background:#fff; display:block; }
   .affiliate-spotlight .aff-product-placeholder{ width:100%; flex:1 1 auto; min-height:0; background:var(--bg-soft); border-radius:7px;
     display:flex; align-items:center; justify-content:center; font-size:34px; }
   .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:18px; color:var(--gold); margin-top:4px; flex-shrink:0; }
@@ -962,10 +962,10 @@ function fitLayoutToScreen(){
   if(titleEl && top3Rows && affiliateBox){
     const leaderboardVerticalPadding = 12; // .leaderboard padding:6px 7px → 6px top + 6px bottom
     const maxSpaceForTop3 = availableForLeaderboard - titleEl.offsetHeight - leaderboardVerticalPadding;
-    // Affiliate box: reaches for its big target (380px), but if the frame
-    // genuinely doesn't have that much room near the bottom of the stage,
-    // it settles for the most it safely can — same safety pattern as before.
-    const affiliateTarget = 380;
+    // Affiliate box: reaches for its target (190px — halved per request),
+    // but if the frame genuinely doesn't have that much room near the
+    // bottom of the stage, it settles for the most it safely can.
+    const affiliateTarget = 190; // halved per request — was 380
     const affiliateSpaceCeiling = STAGE_HEIGHT - 20; // stays within the stage, 10px margin top+bottom
     const desiredAffiliateHeight = Math.max(150, Math.min(affiliateTarget, affiliateSpaceCeiling));
     affiliateBox.style.height = desiredAffiliateHeight + 'px';
