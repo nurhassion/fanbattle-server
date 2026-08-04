@@ -30,7 +30,7 @@ const RECORDS_FILE = path.join(__dirname, 'records.json');
 const PHOTOS_FILE = path.join(__dirname, 'donor-photos.json');
 const GATEWAY_SETTINGS_FILE = path.join(__dirname, 'gateway-settings.json');
 const NOTIFY_SETTINGS_FILE = path.join(__dirname, 'notify-settings.json');
-const SCHEDULED_EVENTS_FILE = path.join(__dirname, 'scheduled-events.json');
+// (the old shared legacy scheduled-events.json path/constant has been removed — see loadScheduledEvents() for why)
 
 // ====== Multi-channel config (Fan Battle Live / Zero to Trader / Daily Needle) ======
 // Each channel gets its OWN saved-ideas file and its own YouTube/Facebook
@@ -80,18 +80,18 @@ function saveNotifySettings(settings) {
 function loadScheduledEvents(channel) {
   const ch = channelOrDefault(channel);
   const file = CHANNELS[ch].file;
+  // NOTE: fanbattle used to also fall back to a very old shared legacy file
+  // (scheduled-events.json) here if its own per-channel file was missing —
+  // that fallback has been REMOVED. It was a one-time migration helper from
+  // long ago, but turned out to be the actual root cause of Fan Battle
+  // Live's ideas repeatedly vanishing: if that old file was ever present
+  // (e.g. accidentally committed to the repo), it would load STALE data
+  // after every restart, get mistaken for "real local data", and that
+  // would stop the genuine Google Drive backup from ever being restored —
+  // silently overwriting the good backup with old/wrong data on the next
+  // save. All three channels now behave identically and safely.
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (e) {
-    // One-time migration: the very first version of this server only had a
-    // single channel (Fan Battle Live) saved at the old shared filename —
-    // if that old file still exists and the new per-channel file doesn't
-    // yet, adopt it once so nobody's existing ideas silently disappear.
-    if (ch === 'fanbattle') {
-      try { return JSON.parse(fs.readFileSync(SCHEDULED_EVENTS_FILE, 'utf8')); }
-      catch (e2) { return []; }
-    }
-    return [];
-  }
+  catch (e) { return []; }
 }
 function saveScheduledEvents(events, channel) {
   const ch = channelOrDefault(channel);
