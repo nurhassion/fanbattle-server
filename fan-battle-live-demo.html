@@ -591,6 +591,29 @@ let clipPlaylist = [];
 let clipIndex = 0;
 let clipVideoVolume = 0.8; // controlled by the streamer-only slider in the outside panel
 let driveClipFallbackSec = 3600; // used ONLY if a real duration couldn't be auto-detected (e.g. no API key configured) — generous on purpose so a clip is never cut off early
+
+// ---- Google Drive clip mute control ----
+// A Drive clip plays inside an iframe (a different website's content), so
+// there is NO way to smoothly fade its volume, or pause/resume it, from our
+// own code — the only lever Drive's embed viewer exposes at all is a
+// mute=0/1 flag in its URL, and changing that means RELOADING the iframe,
+// which restarts the clip from the beginning. That trade-off is accepted
+// here specifically for donation announcements (see announceNewDonation
+// below) — NOT for the more frequent ambient intro-voice/Top-3 loops, since
+// restarting the clip that often would be far more disruptive than helpful.
+// Two independent switches combine into the applied mute state: the
+// streamer's own manual slider, and whether a donation is being announced
+// right now — muted if EITHER wants it muted.
+let currentDriveEmbedBaseUrl = null; // set whenever a Drive clip is the one currently showing; null otherwise
+let driveClipManualMuted = false;    // from the streamer's own Clip video volume slider (dragged to 0)
+let driveClipAnnouncementMuted = false; // true only while a donation announcement is actively speaking
+function reloadDriveIframeWithMuteState(){
+  const frame = document.getElementById('clipVideoFrame');
+  if(!frame || !currentDriveEmbedBaseUrl || frame.style.display !== 'block') return;
+  const shouldMute = driveClipManualMuted || driveClipAnnouncementMuted;
+  const newSrc = currentDriveEmbedBaseUrl + '?autoplay=1&mute=' + (shouldMute ? 1 : 0);
+  if(frame.src !== newSrc) frame.src = newSrc; // skip a reload (and the restart it causes) if nothing actually changed
+}
 function buildClipPlaylist(leftName, rightName){
   const playlist = [];
   const max = Math.max(clipUrlsLeft.length, clipUrlsRight.length);
@@ -625,11 +648,13 @@ function playClipAt(index){
     video.pause();
     video.style.display = 'none';
     frame.style.display = 'block';
-    frame.src = driveUrl + '?autoplay=1&mute=0';
+    currentDriveEmbedBaseUrl = driveUrl;
+    reloadDriveIframeWithMuteState(); // applies whatever mute state currently holds (normally unmuted)
     applyClipFrameTransform();
     window.__driveClipTimer = setTimeout(() => { clipIndex++; playClipAt(clipIndex); }, (item.durationSec || driveClipFallbackSec) * 1000);
   } else {
     // Normal path: any direct, playable video link (Streamable, etc.).
+    currentDriveEmbedBaseUrl = null; // no Drive clip active — mute-reload logic becomes a no-op until one plays again
     frame.style.display = 'none';
     frame.src = '';
     video.style.display = 'block';
@@ -655,6 +680,12 @@ document.getElementById('clipVolumeSlider').addEventListener('input', function(e
   document.getElementById('clipVolumeValue').textContent = Math.round(clipVideoVolume * 100) + '%';
   const video = document.getElementById('clipVideo');
   if(video) video.volume = clipVideoVolume;
+  // Same slider also gives manual mute control over a Drive clip, since
+  // Drive has no real volume level to set — dragged all the way to 0 mutes
+  // it, anywhere above that unmutes it (unless a donation announcement is
+  // also muting it right now, in which case that takes priority).
+  driveClipManualMuted = (clipVideoVolume <= 0);
+  reloadDriveIframeWithMuteState();
 });
 // ====== Drive-clip zoom/position — compensates for Google Drive's own
 // letterboxing (black bars) around the embedded video, entirely from the
@@ -787,12 +818,14 @@ function applyColorPreset(preset){
 }
 
 let currentActiveIdeaId = null; // tracks which saved idea is currently loaded, so we can detect when a DIFFERENT one gets marked live later
+let currentActiveIdeaVersion = null; // tracks the idea's own last-updated marker, so an in-place EDIT to the SAME idea (e.g. affiliate products added mid-stream) is detected too
 async function tryLoadActiveIdea(){
   try{
     const res = await fetch(SERVER_URL + '/api/active-idea/fanbattle');
     const data = await res.json();
     if(data && data.found){
       currentActiveIdeaId = data.id || null;
+      currentActiveIdeaVersion = data.version || null;
       beginLiveWithData({
         leftName: data.leftName, rightName: data.rightName,
         leftPhoto: data.leftPhotoUrl, rightPhoto: data.rightPhotoUrl,
@@ -810,20 +843,26 @@ async function tryLoadActiveIdea(){
   return false;
 }
 
-// ---- Keeps checking every 15s for a DIFFERENT idea being marked live from
-// the /app Schedule tab AFTER this overlay page already loaded (e.g. the
-// streamer opened the overlay in PRISM once, then later picked a fresh
-// Content Idea and pressed "Go Live" for it) — since this overlay page is
-// typically left open in the Browser Source for the whole stream and never
-// itself reloaded, without this it would just silently keep showing
-// whatever it started with, ignoring any later "Go Live" press entirely. ----
+// ---- Keeps checking every 15s for EITHER of two things happening from the
+// /app Schedule tab AFTER this overlay page already loaded (it's typically
+// left open in the Browser Source for the whole stream and never itself
+// reloaded, so without this it would just silently ignore both):
+//   1) a DIFFERENT idea being marked live (id changes)
+//   2) the SAME live idea being EDITED and saved — e.g. going live now
+//      with no affiliate products yet, then pasting them in and saving
+//      partway through the stream (version changes, id stays the same)
+// Either case reloads the overlay's data — same/different idea, doesn't matter. ----
 async function pollForActiveIdeaChange(){
   try{
     const res = await fetch(SERVER_URL + '/api/active-idea/fanbattle');
     const data = await res.json();
-    if(data && data.found && data.id && data.id !== currentActiveIdeaId){
-      console.log('🔄 A different Content Idea was marked live — switching the overlay to it now.');
+    if(!data || !data.found || !data.id) return;
+    const isDifferentIdea = data.id !== currentActiveIdeaId;
+    const isSameIdeaEdited = data.id === currentActiveIdeaId && data.version && data.version !== currentActiveIdeaVersion;
+    if(isDifferentIdea || isSameIdeaEdited){
+      console.log(isDifferentIdea ? '🔄 A different Content Idea was marked live — switching the overlay to it now.' : '🔄 The live Content Idea was edited and saved — refreshing the overlay with the update.');
       currentActiveIdeaId = data.id;
+      currentActiveIdeaVersion = data.version || null;
       beginLiveWithData({
         leftName: data.leftName, rightName: data.rightName,
         leftPhoto: data.leftPhotoUrl, rightPhoto: data.rightPhotoUrl,
@@ -1022,20 +1061,31 @@ let introDueAt = null;        // timestamp when the intro-voice is next allowed 
 let top3DueAt = null;         // timestamp when the next top-3 shout-out is next allowed to play
 let ambientGeneration = 0;    // bumped whenever a donation interrupts, to cancel any in-flight chained speech safely
 
+// Tracks whether the clip video / bg music were actually playing right
+// before an announcement paused them, so restoreAudioAfterAnnouncement()
+// only resumes whichever of them was genuinely playing (never force-starts
+// one that was already stopped/hidden for another reason).
+let wasVideoPlayingBeforeAnnouncement = false;
+let wasBgMusicPlayingBeforeAnnouncement = false;
+
 function duckAudioForAnnouncement(){
-  // ANY announcement or intro — ambient or a fresh donation — always pulls
-  // the background music and the clip video down by 80% (to 20% of their
-  // normal level), so the spoken words are always clearly the loudest thing.
+  // ANY announcement or intro — ambient or a fresh donation — now fully
+  // PAUSES the background clip video and background music (rather than
+  // just turning them down), so every donor's name is heard completely
+  // clearly with nothing competing against it. Both resume exactly where
+  // they left off once the announcement finishes.
   const video = document.getElementById('clipVideo');
   const bg = document.getElementById('bgMusic');
-  if(video) video.volume = clipVideoVolume * 0.2;
-  if(bg && !bg.paused) bg.volume = 0.35 * 0.2;
+  wasVideoPlayingBeforeAnnouncement = !!(video && !video.paused);
+  wasBgMusicPlayingBeforeAnnouncement = !!(bg && !bg.paused);
+  if(video && !video.paused) video.pause();
+  if(bg && !bg.paused) bg.pause();
 }
 function restoreAudioAfterAnnouncement(){
   const video = document.getElementById('clipVideo');
   const bg = document.getElementById('bgMusic');
-  if(video) video.volume = clipVideoVolume;
-  if(bg && !bg.paused) bg.volume = 0.35;
+  if(video && wasVideoPlayingBeforeAnnouncement) video.play().catch(()=>{});
+  if(bg && wasBgMusicPlayingBeforeAnnouncement) bg.play().catch(()=>{});
 }
 
 function playIntroVoiceOnce(onDone){
@@ -1120,6 +1170,11 @@ function announceNewDonation(playDonationAnnouncement){
   document.querySelectorAll('.top3-row').forEach(b => b.classList.remove('highlight'));
   ambientBusy = true; // block the scheduler until this donation's announcement finishes
   duckAudioForAnnouncement();
+  // Mute a Drive clip specifically for a real donation (this restarts the
+  // clip — see the note by driveClipAnnouncementMuted above) — deliberately
+  // NOT done for the more frequent ambient intro-voice/Top-3 loops.
+  driveClipAnnouncementMuted = true;
+  reloadDriveIframeWithMuteState();
   playDonationAnnouncement();
 }
 
@@ -1129,6 +1184,8 @@ function announceNewDonation(playDonationAnnouncement){
 // still gets its full breathing room after this interruption.
 function finishDonationAnnouncement(){
   restoreAudioAfterAnnouncement();
+  driveClipAnnouncementMuted = false;
+  reloadDriveIframeWithMuteState();
   ambientBusy = false;
   const now = Date.now();
   introDueAt = Math.max(introDueAt || 0, now) + AMBIENT_GAP_MS;
