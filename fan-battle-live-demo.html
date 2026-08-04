@@ -59,7 +59,7 @@
   .fact-bar span{ display:inline-block; opacity:1; transition: opacity 400ms ease; }
   .fact-bar span.fading{ opacity:0; }
   .clip-player{ position:relative; margin-top:4px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
-    flex-shrink:0; background:#000; width:100%; height:207px; } /* 230px minus 10%, freeing room for bigger Top 3 / product panels below */
+    flex-shrink:0; background:#000; width:100%; height:155px; } /* trimmed further — the small video-side share of funding the much bigger product/Top-3 panels below */
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
   .clip-player iframe{ width:100%; height:100%; border:none; display:block; }
   .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
@@ -70,9 +70,9 @@
   .total-amount{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:26px; letter-spacing:1px; color:var(--gold); margin-top:2px; }
   .total-amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px; }
   .cards{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:3px; flex-shrink:0; }
-  .card{ background: var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:8px; position:relative; overflow:hidden; min-width:0; }
-  .name-row{ display:flex; flex-direction:row; align-items:center; gap:10px; text-align:left; min-width:0; }
-  .avatar{ width:88px; height:88px; flex-shrink:0; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  .card{ background: var(--bg-soft); border:1px solid var(--line); border-radius:12px; padding:6px; position:relative; overflow:hidden; min-width:0; }
+  .name-row{ display:flex; flex-direction:row; align-items:center; gap:8px; text-align:left; min-width:0; }
+  .avatar{ width:68px; height:68px; flex-shrink:0; border-radius:12px; display:flex; align-items:center; justify-content:center;
     font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:32px; }
   .avatar.l{ background: rgba(46,111,242,0.18); color:var(--left-glow); border:2px solid rgba(46,111,242,0.6); background-size:cover; background-position:center; overflow:hidden; box-shadow:0 0 14px rgba(46,111,242,0.35);}
   .avatar.r{ background: rgba(255,75,62,0.18); color:var(--right-glow); border:2px solid rgba(255,75,62,0.6); background-size:cover; background-position:center; overflow:hidden; box-shadow:0 0 14px rgba(255,75,62,0.35);}
@@ -227,8 +227,8 @@
      in the script below). Whichever one a viewer's phone camera happens to
      detect in a screenshot/gallery photo, the result is identical — no more
      "which code do I scan" confusion, since there's really only one code. ---- */
-  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px; flex-shrink:0; }
-  .qr-card{ background: var(--bg-soft); border-radius:14px; padding:8px 14px; text-align:center; position:relative; }
+  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:2px; flex-shrink:0; }
+  .qr-card{ background: var(--bg-soft); border-radius:14px; padding:6px 10px; text-align:center; position:relative; }
   .qr-card.l{ border:2px solid var(--left-glow); animation: qrPulseL 1.8s ease-in-out infinite; }
   .qr-card.r{ border:2px solid var(--right-glow); animation: qrPulseR 1.8s ease-in-out infinite; }
   @keyframes qrPulseL{
@@ -239,7 +239,7 @@
     0%,100%{ box-shadow:0 0 0px rgba(255,75,62,0.0); }
     50%{ box-shadow:0 0 22px rgba(255,75,62,0.55); }
   }
-  .qr-card canvas{ background:#fff; border-radius:8px; padding:5px; max-width:100%; height:auto; width:96px !important; }
+  .qr-card canvas{ background:#fff; border-radius:8px; padding:5px; max-width:100%; height:auto; width:74px !important; }
   .qr-label{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; letter-spacing:1px; margin-top:5px; color:var(--gold); }
   .qr-hint{ font-size:9.5px; color:var(--white); margin-top:2px; line-height:1.3; font-weight:600; }
   .qr-hint-highlight{ color:var(--gold); font-weight:800; }
@@ -352,7 +352,7 @@
 </div>
 <div class="affiliate-spotlight" id="affiliateSpotlight" style="position:absolute;">
   <div class="aff-number-badge" id="affNumberBadge">#1</div>
-  <img class="aff-product-img" id="affProductImg" style="display:none;">
+  <img class="aff-product-img" id="affProductImg" style="display:none;" onerror="this.style.display='none'; document.getElementById('affProductPlaceholder').style.display='flex';">
   <div class="aff-product-placeholder" id="affProductPlaceholder">🛍️</div>
   <div class="aff-orig-price" id="affOrigPrice"></div>
   <div class="aff-price" id="affProductPrice"></div>
@@ -950,21 +950,31 @@ function fitLayoutToScreen(){
   const availableForLeaderboard = STAGE_HEIGHT - leaderboard.offsetTop - 10;
   leaderboard.style.maxHeight = Math.max(90, availableForLeaderboard) + 'px';
 
-  // Top 3's row height is computed here from the REAL remaining space
-  // (never a guessed fixed CSS value) — this is what guarantees it can
-  // never overflow the 853px stage and get clipped invisible again. It
-  // aims big (up to 190px) but shrinks gracefully instead of vanishing if
-  // something above it (title text wrapping, etc.) ever takes more room.
+  // ---- Product spotlight is now the MAIN reference size — it aims for a
+  // much bigger target height (up to 380px, roughly 1.75x its previous
+  // ~217px ceiling), and Top 3's height is DERIVED from it at 95% of
+  // whatever the product box actually ends up at. Both still safely clamp
+  // to whatever room the 853px frame genuinely has, so neither can ever
+  // overflow and get clipped invisible the way Top 3 did before. ----
   const titleEl = document.querySelector('.leaderboard-title');
   const top3Rows = document.getElementById('top3Grid');
   const affiliateBox = document.getElementById('affiliateSpotlight');
-  if(titleEl && top3Rows){
+  if(titleEl && top3Rows && affiliateBox){
     const leaderboardVerticalPadding = 12; // .leaderboard padding:6px 7px → 6px top + 6px bottom
-    let desiredTop3Height = availableForLeaderboard - titleEl.offsetHeight - leaderboardVerticalPadding;
-    desiredTop3Height = Math.max(90, Math.min(230, desiredTop3Height));
+    const maxSpaceForTop3 = availableForLeaderboard - titleEl.offsetHeight - leaderboardVerticalPadding;
+    // Affiliate box: reaches for its big target (380px), but if the frame
+    // genuinely doesn't have that much room near the bottom of the stage,
+    // it settles for the most it safely can — same safety pattern as before.
+    const affiliateTarget = 380;
+    const affiliateSpaceCeiling = STAGE_HEIGHT - 20; // stays within the stage, 10px margin top+bottom
+    const desiredAffiliateHeight = Math.max(150, Math.min(affiliateTarget, affiliateSpaceCeiling));
+    affiliateBox.style.height = desiredAffiliateHeight + 'px';
+    // Top 3: derived from the product box (95% of it), but never more than
+    // what the leaderboard genuinely has room for — this is the hard
+    // safety clamp that guarantees Top 3 can never vanish off-frame again.
+    let desiredTop3Height = desiredAffiliateHeight * 0.95;
+    desiredTop3Height = Math.max(130, Math.min(desiredTop3Height, maxSpaceForTop3));
     top3Rows.style.height = desiredTop3Height + 'px';
-    // Product spotlight box always matches whatever size Top 3's boxes are.
-    if(affiliateBox) affiliateBox.style.height = desiredTop3Height + 'px';
   }
 }
 window.addEventListener('resize', () => { if(document.getElementById('setupScreen').style.display === 'none') fitLayoutToScreen(); });
