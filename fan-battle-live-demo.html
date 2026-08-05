@@ -59,7 +59,7 @@
   .fact-bar span{ display:inline-block; opacity:1; transition: opacity 400ms ease; }
   .fact-bar span.fading{ opacity:0; }
   .clip-player{ position:relative; margin-top:4px; border-radius:12px; overflow:hidden; border:1px solid var(--line);
-    flex-shrink:0; background:#000; width:100%; height:155px; } /* trimmed further — the small video-side share of funding the much bigger product/Top-3 panels below */
+    flex-shrink:0; background:#000; width:100%; height:207px; } /* restored — the earlier shrink was compensating for a QR-box sizing bug that's now fixed */
   .clip-player video{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:auto; }
   .clip-player iframe{ width:100%; height:100%; border:none; display:block; }
   .clip-tag{ position:absolute; left:8px; bottom:8px; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; letter-spacing:0.5px;
@@ -227,8 +227,8 @@
      in the script below). Whichever one a viewer's phone camera happens to
      detect in a screenshot/gallery photo, the result is identical — no more
      "which code do I scan" confusion, since there's really only one code. ---- */
-  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:2px; flex-shrink:0; align-items:stretch; }
-  .qr-card{ background: var(--bg-soft); border-radius:14px; padding:6px 10px; text-align:center; position:relative; }
+  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:2px; flex-shrink:0; }
+  .qr-card{ background: var(--bg-soft); border-radius:14px; padding:6px 10px; text-align:center; position:relative; height:150px; }
   .qr-card.l{ border:2px solid var(--left-glow); animation: qrPulseL 1.8s ease-in-out infinite; }
   @keyframes qrPulseL{
     0%,100%{ box-shadow:0 0 0px rgba(46,111,242,0.0); }
@@ -261,7 +261,7 @@
      an absolute-positioned floating overlay, so no fade-in/opacity/transform
      needed either — CSS grid's own row-stretch keeps it matching the QR
      card's height automatically. ---- */
-  .affiliate-spotlight{ background:var(--bg-soft); border:2px solid var(--gold); border-radius:14px; padding:6px 10px; text-align:center; position:relative; display:flex; flex-direction:column; }
+  .affiliate-spotlight{ background:var(--bg-soft); border:2px solid var(--gold); border-radius:14px; padding:6px 10px; text-align:center; position:relative; display:flex; flex-direction:column; height:150px; }
   .affiliate-spotlight img.aff-product-img{ width:100%; flex:1 1 auto; min-height:0; object-fit:contain; border-radius:7px; background:#fff; display:block; }
   .affiliate-spotlight .aff-product-placeholder{ width:100%; flex:1 1 auto; min-height:0; background:var(--bg-soft); border-radius:7px;
     display:flex; align-items:center; justify-content:center; font-size:28px; }
