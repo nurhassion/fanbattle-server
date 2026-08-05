@@ -592,12 +592,19 @@ let driveClipFallbackSec = 3600; // used ONLY if a real duration couldn't be aut
 let currentDriveEmbedBaseUrl = null; // set whenever a Drive clip is the one currently showing; null otherwise
 let driveClipManualMuted = false;    // from the streamer's own Clip video volume slider (dragged to 0)
 let driveClipAnnouncementMuted = false; // true only while a donation announcement is actively speaking
-function reloadDriveIframeWithMuteState(){
+function reloadDriveIframeWithMuteState(force){
   const frame = document.getElementById('clipVideoFrame');
   if(!frame || !currentDriveEmbedBaseUrl || frame.style.display !== 'block') return;
   const shouldMute = driveClipManualMuted || driveClipAnnouncementMuted;
   const newSrc = currentDriveEmbedBaseUrl + '?autoplay=1&mute=' + (shouldMute ? 1 : 0);
-  if(frame.src !== newSrc) frame.src = newSrc; // skip a reload (and the restart it causes) if nothing actually changed
+  // Natural clip rotation always forces a fresh reload — even if the SAME
+  // Drive link is used for both sides (a common setup), each turn needs its
+  // own real reload so the clip actually restarts from the beginning
+  // instead of silently staying on Drive's own paused/ended black screen
+  // from the last time it played. Only mute-toggle calls (donation
+  // announcements, the manual slider) skip a redundant reload when nothing
+  // actually changed, since those aren't meant to restart the clip.
+  if(force || frame.src !== newSrc) frame.src = newSrc;
 }
 function buildClipPlaylist(leftName, rightName){
   const playlist = [];
@@ -634,7 +641,7 @@ function playClipAt(index){
     video.style.display = 'none';
     frame.style.display = 'block';
     currentDriveEmbedBaseUrl = driveUrl;
-    reloadDriveIframeWithMuteState(); // applies whatever mute state currently holds (normally unmuted)
+    reloadDriveIframeWithMuteState(true); // force — always a fresh reload for a new turn, even if it's the same Drive link as before
     applyClipFrameTransform();
     window.__driveClipTimer = setTimeout(() => { clipIndex++; playClipAt(clipIndex); }, (item.durationSec || driveClipFallbackSec) * 1000);
   } else {
