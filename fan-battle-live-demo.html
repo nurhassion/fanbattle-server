@@ -227,17 +227,12 @@
      in the script below). Whichever one a viewer's phone camera happens to
      detect in a screenshot/gallery photo, the result is identical — no more
      "which code do I scan" confusion, since there's really only one code. ---- */
-  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:2px; flex-shrink:0; }
+  .qr-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:2px; flex-shrink:0; align-items:stretch; }
   .qr-card{ background: var(--bg-soft); border-radius:14px; padding:6px 10px; text-align:center; position:relative; }
   .qr-card.l{ border:2px solid var(--left-glow); animation: qrPulseL 1.8s ease-in-out infinite; }
-  .qr-card.r{ border:2px solid var(--right-glow); animation: qrPulseR 1.8s ease-in-out infinite; }
   @keyframes qrPulseL{
     0%,100%{ box-shadow:0 0 0px rgba(46,111,242,0.0); }
     50%{ box-shadow:0 0 22px rgba(46,111,242,0.55); }
-  }
-  @keyframes qrPulseR{
-    0%,100%{ box-shadow:0 0 0px rgba(255,75,62,0.0); }
-    50%{ box-shadow:0 0 22px rgba(255,75,62,0.55); }
   }
   .qr-card canvas{ background:#fff; border-radius:8px; padding:5px; max-width:100%; height:auto; width:74px !important; }
   .qr-label{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; letter-spacing:1px; margin-top:5px; color:var(--gold); }
@@ -260,17 +255,20 @@
   .setup-photo-btn{ flex:1; background:var(--bg); border:1px solid var(--line); color:var(--white); padding:10px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-align:left; }
   .setup-photo-btn:hover{ border-color:var(--gold); }
   .panel-outside{ width:100%; max-width:480px; margin:16px auto 40px; padding:0 16px; }
-  /* ---- Product spotlight — kept the SAME size as the Top 3 donor photo
-     boxes (whatever size those are, this matches), fixed, not flexible. ---- */
-  .affiliate-spotlight{ position:absolute; right:10px; bottom:10px; width:140px; height:150px; background:var(--bg-soft); border:2px solid var(--gold); border-radius:11px; padding:8px; text-align:center; z-index:500; opacity:0; transform:translateY(12px) scale(0.9); transition: opacity 400ms ease, transform 400ms ease; pointer-events:none; display:flex; flex-direction:column; }
-  .affiliate-spotlight.show{ opacity:1; transform:translateY(0) scale(1); }
+  /* ---- Product spotlight — now sits IN-FLOW in the QR grid, in the exact
+     spot the second (now-removed) QR code used to occupy — same footprint,
+     just showing the product instead of a redundant duplicate QR. No longer
+     an absolute-positioned floating overlay, so no fade-in/opacity/transform
+     needed either — CSS grid's own row-stretch keeps it matching the QR
+     card's height automatically. ---- */
+  .affiliate-spotlight{ background:var(--bg-soft); border:2px solid var(--gold); border-radius:14px; padding:6px 10px; text-align:center; position:relative; display:flex; flex-direction:column; }
   .affiliate-spotlight img.aff-product-img{ width:100%; flex:1 1 auto; min-height:0; object-fit:contain; border-radius:7px; background:#fff; display:block; }
   .affiliate-spotlight .aff-product-placeholder{ width:100%; flex:1 1 auto; min-height:0; background:var(--bg-soft); border-radius:7px;
-    display:flex; align-items:center; justify-content:center; font-size:34px; }
-  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:18px; color:var(--gold); margin-top:4px; flex-shrink:0; }
-  .affiliate-spotlight .aff-platform{ font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:2px; font-weight:700; flex-shrink:0; }
-  .affiliate-spotlight .aff-orig-price{ font-size:10px; color:var(--dim); text-decoration:line-through; margin-top:2px; display:none; flex-shrink:0; }
-  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:5px; margin-top:3px; align-self:center; flex-shrink:0; }
+    display:flex; align-items:center; justify-content:center; font-size:28px; }
+  .affiliate-spotlight .aff-price{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:16px; color:var(--gold); margin-top:3px; flex-shrink:0; }
+  .affiliate-spotlight .aff-platform{ font-size:9px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-top:1px; font-weight:700; flex-shrink:0; }
+  .affiliate-spotlight .aff-orig-price{ font-size:9.5px; color:var(--dim); text-decoration:line-through; margin-top:2px; display:none; flex-shrink:0; }
+  .affiliate-spotlight .aff-discount-badge{ display:none; background:#E63946; color:#fff; font-size:9px; font-weight:800; padding:1px 6px; border-radius:5px; margin-top:2px; align-self:center; flex-shrink:0; }
   .affiliate-spotlight .aff-number-badge{ position:absolute; top:-7px; left:-7px; width:23px; height:23px; border-radius:50%; background:#0B0F19; border:2px solid var(--gold, var(--accent)); color:#fff; font-family:'Bebas Neue', sans-serif; font-size:12px; display:flex; align-items:center; justify-content:center; z-index:2; }
 </style>
 </head>
@@ -350,15 +348,6 @@
     <div class="celeb-amount" id="celebAmount">₹100</div>
   </div>
 </div>
-<div class="affiliate-spotlight" id="affiliateSpotlight" style="position:absolute;">
-  <div class="aff-number-badge" id="affNumberBadge">#1</div>
-  <img class="aff-product-img" id="affProductImg" style="display:none;" onerror="this.style.display='none'; document.getElementById('affProductPlaceholder').style.display='flex';">
-  <div class="aff-product-placeholder" id="affProductPlaceholder">🛍️</div>
-  <div class="aff-orig-price" id="affOrigPrice"></div>
-  <div class="aff-price" id="affProductPrice"></div>
-  <div class="aff-discount-badge" id="affDiscountBadge"></div>
-  <div class="aff-platform" id="affProductPlatform"></div>
-</div>
 <div class="stadium-lines"></div>
 <button id="muteBtn" onclick="toggleMusicMute()" style="position:absolute; top:12px; right:12px; z-index:1000; width:34px; height:34px; border-radius:50%; background:rgba(18,23,40,0.8); border:1px solid var(--line); color:var(--white); font-size:15px; padding:0; cursor:pointer;">🔊</button>
 <div class="wrap">
@@ -397,13 +386,17 @@
   <div class="qr-cards">
     <div class="qr-card l">
       <canvas id="qrLeftScan"></canvas>
-      <div class="qr-label" id="qrLeftScanLabel">Messi</div>
-      <div class="qr-hint"><span class="qr-hint-highlight">Scan either code</span> — you'll pick your side next</div>
+      <div class="qr-label" id="qrLeftScanLabel">Messi vs Ronaldo</div>
+      <div class="qr-hint"><span class="qr-hint-highlight">Scan to pick your side</span> — then send any amount, it's that quick</div>
     </div>
-    <div class="qr-card r">
-      <canvas id="qrRightScan"></canvas>
-      <div class="qr-label" id="qrRightScanLabel">Ronaldo</div>
-      <div class="qr-hint"><span class="qr-hint-highlight">Scan either code</span> — you'll pick your side next</div>
+    <div class="affiliate-spotlight" id="affiliateSpotlight">
+      <div class="aff-number-badge" id="affNumberBadge">#1</div>
+      <img class="aff-product-img" id="affProductImg" style="display:none;" onerror="this.style.display='none'; document.getElementById('affProductPlaceholder').style.display='flex';">
+      <div class="aff-product-placeholder" id="affProductPlaceholder">🛍️</div>
+      <div class="aff-orig-price" id="affOrigPrice"></div>
+      <div class="aff-price" id="affProductPrice"></div>
+      <div class="aff-discount-badge" id="affDiscountBadge"></div>
+      <div class="aff-platform" id="affProductPlatform"></div>
     </div>
   </div>
   <div class="clip-player" id="clipPlayer" style="display:none;">
@@ -486,16 +479,15 @@
 // PayPal.Me (everyone else). QR code images/positions are unchanged. =====
 const SERVER_URL = 'https://fanbattle-server-yqo5.onrender.com';
 
-// ===== TWO QR boxes are shown (left + right, matching each side's colors)
-// but BOTH are generated from the exact SAME link — /pay-choose, a "pick
-// your side" page that shows the CURRENT contest's two names as buttons
-// (e.g. Kohli/Babar, or Real Madrid/Barcelona — whatever nameLeft/nameRight
-// are set to right now) and only THEN sends the viewer on to /pay-left or
-// /pay-right. Since both codes decode to the identical URL, it no longer
-// matters which of the two a viewer's phone camera happens to grab from a
-// screenshot — the result is always the same, correct destination. Both
-// are regenerated any time either side's name changes. =====
-let qrLeftScanInstance = null, qrRightScanInstance = null;
+// ===== ONE QR code — opens /pay-choose, a "pick your side" page that shows
+// the CURRENT contest's two names as buttons (whatever nameLeft/nameRight
+// are right now) and only then sends the viewer on to /pay-left or
+// /pay-right. The second QR slot now shows the product spotlight instead,
+// since both QR codes used to just decode to the identical link anyway. =====
+// ===== ONE QR code (the other slot now shows the product spotlight
+// instead) — encodes the pick-your-side link, regenerated any time either
+// side's name changes. =====
+let qrLeftScanInstance = null;
 function regenerateChooseQr(){
   const leftName = document.getElementById('nameLeft').value || 'Left';
   const rightName = document.getElementById('nameRight').value || 'Right';
@@ -505,15 +497,8 @@ function regenerateChooseQr(){
   } else {
     qrLeftScanInstance.value = chooseUrl;
   }
-  if (!qrRightScanInstance) {
-    qrRightScanInstance = new QRious({ element: document.getElementById('qrRightScan'), value: chooseUrl, size: 74, background:'#fff', foreground:'#0B0F19' });
-  } else {
-    qrRightScanInstance.value = chooseUrl;
-  }
   const leftLabel = document.getElementById('qrLeftScanLabel');
-  const rightLabel = document.getElementById('qrRightScanLabel');
-  if (leftLabel) leftLabel.textContent = leftName;
-  if (rightLabel) rightLabel.textContent = rightName;
+  if (leftLabel) leftLabel.textContent = leftName + ' vs ' + rightName;
 }
 regenerateChooseQr();
 
@@ -950,30 +935,17 @@ function fitLayoutToScreen(){
   const availableForLeaderboard = STAGE_HEIGHT - leaderboard.offsetTop - 10;
   leaderboard.style.maxHeight = Math.max(90, availableForLeaderboard) + 'px';
 
-  // ---- Product spotlight is now the MAIN reference size — it aims for a
-  // much bigger target height (up to 380px, roughly 1.75x its previous
-  // ~217px ceiling), and Top 3's height is DERIVED from it at 95% of
-  // whatever the product box actually ends up at. Both still safely clamp
-  // to whatever room the 853px frame genuinely has, so neither can ever
-  // overflow and get clipped invisible the way Top 3 did before. ----
+  // Top 3's row height is computed from the REAL remaining leaderboard
+  // space (never a guessed fixed CSS value) — this is what guarantees it
+  // can never overflow the 853px stage and get clipped invisible. The
+  // product spotlight box no longer needs any JS sizing at all now that
+  // it lives in the QR grid — CSS grid's row-stretch handles that on its own.
   const titleEl = document.querySelector('.leaderboard-title');
   const top3Rows = document.getElementById('top3Grid');
-  const affiliateBox = document.getElementById('affiliateSpotlight');
-  if(titleEl && top3Rows && affiliateBox){
+  if(titleEl && top3Rows){
     const leaderboardVerticalPadding = 12; // .leaderboard padding:6px 7px → 6px top + 6px bottom
-    const maxSpaceForTop3 = availableForLeaderboard - titleEl.offsetHeight - leaderboardVerticalPadding;
-    // Affiliate box: reaches for its target (190px — halved per request),
-    // but if the frame genuinely doesn't have that much room near the
-    // bottom of the stage, it settles for the most it safely can.
-    const affiliateTarget = 190; // halved per request — was 380
-    const affiliateSpaceCeiling = STAGE_HEIGHT - 20; // stays within the stage, 10px margin top+bottom
-    const desiredAffiliateHeight = Math.max(150, Math.min(affiliateTarget, affiliateSpaceCeiling));
-    affiliateBox.style.height = desiredAffiliateHeight + 'px';
-    // Top 3: derived from the product box (95% of it), but never more than
-    // what the leaderboard genuinely has room for — this is the hard
-    // safety clamp that guarantees Top 3 can never vanish off-frame again.
-    let desiredTop3Height = desiredAffiliateHeight * 0.95;
-    desiredTop3Height = Math.max(130, Math.min(desiredTop3Height, maxSpaceForTop3));
+    let desiredTop3Height = availableForLeaderboard - titleEl.offsetHeight - leaderboardVerticalPadding;
+    desiredTop3Height = Math.max(130, Math.min(260, desiredTop3Height));
     top3Rows.style.height = desiredTop3Height + 'px';
   }
 }
@@ -1568,7 +1540,6 @@ function showNextAffiliateProduct(){
   if(!affiliateProducts.length) return;
   const item = affiliateProducts[affIndex % affiliateProducts.length];
   affIndex++;
-  const el = document.getElementById('affiliateSpotlight');
   document.getElementById('affNumberBadge').textContent = '#' + item.number;
   const imgEl = document.getElementById('affProductImg');
   const placeholderEl = document.getElementById('affProductPlaceholder');
@@ -1602,9 +1573,6 @@ function showNextAffiliateProduct(){
     priceEl.textContent = '';
   }
   document.getElementById('affProductPlatform').textContent = AFF_PLATFORM_LABEL[item.platform] || item.platform;
-  el.classList.add('show');
-  clearTimeout(window.__affHideTimeout);
-  window.__affHideTimeout = setTimeout(() => { el.classList.remove('show'); }, 9500); // visible ~9.5s of every 10s cycle — brief fade gap before the next product
 }
 function startAffiliateRotation(){
   if(!affiliateProducts.length) return;
