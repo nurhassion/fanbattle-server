@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<title>Chess Overlay</title>
+<style>
+  body { margin:0; background:#1a1a2e; color:#fff; font-family: sans-serif; text-align:center; padding:24px; }
+  #commentary { margin-top:24px; font-size:22px; color:#E8B33D; max-width:700px; margin-left:auto; margin-right:auto; }
+  #fen { font-family:monospace; color:#8FA3C0; margin-top:12px; font-size:14px; }
+</style>
+</head>
+<body>
+  <h1>♟️ AI vs AI Chess Battle</h1>
+  <div id="opening" style="color:#8FA3C0; font-size:16px;"></div>
+  <div id="fen">লোড হচ্ছে...</div>
+  <div id="moveCount" style="color:#8FA3C0; font-size:14px; margin-top:8px;"></div>
+  <div id="commentary"></div>
+  <audio id="narrator" autoplay></audio>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const channel = params.get("channel") || "default";
+
+  let lastPlaylistKey = "";
+  const audioEl = document.getElementById("narrator");
+  let queue = [];
+
+  function playQueue() {
+    if (queue.length === 0) return;
+    const next = queue.shift();
+    audioEl.src = next;
+    audioEl.play().catch(() => {}); // autoplay policy block হলে চুপচাপ skip
+  }
+  audioEl.addEventListener("ended", playQueue);
+
+  async function poll() {
+    try {
+      const res = await fetch(`/gaming/state/chess-${channel}.json?t=` + Date.now());
+      const data = await res.json();
+      document.getElementById("fen").textContent = data.fen;
+      document.getElementById("opening").textContent = data.openingName ? `ওপেনিং: ${data.openingName}` : "";
+      document.getElementById("moveCount").textContent = data.moves ? `${data.moves.length} চাল খেলা হয়েছে` : "";
+      document.getElementById("commentary").textContent = data.lastCommentaryBn || "";
+
+      // নতুন audio playlist এলে (গেম শেষ হয়ে narration রেডি হলে) সেটা বাজানো শুরু
+      const playlistKey = JSON.stringify(data.audioPlaylist || []);
+      if (data.audioPlaylist && playlistKey !== lastPlaylistKey) {
+        lastPlaylistKey = playlistKey;
+        queue = [...data.audioPlaylist];
+        playQueue();
+      }
+    } catch (e) {}
+  }
+  setInterval(poll, 2000);
+  poll();
+</script>
+</body>
+</html>
