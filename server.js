@@ -62,6 +62,23 @@ const CHANNELS = {
     file: path.join(__dirname, 'scheduled-events-dailyneedle.json'),
     youtubeUrl: 'https://www.youtube.com/@DailyNeedle',
     facebookUrl: 'https://www.facebook.com/share/1D9aN6mMPv/'
+  },
+  // ====== নতুন: Gaming automation চ্যানেল দুটো ======
+  // youtubeUrl গুলো এখনো placeholder — আপনার আসল চ্যানেল লিংক বসিয়ে দিন।
+  // এই দুটো চ্যানেলের actual "live" behaviour (schedule অনুযায়ী automatic
+  // chess/sports broadcast) config/schedule.json দিয়ে নিয়ন্ত্রিত হয় —
+  // এখানে শুধু আপনার dashboard-এ এন্ট্রি হিসেবে দেখানোর জন্য যোগ করা হলো।
+  sportsgaming: {
+    label: 'Sports Live (Auto)',
+    file: path.join(__dirname, 'scheduled-events-sportsgaming.json'),
+    youtubeUrl: 'PUT_YOUR_SPORTS_CHANNEL_YOUTUBE_URL_HERE',
+    facebookUrl: ''
+  },
+  boardgames: {
+    label: 'Board Games Live (Auto)',
+    file: path.join(__dirname, 'scheduled-events-boardgames.json'),
+    youtubeUrl: 'PUT_YOUR_GAMING_CHANNEL_YOUTUBE_URL_HERE',
+    facebookUrl: ''
   }
 };
 function channelOrDefault(channel) { return CHANNELS[channel] ? channel : 'fanbattle'; }
@@ -3012,6 +3029,17 @@ app.get('/calendar-today', async (req, res) => {
     res.json({ found: false, reason: 'fetch_error' });
   }
 });
+
+// ====== Gaming automation mount (Chess engine + Sports scoreboard, দুটো নতুন চ্যানেল) ======
+// gaming-automation ফোল্ডারটা এই server.js এর পাশেই থাকতে হবে (একই ডিরেক্টরিতে)।
+// এটা /gaming/overlay/chess ও /gaming/overlay/sports রুট যোগ করে, আর
+// ব্যাকগ্রাউন্ডে config/schedule.json অনুযায়ী scheduler চালু করে দেয়।
+try {
+  const mountGamingAutomation = require('./gaming-automation/src/mount');
+  mountGamingAutomation(app);
+} catch (e) {
+  console.error('⚠️  Gaming automation mount করা যায়নি (gaming-automation ফোল্ডার ঠিক জায়গায় আছে কিনা, npm install হয়েছে কিনা চেক করুন):', e.message);
+}
 
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
