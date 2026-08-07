@@ -1,0 +1,4 @@
+PORT=4500
+TTS_VOICE=bn-BD-NabanitaNeural
+CRICAPI_KEY=your_cricapi_key_here
+FOOTBALL_DATA_KEY=your_football_data_org_key_here
