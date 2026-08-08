@@ -17,7 +17,7 @@
 //   - YouTube Data API দিয়ে broadcast তৈরি/শুরু/শেষ করে
 //
 // *** যা লাগবে (Dockerfile-এ আগে থেকেই ইনস্টল করা থাকবে) ***
-//   npm: chess.js, googleapis, canvas, node-cron  (এগুলো মূল package.json-এ যোগ করুন)
+//   npm: chess.js  (এগুলো মূল package.json-এ যোগ করুন — canvas/googleapis/node-cron আসলে লাগে না, বাদ দেওয়া হয়েছে)
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
