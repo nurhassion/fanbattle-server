@@ -3031,14 +3031,12 @@ app.get('/calendar-today', async (req, res) => {
 });
 
 // ====== Gaming automation mount (Chess engine + Sports scoreboard, দুটো নতুন চ্যানেল) ======
-// gaming-automation ফোল্ডারটা এই server.js এর পাশেই থাকতে হবে (একই ডিরেক্টরিতে)।
-// এটা /gaming/overlay/chess ও /gaming/overlay/sports রুট যোগ করে, আর
-// ব্যাকগ্রাউন্ডে config/schedule.json অনুযায়ী scheduler চালু করে দেয়।
+// gaming.js একটা মাত্র ফাইল, এই server.js এর ঠিক পাশে (রুটে) থাকতে হবে।
 try {
-  const mountGamingAutomation = require('./gaming-automation/src/mount');
-  mountGamingAutomation(app);
+  const mountGaming = require('./gaming.js');
+  mountGaming(app);
 } catch (e) {
-  console.error('⚠️  Gaming automation mount করা যায়নি (gaming-automation ফোল্ডার ঠিক জায়গায় আছে কিনা, npm install হয়েছে কিনা চেক করুন):', e.message);
+  console.error('⚠️  gaming.js mount করা যায়নি (gaming.js ফাইলটা server.js এর পাশে আছে কিনা, npm install হয়েছে কিনা চেক করুন):', e.message);
 }
 
 app.listen(PORT, async () => {
