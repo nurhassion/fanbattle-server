@@ -41,8 +41,8 @@ const SCHEDULE = {
       id: "morning-chess",
       channel: "boardgames",
       days: [0, 1, 2, 3, 4, 5, 6],
-      start: "07:00",
-      end: "10:00",
+      start: "00:00",
+      end: "23:59",
       game: "chess",
       title: "🔥 AI vs AI Chess Battle LIVE | Stockfish vs Stockfish | চাল বিশ্লেষণ সহ",
       description:
@@ -52,8 +52,8 @@ const SCHEDULE = {
       id: "midday-sports",
       channel: "sportsgaming",
       days: [0, 1, 2, 3, 4, 5, 6],
-      start: "14:00",
-      end: "18:00",
+      start: "00:00",
+      end: "23:59",
       game: "sports",
       title: "🏆 LIVE Score Update | সবচেয়ে বড় ম্যাচ",
       description: "লাইভ স্কোর আপডেট — নিজস্ব অ্যানিমেটেড স্কোরবোর্ডে।\n\n#cricket #football #livescore",
@@ -417,19 +417,33 @@ setInterval(poll,3000);poll();
 let activeBlockId = { boardgames: null, sportsgaming: null };
 
 function nowInTZ(timezone) {
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" });
-  const map = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
-  const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return { day: wd[map.weekday], hhmm: `${map.hour}:${map.minute}` };
+  try {
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const map = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
+    const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return { day: wd[map.weekday], hhmm: `${map.hour}:${map.minute}` };
+  } catch (e) {
+    // কিছু Windows/Node বিল্ডে "small-icu" থাকে, যেখানে timeZone সহ Intl.DateTimeFormat
+    // কাজ না-ও করতে পারে। এই fallback সিস্টেমের নিজের লোকাল সময় ব্যবহার করে,
+    // যাতে scheduler নিঃশব্দে ব্যর্থ না হয়ে অন্তত কাজ করতে থাকে।
+    console.error("⚠️ Intl timezone সমস্যা, লোকাল সময় ব্যবহার করা হচ্ছে:", e.message);
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    return { day: now.getDay(), hhmm: `${hh}:${mm}` };
+  }
 }
 function inRange(hhmm, start, end) {
   return start <= end ? hhmm >= start && hhmm < end : hhmm >= start || hhmm < end;
 }
 async function schedulerTick() {
+  console.log("⏱️ schedulerTick চলছে..."); // ডিবাগ লাইন — নিশ্চিত করবে ফাংশনটা আদৌ কল হচ্ছে কিনা
   const { day, hhmm } = nowInTZ(SCHEDULE.timezone);
+  console.log(`   এখন: day=${day}, time=${hhmm}`); // ডিবাগ লাইন
   for (const channelKey of Object.keys(SCHEDULE.channels)) {
     const block = SCHEDULE.blocks.find((b) => b.channel === channelKey && b.days.includes(day) && inRange(hhmm, b.start, b.end));
     const blockId = block ? block.id : null;
+    console.log(`   [${channelKey}] ম্যাচ করা ব্লক: ${blockId || "(কোনোটা না)"}`); // ডিবাগ লাইন
     if (blockId === activeBlockId[channelKey]) continue; // অপরিবর্তিত
 
     // ব্লক বদলাচ্ছে — আগেরটা বন্ধ করো
@@ -456,8 +470,8 @@ module.exports = function mountGaming(app) {
   app.get("/gaming/overlay/sports", (req, res) => res.type("html").send(SPORTS_OVERLAY_HTML));
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
 
-  schedulerTick();
-  setInterval(schedulerTick, 60000);
+  schedulerTick().catch((e) => console.error("❌ schedulerTick এ error:", e));
+  setInterval(() => schedulerTick().catch((e) => console.error("❌ schedulerTick এ error:", e)), 60000);
 
   console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess ও /gaming/overlay/sports এ পাওয়া যাবে।");
 };
