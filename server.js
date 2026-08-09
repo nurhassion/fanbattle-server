@@ -10,8 +10,15 @@
 // skip and return straight to the stream.
 
 // .env ফাইল থেকে গোপনীয় key/token লোড করা (IM_API_KEY, IM_AUTH_TOKEN ইত্যাদি) —
-// এই লাইনটা সবার আগে থাকা জরুরি, নাহলে নিচের process.env.* গুলো খালি থেকে যাবে
-require('dotenv').config();
+// এই লাইনটা সবার আগে থাকা জরুরি, নাহলে নিচের process.env.* গুলো খালি থেকে যাবে।
+// try/catch দিয়ে wrap করা — dotenv প্যাকেজ কোনো কারণে ইনস্টল না থাকলেও যেন পুরো
+// সার্ভার crash না করে (MODULE_NOT_FOUND), শুধু .env থেকে auto-load বন্ধ থাকবে,
+// আর সরাসরি hosting platform-এ (Render ইত্যাদি) সেট করা env variable ঠিকই কাজ করবে।
+try {
+  require('dotenv').config();
+} catch (e) {
+  console.error('⚠️ dotenv প্যাকেজ ইনস্টল নেই (package.json এ "dotenv" যোগ করুন) — .env ফাইল থেকে auto-load হবে না, কিন্তু hosting platform-এ সরাসরি সেট করা environment variable ঠিকই কাজ করবে।');
+}
 
 const express = require('express');
 const cors = require('cors');
