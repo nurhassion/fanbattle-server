@@ -9,6 +9,10 @@
 // invites the donor to upload a photo — entirely their choice, one tap to
 // skip and return straight to the stream.
 
+// .env ফাইল থেকে গোপনীয় key/token লোড করা (IM_API_KEY, IM_AUTH_TOKEN ইত্যাদি) —
+// এই লাইনটা সবার আগে থাকা জরুরি, নাহলে নিচের process.env.* গুলো খালি থেকে যাবে
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
@@ -282,10 +286,10 @@ async function uploadPhotoToDriveAndLog(name, photoDataUrl) {
 // helper maps any side value to which overlay's queue it belongs in.
 function sideToChannel(side) {
   if (side === 'left' || side === 'right') return 'fanbattle';
-  if (side === 'dailyneedle' || side === 'zerototrader') return side;
+  if (side === 'dailyneedle' || side === 'zerototrader' || side === 'chessbattle') return side;
   return 'fanbattle';
 }
-let latestEventsByChannel = { fanbattle: [], dailyneedle: [], zerototrader: [] };
+let latestEventsByChannel = { fanbattle: [], dailyneedle: [], zerototrader: [], chessbattle: [] };
 
 // ---- Celebration timing is DELIBERATELY separated from bookkeeping. ----
 // The payment itself is recorded immediately (recordDonation) so accounting/
@@ -454,6 +458,7 @@ function parseSideFromPurpose(purpose) {
   const p = (purpose || '').trim();
   if (/^ZT:/i.test(p)) return 'zerototrader';
   if (/^DN:/i.test(p)) return 'dailyneedle';
+  if (/^CB:/i.test(p)) return 'chessbattle';
   if (/^R:/i.test(p)) return 'right';
   if (/^L:/i.test(p)) return 'left';
   return null;
@@ -495,7 +500,19 @@ async function fetchRecentPayments() {
         const purposeRaw = p.purpose || '';
         let side = parseSideFromPurpose(purposeRaw);
         if (!side && p.payment_request) side = await resolveSideFromPaymentRequest(p.payment_request);
-        if (!side) { console.log('⚠️ Could not determine side, skipping. Purpose was:', purposeRaw); continue; }
+        if (!side) {
+          // আগে এখানে "continue" করে payment-টা skip করে দেওয়া হতো — কিন্তু সেটা
+          // কখনো record না হওয়ায় প্রতি ৫ সেকেন্ডে আবার "নতুন" হিসেবে ধরা পড়তো,
+          // ফলে একই warning অনন্তকাল ধরে লগে repeat হতো (আর টাকাটাও কখনো ট্র্যাক হতো না)।
+          // এখন "unknown" side দিয়ে হলেও record করে দিচ্ছি — যাতে (ক) লুপ বন্ধ হয়,
+          // (খ) আপনি dashboard-এ গিয়ে ম্যানুয়ালি দেখতে পারেন কোন payment-টা ছিল।
+          console.log('⚠️ side বোঝা যায়নি, "unknown" হিসেবে রেকর্ড করে দিচ্ছি (লুপ আটকাতে)। Purpose ছিল:', JSON.stringify(purposeRaw), '| payment_id:', p.payment_id, '| amount:', p.amount);
+          pushDonationEvent({
+            id: p.payment_id, name: p.buyer_name, email: p.buyer || p.email, phone: p.buyer_phone,
+            country: 'IN', side: 'unknown', amount: p.amount, currency: 'INR', purpose: purposeRaw, source: 'instamojo'
+          });
+          continue;
+        }
 
         pushDonationEvent({
           id: p.payment_id, name: p.buyer_name, email: p.buyer || p.email, phone: p.buyer_phone,
@@ -516,8 +533,8 @@ fetchRecentPayments();
 // name for Daily Needle/Zero to Trader) to the short prefix embedded in the
 // Instamojo purpose field/PayPal custom_id — this is how /thanks and the
 // background poller later figure out which channel a payment belongs to.
-const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', zerototrader: 'ZT' };
-const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', zerototrader: 'Zero to Trader tip' };
+const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', zerototrader: 'ZT', chessbattle: 'CB' };
+const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', zerototrader: 'Zero to Trader tip', chessbattle: 'Chess Battle Live tip' };
 async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone) {
   const prefix = SIDE_PREFIX[side] || 'R';
   const purpose = `${prefix}: ${SIDE_LABEL[side] || 'Fan Battle Live tip'}`;
@@ -1238,10 +1255,10 @@ app.get('/pay-right', async (req, res) => {
 // Same exact mechanism as /pay-left and /pay-right above (India → Instamojo,
 // abroad → PayPal, decided per-visitor) — just a single QR per channel
 // instead of two, since neither channel has "sides" to split between.
-const SINGLE_CHANNEL_PAY_LABEL = { dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader' };
+const SINGLE_CHANNEL_PAY_LABEL = { dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live' };
 app.get('/pay/:channel', async (req, res) => {
   const channel = req.params.channel;
-  if (channel !== 'dailyneedle' && channel !== 'zerototrader') return res.status(404).send('Unknown channel');
+  if (channel !== 'dailyneedle' && channel !== 'zerototrader' && channel !== 'chessbattle') return res.status(404).send('Unknown channel');
   const label = SINGLE_CHANNEL_PAY_LABEL[channel];
   const gw = loadGatewaySettings();
   if (req.query.force === 'paypal') {
@@ -1279,12 +1296,30 @@ app.get('/events', (req, res) => {
 // entirely separate queues, so one channel's tips never show up on
 // another channel's overlay.
 app.get('/events/:channel', (req, res) => {
-  const channel = (req.params.channel === 'dailyneedle' || req.params.channel === 'zerototrader') ? req.params.channel : 'fanbattle';
+  const channel = (req.params.channel === 'dailyneedle' || req.params.channel === 'zerototrader' || req.params.channel === 'chessbattle') ? req.params.channel : 'fanbattle';
   const eventsToSend = [...latestEventsByChannel[channel]];
   latestEventsByChannel[channel] = [];
   const photosOut = {};
   Object.entries(donorPhotoMap).forEach(([name, v]) => { photosOut[name] = v.photo; });
   res.json({ events: eventsToSend, photos: photosOut });
+});
+
+// চেস ব্যাটেল লাইভ overlay-র কোনায় ঘুরেফিরে দেখানো "টপ ৩ ডোনার/হেল্পার" প্যানেলের জন্য —
+// এটা /events-এর মতো এক-বারের queue না, বরং cumulative leaderboard (একই দাতা একাধিকবার
+// tip দিলে যোগ হয়ে যায়), তাই সবসময় সরাসরি saved records থেকে হিসাব করা হয়
+app.get('/top-donors/:channel', (req, res) => {
+  const channel = req.params.channel;
+  const totals = {};
+  loadRecords().forEach(r => {
+    if (r.side !== channel) return;
+    const key = (r.name || 'Anonymous').trim() || 'Anonymous';
+    totals[key] = (totals[key] || 0) + (parseFloat(r.amount) || 0);
+  });
+  const top = Object.entries(totals)
+    .map(([name, amount]) => ({ name, amount, photo: (donorPhotoMap[name] && donorPhotoMap[name].photo) || null }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3);
+  res.json({ top });
 });
 
 app.get('/', (req, res) => { res.send('Fan Battle Live automation server is running. <a href="/overlay">Open the live overlay</a>'); });
@@ -1623,6 +1658,13 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     <div class="quick-links">
       <a class="quick-link" href="/overlay/dailyneedle" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
       <a class="quick-link" href="/pay/dailyneedle" target="_blank"><span class="emoji">💸</span>Pay</a>
+    </div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">♟️ Chess Battle Live</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/gaming/overlay/chess" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/gaming/challenge/join" target="_blank"><span class="emoji">🎮</span>Challenge join</a>
+      <a class="quick-link" href="/pay/chessbattle" target="_blank"><span class="emoji">💸</span>Pay</a>
     </div>
   </section>
 
