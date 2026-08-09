@@ -333,7 +333,7 @@ function recordDonation({ name, side, amount, currency, email, phone, country, p
   };
   saveRecord(fullRecord);
   backupToGoogleSheet(fullRecord);
-  console.log(`💾 Recorded ${fullRecord.source} payment (celebration pending donor's return-to-stream):`, fullRecord.name, fullRecord.amount, fullRecord.currency);
+  console.log(`💾 Recorded ${fullRecord.source} payment [side: ${fullRecord.side}] (celebration pending donor's return-to-stream):`, fullRecord.name, fullRecord.amount, fullRecord.currency, '| purpose:', fullRecord.purpose);
   pendingCelebrations[fullRecord.id] = {
     name: fullRecord.name, side: fullRecord.side, amount: fullRecord.amount,
     currency: fullRecord.currency, country: fullRecord.country
@@ -655,7 +655,7 @@ app.post('/instamojo-create-request', async (req, res) => {
     // directly. Mobile number is no longer collected on this page at all.
     if (!donorName || !donorName.trim()) return res.status(400).json({ error: 'Name is required.' });
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
-    const validSides = ['left', 'right', 'dailyneedle', 'zerototrader'];
+    const validSides = ['left', 'right', 'dailyneedle', 'zerototrader', 'chessbattle'];
     const safeSide = validSides.includes(side) ? side : 'right';
     const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), null);
     res.json({ longurl });
@@ -703,7 +703,7 @@ app.post('/paypal-create-order', async (req, res) => {
     // us set this per-order, so each channel shows its own brand here.
     const PAYPAL_BRAND_NAME = {
       left: 'Fan Battle Live', right: 'Fan Battle Live',
-      dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader'
+      dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live'
     };
     const brandName = PAYPAL_BRAND_NAME[side] || 'Fan Battle Live';
     const orderRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
@@ -711,7 +711,7 @@ app.post('/paypal-create-order', async (req, res) => {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'zerototrader'].includes(side) ? side : 'right' }],
+        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'zerototrader', 'chessbattle'].includes(side) ? side : 'right' }],
         payment_source: { paypal: { experience_context: { brand_name: brandName } } }
       })
     });
@@ -748,7 +748,7 @@ app.post('/paypal-capture-order', async (req, res) => {
     const amount = captureObj.amount ? captureObj.amount.value : null;
     const currency = captureObj.amount ? captureObj.amount.currency_code : 'USD';
     const country = (payer.address && payer.address.country_code) || null;
-    const side = ['left', 'right', 'dailyneedle', 'zerototrader'].includes(purchaseUnit.custom_id) ? purchaseUnit.custom_id : 'right';
+    const side = ['left', 'right', 'dailyneedle', 'zerototrader', 'chessbattle'].includes(purchaseUnit.custom_id) ? purchaseUnit.custom_id : 'right';
 
     let celebrationId = null;
     if (amount) {
