@@ -347,10 +347,21 @@ async function playChallengeGame(Chess) {
   activeChallenge = null;
 }
 
+// Stockfish বাইনারি কোথায় আছে সেটা খুঁজে বের করা — priority অনুযায়ী:
+// ১) STOCKFISH_PATH env var (সবচেয়ে নির্ভরযোগ্য, ম্যানুয়ালি সেট করা)
+// ২) Windows-এ এই ফাইলের পাশে রাখা stockfish.exe
+// ৩) Linux hosting-এ (Render ইত্যাদি) Build Command দিয়ে ডাউনলোড করা ./stockfish-bin —
+//    এটা থাকলে env var সেট করতে ভুলে গেলেও কাজ চলবে
+// ৪) শেষ ভরসা: সিস্টেম PATH-এ globally ইনস্টল করা "stockfish" (apt install stockfish ইত্যাদি)
+function resolveStockfishBinary() {
+  if (process.env.STOCKFISH_PATH) return process.env.STOCKFISH_PATH;
+  if (process.platform === "win32") return path.join(__dirname, "stockfish.exe");
+  const bundled = path.join(__dirname, "stockfish-bin");
+  if (fs.existsSync(bundled)) return bundled;
+  return "stockfish";
+}
 function spawnStockfish(skillLevel) {
-  // Windows-এ ডিফল্ট হিসেবে এই ফাইলের পাশে রাখা stockfish.exe খোঁজে;
-  // Linux/Mac/VPS-এ (Docker) সিস্টেম PATH-এ থাকা "stockfish" ব্যবহার করে।
-  const bin = process.env.STOCKFISH_PATH || (process.platform === "win32" ? path.join(__dirname, "stockfish.exe") : "stockfish");
+  const bin = resolveStockfishBinary();
   const engine = spawn(bin);
   engine.on("error", (err) => {
     console.error("❌ Stockfish চালু করা যায়নি:", err.message, "| ব্যবহৃত path:", bin);
@@ -365,6 +376,11 @@ function spawnStockfish(skillLevel) {
   send("uci");
   send(`setoption name Skill Level value ${skillLevel}`);
   send("setoption name MultiPV value 3"); // top ৩টা candidate move বের করার জন্য — দর্শকদের প্রেডিকশনের জন্য দরকার
+  // 512MB RAM-এর free-tier hosting-এ (Render ইত্যাদি) OOM (out-of-memory) এড়াতে
+  // hash table আর thread সংখ্যা যতটা সম্ভব ছোট রাখা হচ্ছে — কোয়ালিটি সামান্য কমবে,
+  // কিন্তু casual entertainment-স্তরের খেলার জন্য এটা যথেষ্ট, আর crash হওয়ার চেয়ে ঢের ভালো
+  send("setoption name Threads value 1");
+  send("setoption name Hash value 8");
   return { proc: engine, send };
 }
 
@@ -434,8 +450,13 @@ async function playOneChessGame(Chess) {
   opening.moves.forEach((m) => chess.move(m));
 
   const skillOptions = [12, 15, 18, 20];
-  const white = spawnStockfish(skillOptions[Math.floor(Math.random() * skillOptions.length)]);
-  const black = spawnStockfish(skillOptions[Math.floor(Math.random() * skillOptions.length)]);
+  // আগে দুটো আলাদা Stockfish process (সাদা+কালোর জন্য) একসাথে চলতো — 512MB RAM-এর
+  // free-tier hosting-এ এটাই মূল কারণ ছিল OOM crash হওয়ার। এখন মাত্র ONE process
+  // ব্যবহার হচ্ছে, প্রতি চালের আগে শুধু skill level বদলে দেওয়া হয় (UCI নিজেই এটা সাপোর্ট করে) —
+  // মেমরি প্রায় অর্ধেক লাগে, খেলার মানেও কোনো পার্থক্য পড়ে না
+  const whiteSkill = skillOptions[Math.floor(Math.random() * skillOptions.length)];
+  const blackSkill = skillOptions[Math.floor(Math.random() * skillOptions.length)];
+  const engineProc = spawnStockfish(whiteSkill);
 
   const opponentName = OPPONENT_NAME_POOL[Math.floor(Math.random() * OPPONENT_NAME_POOL.length)];
   // DiceBear (ফ্রি, ওপেন-সোর্স avatar generator, real মানুষের ছবি না — তাই কপিরাইট-নিরাপদ)
@@ -466,11 +487,11 @@ async function playOneChessGame(Chess) {
   const MAX_MOVES = 140;
   while (!chess.isGameOver() && moveCount < MAX_MOVES && chessLoopActive) {
     const isWhiteTurn = chess.turn() === "w";
-    const engine = isWhiteTurn ? white : black;
+    engineProc.send(`setoption name Skill Level value ${isWhiteTurn ? whiteSkill : blackSkill}`); // একই process, শুধু পালা বদলালে skill level বদলে দেওয়া
 
     // "ভাবার সময়" মানুষের মতো এলোমেলো — কখনো তাড়াতাড়ি সহজ চাল, কখনো ধীরে জটিল চাল ভাবছে এমন অনুভূতি
     const thinkTimeMs = 1000 + Math.floor(Math.random() * 1600); // 1.0s–2.6s
-    const { bestmove, candidates } = await getCandidateMoves(engine, chess.fen(), thinkTimeMs);
+    const { bestmove, candidates } = await getCandidateMoves(engineProc, chess.fen(), thinkTimeMs);
     if (!bestmove) break;
 
     // ধাপ ১ — সম্ভাব্য candidate move গুলো বোর্ডে হালকা করে দেখানো, দর্শককে "প্রেডিক্ট" করার সময় দেওয়া
@@ -512,8 +533,7 @@ async function playOneChessGame(Chess) {
     await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1500))); // 1.5s–3s, পরের চাল শুরুর আগে সাধারণ বিরতি
   }
 
-  white.proc.kill();
-  black.proc.kill();
+  engineProc.proc.kill();
 
   const winnerName = chess.isCheckmate() ? (chess.turn() === "w" ? state.blackName : state.whiteName) : null;
   const resultText = winnerName ? `Checkmate — ${winnerName} wins` : chess.isDraw() ? "Draw" : "Game stopped";
