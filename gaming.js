@@ -811,17 +811,18 @@ color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
 .sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 18px;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1.4;min-height:0;}
-/* "How Pieces Move" বক্সে যেন কখনোই স্ক্রলবার না লাগে (দর্শক শুধু দেখবে, স্ক্রল করতে পারবে না) —
-   তাই এখানে overflow বন্ধ করে, সবগুলো (৬টা) নিয়ম একসাথে বক্সের ভেতরেই এঁটে যাওয়ার মতো ছোট করে রাখা */
-#rulesBox{overflow:hidden;display:flex;flex-direction:column;}
-#rulesBox #rulesList{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;}
-.rulesBox h3{margin:0 0 6px;font-size:13px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;flex-shrink:0;}
-.ruleRow{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #202a44;}
+/* "How Pieces Move" / সাম্প্রতিক সাপোর্টার — কখনোই স্ক্রলবার না লাগুক, তাই overflow বন্ধ, আর সাইজ
+   একটু বড় করে ফিরিয়ে আনা হলো (আগে বেশি ছোট হয়ে গিয়েছিল) */
+#leftAltPanel .altView{display:none;flex-direction:column;height:100%;overflow:hidden;}
+#leftAltPanel .altView.show{display:flex;}
+#rulesList{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;}
+.rulesBox h3{margin:0 0 8px;font-size:14px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;flex-shrink:0;}
+.ruleRow{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #202a44;}
 .ruleRow:last-child{border-bottom:none;}
-.ruleGlyph{font-size:21px;width:26px;text-align:center;flex-shrink:0;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
+.ruleGlyph{font-size:27px;width:32px;text-align:center;flex-shrink:0;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
 .ruleGlyph.hi{animation:glow 1.4s ease-in-out infinite;}
 @keyframes glow{0%,100%{filter:drop-shadow(0 0 6px rgba(255,216,102,0.4));}50%{filter:drop-shadow(0 0 14px rgba(255,216,102,1));}}
-.ruleText{font-size:11px;color:#B8C4D9;line-height:1.25;}
+.ruleText{font-size:13px;color:#B8C4D9;line-height:1.35;}
 .ruleText b{color:#fff;}
 .playerCard{background:#161b2e;border:1px solid #2a3352;border-radius:16px;padding:14px;
 box-shadow:0 10px 24px rgba(0,0,0,0.55);text-align:center;}
@@ -840,7 +841,8 @@ font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid
 .pLabel{font-size:10px;color:#7C8AAD;margin-top:2px;text-transform:uppercase;letter-spacing:1px;}
 .captured{margin-top:10px;min-height:26px;font-size:18px;letter-spacing:2px;color:#FFD866;opacity:0.9;}
 /* প্রতিপক্ষ/challenger-এর বড় কার্ড — ছবিটাই এখানে মূল ফোকাস, নিচে অল্প জায়গায় নাম+টিপস */
-.playerCard.big{padding:0;overflow:hidden;flex:2.6;display:flex;flex-direction:column;min-height:0;}
+.playerCard.big{padding:0;overflow:hidden;flex:0 0 40%;display:flex;flex-direction:column;min-height:0;}
+.playerCard.big.small{flex:0 0 32%;} /* এবার একটু ছোট — নিচের queue বক্সকে বেশি জায়গা দিতে */
 .bigPhotoWrap{flex:8.5;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;}
 .bigPhotoWrap img{width:100%;height:100%;object-fit:contain;}
 .bigPhotoWrap .avatarFallbackBig{width:70%;height:70%;border-radius:50%;background:#B0BEC5;color:#0a0e1f;
@@ -850,11 +852,13 @@ background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
 .bigInfoFooter .pName{font-size:17px;}
 .bigInfoFooter .pLabel{font-size:9px;}
 .bigInfoFooter .tipLine{color:#FFD866;font-size:12px;font-weight:700;margin-top:2px;min-height:15px;}
-/* queue/recent-tippers অল্টারনেটিং প্যানেল — Nadia কার্ডের নিচে, আগের মতোই */
-#altPanel{flex:1;display:flex;flex-direction:column;min-height:0;}
-#altPanel .rulesBox{flex:1;position:relative;}
-#altPanel .altView{display:none;}
-#altPanel .altView.show{display:block;}
+/* চ্যালেঞ্জ queue বক্স (ডান কলাম) — ফিক্সড, বাকি সব জায়গা নেয়, প্লেইন (আর অল্টারনেট করে না) */
+#queuePanelFixed{flex:1;min-height:0;}
+/* গুটির নিয়ম ↔ সাম্প্রতিক সাপোর্টার অল্টারনেটিং প্যানেল (বাম কলাম, নিচে) */
+#leftAltPanel{flex:1;display:flex;flex-direction:column;min-height:0;}
+#leftAltPanel .rulesBox{flex:1;position:relative;}
+#leftAltPanel .altView{display:none;}
+#leftAltPanel .altView.show{display:block;}
 /* টপ ৩ সাপোর্টার — ৩টা স্ট্যাক করা প্যানেল, প্রতিটাতে ৯০% ছবি + ১০% নাম/অ্যামাউন্ট, কোনো বাড়তি ফাঁকা জায়গা নেই */
 .topSupporterPanel{flex:1;display:flex;flex-direction:column;min-height:0;background:#161b2e;
 border:1px solid #2a3352;border-radius:14px;overflow:hidden;box-shadow:0 10px 24px rgba(0,0,0,0.5);}
@@ -938,7 +942,7 @@ border:3px solid #FFD866;box-shadow:0 0 24px rgba(255,216,102,0.6);}
 .donorCelebAmount{font-size:26px;font-weight:800;color:#FFD866;margin-top:6px;}
 
 /* সরাসরি টিপস QR — মূল layout-এর ভেতরেই, বাম কলামে নিয়মের বক্সের নিচে */
-#tipBoxOverlay{flex:0.75;min-height:0;}
+#tipBoxOverlay{flex:0 0 42%;min-height:0;}
 #tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:16px;text-align:center;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
 #tipQrWrap::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 20%,rgba(255,216,102,0.12),transparent 60%);pointer-events:none;}
@@ -962,20 +966,26 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
       <div class="pLabel">WHITE</div>
       <div class="captured" id="capturedByWhite"></div>
     </div>
-    <!-- গুটির নিয়ম শেখানোর বক্স — English-এ, প্রতি কয়েক সেকেন্ডে একটা গুটি হাইলাইট হয় -->
-    <div class="rulesBox" id="rulesBox">
-      <h3>How Pieces Move</h3>
-      <div id="rulesList"></div>
-    </div>
-    <!-- সরাসরি টিপস — মূল layout-এর ভেতরেই (fixed viewport-position না) যাতে OBS-এ
-         zoom/crop করলেও এটা ফ্রেমের বাইরে হারিয়ে না যায়, বাকি সবকিছুর সাথেই থাকে।
-         স্ক্যানারটা স্থায়ীভাবে এখানেই থাকবে — টপ ৩ ডোনার এখন আলাদা একটা static বক্সে (ডান কলামে), এখানে পপ-আপ হয়ে আর আসবে না -->
+    <!-- সরাসরি টিপস — এখন উপরে, ফিক্সড উচ্চতা যাতে QR সবসময় পুরোপুরি দেখা যায় -->
     <div id="tipBoxOverlay" style="display:none;">
       <div id="tipQrWrap">
         <img id="tipQrImg" src="" alt="Scan to help">
         <div class="tipLabel">🙏 Help Me</div>
         <div class="tipHeart">♟️ ❤️ ♟️</div>
         <div class="tipSub">Voluntary support — not tied to the game, never required</div>
+      </div>
+    </div>
+    <!-- নিচে — গুটির নিয়ম ↔ সাম্প্রতিক সাপোর্টার, পালাক্রমে (আগে ডান কলামে যেমন হতো, এখন এখানে) -->
+    <div id="leftAltPanel">
+      <div class="rulesBox">
+        <div class="altView show" id="rulesView">
+          <h3>How Pieces Move</h3>
+          <div id="rulesList"></div>
+        </div>
+        <div class="altView" id="donorView">
+          <h3>💛 Recent Supporters</h3>
+          <div id="recentDonorList"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1013,26 +1023,18 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
   </div>
 
   <div class="sideCol">
-    <!-- প্রতিপক্ষ/challenger-এর বড় ছবির কার্ড — শুধু ছবি আর নাম, আর কিছু না -->
-    <div class="playerCard big" id="blackCard">
+    <!-- প্রতিপক্ষ/challenger-এর ছবির কার্ড — একটু ছোট করা, নিচের queue-বক্সকে বেশি জায়গা দিতে -->
+    <div class="playerCard big small" id="blackCard">
       <div class="bigPhotoWrap" id="blackPhotoWrap"><div class="avatarFallbackBig" id="blackAvatarFallback">?</div></div>
       <div class="bigInfoFooter">
         <div class="pName" id="blackName">—</div>
       </div>
     </div>
-    <!-- queue list ও recent tippers list — একই জায়গায় পালাক্রমে (alternate) দেখানো হয়, যেমন আগে ছিল -->
-    <div id="altPanel">
-      <div class="rulesBox">
-        <div class="altView show" id="queueView">
-          <h3>🔴 Now Playing / Up Next</h3>
-          <div id="currentPlayerLine" style="color:#FFD866;font-weight:800;font-size:13px;margin-bottom:8px;"></div>
-          <div id="queueList"></div>
-        </div>
-        <div class="altView" id="donorView">
-          <h3>💛 Recent Supporters</h3>
-          <div id="recentDonorList"></div>
-        </div>
-      </div>
+    <!-- চ্যালেঞ্জ queue — এখন প্লেইন, ফিক্সড, অল্টারনেট করে না, আকার সবসময় স্থির -->
+    <div class="rulesBox" id="queuePanelFixed">
+      <h3>🔴 Now Playing / Up Next</h3>
+      <div id="currentPlayerLine" style="color:#FFD866;font-weight:800;font-size:13px;margin-bottom:8px;"></div>
+      <div id="queueList"></div>
     </div>
   </div>
 </div>
@@ -1244,20 +1246,34 @@ safeInit("bgSettingsFormSubmit", () => {
   });
 });
 
-// প্রফেশনাল, তীক্ষ্ণ "wood tap" শব্দ — দুটো স্তর (আঘাত + হালকা অনুরণন), খুব সংক্ষিপ্ত, বিরক্তিকর না
+// নরম, উষ্ণ "গুটি বসার" শব্দ — আগে square wave ব্যবহার করা হতো, যেটা কর্কশ/টোকা-মারার মতো
+// শোনাচ্ছিল বলে অভিযোগ এসেছিল; এখন triangle+sine দিয়ে মসৃণ attack, কাঠের মতো উষ্ণ অনুরণন
 function playMoveSound(isCapture) {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const t = audioCtx.currentTime;
-    const osc1 = audioCtx.createOscillator(); const g1 = audioCtx.createGain();
-    osc1.type = "square"; osc1.frequency.setValueAtTime(isCapture ? 180 : 260, t);
-    g1.gain.setValueAtTime(0.22, t); g1.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
-    osc1.connect(g1).connect(audioCtx.destination); osc1.start(t); osc1.stop(t + 0.05);
+    const baseFreq = isCapture ? 210 : 320;
 
+    // মূল সুর — triangle wave, দ্রুত কিন্তু মসৃণ attack (হঠাৎ "ক্লিক"/টোকার অনুভূতি এড়াতে)
+    const osc1 = audioCtx.createOscillator(); const g1 = audioCtx.createGain();
+    osc1.type = "triangle";
+    osc1.frequency.setValueAtTime(baseFreq, t);
+    osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.82, t + 0.11);
+    g1.gain.setValueAtTime(0.0001, t);
+    g1.gain.exponentialRampToValueAtTime(0.15, t + 0.008);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc1.connect(g1).connect(audioCtx.destination);
+    osc1.start(t); osc1.stop(t + 0.17);
+
+    // নিচু, উষ্ণ অনুরণন — একটা হালকা কাঠের গুটি বসার অনুভূতি, বাড়তি তীক্ষ্ণতা ছাড়াই
     const osc2 = audioCtx.createOscillator(); const g2 = audioCtx.createGain();
-    osc2.type = "sine"; osc2.frequency.setValueAtTime(isCapture ? 90 : 130, t);
-    g2.gain.setValueAtTime(0.12, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-    osc2.connect(g2).connect(audioCtx.destination); osc2.start(t); osc2.stop(t + 0.1);
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(baseFreq * 0.5, t);
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(0.08, t + 0.012);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc2.connect(g2).connect(audioCtx.destination);
+    osc2.start(t); osc2.stop(t + 0.24);
   } catch (e) {}
 }
 
@@ -1620,12 +1636,12 @@ function launchConfetti(){
   }
 }
 
-// ---------- queue ↔ recent-supporters অল্টারনেটিং প্যানেল (Nadia কার্ডের নিচে, আগের মতোই) ----------
-let altShowingQueue = true;
+// ---------- নিয়ম ↔ সাম্প্রতিক সাপোর্টার অল্টারনেটিং প্যানেল (বাম কলামে, নিচে) ----------
+let altShowingRules = true;
 function toggleAltPanel(){
-  altShowingQueue = !altShowingQueue;
-  document.getElementById("queueView").classList.toggle("show", altShowingQueue);
-  document.getElementById("donorView").classList.toggle("show", !altShowingQueue);
+  altShowingRules = !altShowingRules;
+  document.getElementById("rulesView").classList.toggle("show", altShowingRules);
+  document.getElementById("donorView").classList.toggle("show", !altShowingRules);
 }
 async function refreshRecentDonors(){
   try {
@@ -1639,7 +1655,7 @@ async function refreshRecentDonors(){
     ).join("") : '<div style="font-size:11px;color:#5a6a8a;">No tips yet</div>';
   } catch(e){}
 }
-safeInit("altPanel", () => { refreshRecentDonors(); setInterval(refreshRecentDonors, 20000); setInterval(toggleAltPanel, 9000); }); // প্রতি ৯ সেকেন্ডে queue list ↔ recent supporters পালাক্রমে দেখাবে
+safeInit("leftAltPanel", () => { refreshRecentDonors(); setInterval(refreshRecentDonors, 20000); setInterval(toggleAltPanel, 9000); }); // প্রতি ৯ সেকেন্ডে নিয়ম ↔ সাম্প্রতিক সাপোর্টার পালাক্রমে দেখাবে
 
 // ---------- সরাসরি টিপস QR ----------
 fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
