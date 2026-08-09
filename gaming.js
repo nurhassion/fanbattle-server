@@ -324,13 +324,13 @@ async function playChallengeGame(Chess) {
     state.queue = getQueuePublicState();
     if (activeChallenge) activeChallenge.lastMove = state.lastMove; // play পেজে move animation-এর জন্য দরকার
     writeState("chess", state);
-    await sleep(1200);
+    await sleep(1700); // অ্যানিমেশন (~1.1s) সম্পূর্ণ শেষ হওয়া পর্যন্ত সময় দেওয়া, নাহলে পরের চাল মাঝপথে এসে animation কেটে দিতে পারে
   }
 
   engine.proc.kill();
   const winnerName = chess.isCheckmate() ? (chess.turn() === "w" ? challenger.name : YOUR_DISPLAY_NAME) : null;
   state.status = "finished";
-  state.result = winnerName ? `চেকমেট — ${winnerName} জিতেছে` : "ড্র";
+  state.result = winnerName ? `Checkmate — ${winnerName} wins` : "Draw";
   state.lastCommentaryBn = winnerName
     ? `🎉 ${winnerName} এই চ্যালেঞ্জ ম্যাচে ${YOUR_DISPLAY_NAME}-কে হারিয়ে দিল! দারুণ খেলা।`
     : `চ্যালেঞ্জ ম্যাচ ড্র হলো — ${challenger.name} বনাম ${YOUR_DISPLAY_NAME}। ভালো লড়াই হয়েছে।`;
@@ -495,7 +495,7 @@ async function playOneChessGame(Chess) {
   black.proc.kill();
 
   const winnerName = chess.isCheckmate() ? (chess.turn() === "w" ? state.blackName : state.whiteName) : null;
-  const resultText = winnerName ? `চেকমেট — ${winnerName} জিতেছে` : chess.isDraw() ? "ড্র" : "গেম থেমে গেছে";
+  const resultText = winnerName ? `Checkmate — ${winnerName} wins` : chess.isDraw() ? "Draw" : "Game stopped";
   const commentary = winnerName
     ? `🎉 ${winnerName} জিতে গেল! দারুণ খেলা দেখাল। (ওপেনিং: ${opening.name})`
     : `শেষমেশ ${resultText} — ${state.whiteName} ও ${state.blackName} সমান লড়াই করেছে। (ওপেনিং: ${opening.name})`;
@@ -717,7 +717,7 @@ function stopSportsTracking() {
 // ---------------------------------------------------------------------------
 // ৬. Overlay HTML — ইনলাইন টেমপ্লেট (আলাদা .html ফাইল লাগে না)
 // ---------------------------------------------------------------------------
-const CHESS_OVERLAY_HTML = `<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><title>Chess</title>
+const CHESS_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Chess</title>
 <style>
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;font-family:'Segoe UI',sans-serif;
@@ -803,7 +803,7 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
     <div class="playerCard" id="whiteCard">
       <div class="avatar" id="whiteAvatar">N</div>
       <div class="pName" id="whiteName">—</div>
-      <div class="pLabel">সাদা</div>
+      <div class="pLabel">WHITE</div>
       <div class="captured" id="capturedByWhite"></div>
     </div>
     <!-- গুটির নিয়ম শেখানোর বক্স — English-এ, প্রতি কয়েক সেকেন্ডে একটা গুটি হাইলাইট হয় -->
@@ -822,7 +822,7 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
         <marker id="ah2" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="rgba(232,179,61,0.5)"/></marker>
       </defs></svg>
     </div>
-    <div id="thinking">চাল ভাবা হচ্ছে...</div>
+    <div id="thinking">Thinking...</div>
     <div id="predictLabel"></div>
     <div id="moveCount"></div>
     <div id="commentary"></div>
@@ -832,14 +832,14 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
     <div class="playerCard" id="blackCard">
       <div class="avatar black" id="blackAvatar">?</div>
       <div class="pName" id="blackName">—</div>
-      <div class="pLabel">কালো</div>
+      <div class="pLabel">BLACK</div>
       <div class="captured" id="capturedByBlack"></div>
     </div>
     <!-- লাইভ চ্যালেঞ্জ queue-তে কারা অপেক্ষা করছে, তাদের ছবি/নাম/টিপস এখানে দেখাবে (queue না থাকলে খালি থাকবে) -->
     <div class="rulesBox" id="queuePanel" style="display:none;">
       <h3>🔴 Up Next — Challenge Queue</h3>
       <div id="queueList"></div>
-      <div style="font-size:9px;color:#5a6a8a;margin-top:6px;">খেলতে চান? Description-এ লিংকে ক্লিক করুন</div>
+      <div style="font-size:9px;color:#5a6a8a;margin-top:6px;">Want to play? Click the link in the description</div>
     </div>
   </div>
 </div>
@@ -851,13 +851,13 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
   <div id="tipQrWrap">
     <img id="tipQrImg" src="" alt="Scan to help">
     <div class="tipLabel">🙏 Help Me</div>
-    <div class="tipSub">স্বেচ্ছায় সাপোর্ট — গেমের সাথে সম্পর্কিত নয়, বাধ্যতামূলক নয়</div>
+    <div class="tipSub">Voluntary support — not tied to the game, never required</div>
   </div>
   <div id="donorPopup"></div>
 </div>
 
 <button id="soundBtn" style="position:fixed;top:12px;right:12px;background:#E8B33D;border:none;
-border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;">🔊 সাউন্ড চালু করুন</button>
+border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;">🔊 Turn on sound</button>
 <audio id="narrator" autoplay></audio>
 <script>
 const PIECE_RULES = [
@@ -953,7 +953,7 @@ function renderBoard(fen, lastMove) {
       const isWhite = movingPiece.piece === movingPiece.piece.toUpperCase();
       ghost.className = "ghostPieceMain piece " + (isWhite ? "piece-w" : "piece-b");
       ghost.textContent = PIECE_GLYPH[movingPiece.piece] || "";
-      ghost.style.cssText = "position:absolute;z-index:30;display:flex;align-items:center;justify-content:center;font-size:44px;pointer-events:none;transition:left 0.55s ease,top 0.55s ease;";
+      ghost.style.cssText = "position:absolute;z-index:30;display:flex;align-items:center;justify-content:center;font-size:44px;pointer-events:none;transition:left 1.1s ease-in-out,top 1.1s ease-in-out;";
       ghost.style.left = (fromRect.left - wrapRect.left) + "px";
       ghost.style.top = (fromRect.top - wrapRect.top) + "px";
       ghost.style.width = fromRect.width + "px";
@@ -967,7 +967,7 @@ function renderBoard(fen, lastMove) {
         ghost.remove();
         drawGrid(boardEl, grid, lastFromRC, lastToRC, null);
         playMoveSound(false);
-      }, 580);
+      }, 1150);
       prevFenBoard = boardPart;
       return;
     }
@@ -1069,7 +1069,7 @@ async function poll(){try{
   renderBoard(data.fen, data.lastMove);
   renderArrows(data.candidates, data.chosenMove);
 
-  document.getElementById("opening").textContent = data.mode === "challenge" ? "🔴 LIVE — " + data.blackName + " vs " + data.whiteName : (data.openingName?("ওপেনিং: "+data.openingName):"");
+  document.getElementById("opening").textContent = data.mode === "challenge" ? "🔴 LIVE — " + data.blackName + " vs " + data.whiteName : (data.openingName?("Opening: "+data.openingName):"");
 
   const qp = document.getElementById("queuePanel");
   if (data.queue && data.queue.length) {
@@ -1077,12 +1077,12 @@ async function poll(){try{
     document.getElementById("queueList").innerHTML = data.queue.slice(0,5).map(q =>
       '<div class="ruleRow"><div class="ruleGlyph" style="font-size:0;">' +
       (q.photoUrl ? '<img src="'+q.photoUrl+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">' : '<div style="width:26px;height:26px;border-radius:50%;background:#4FC3F7;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0a0e1f;font-weight:800;">'+(q.name[0]||"?")+'</div>') +
-      '</div><div class="ruleText"><b>#'+q.position+'</b> '+q.name+ (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">৳'+q.tipAmount+'</span>' : '') + '</div></div>'
+      '</div><div class="ruleText"><b>#'+q.position+'</b> '+q.name+ (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹'+q.tipAmount+'</span>' : '') + '</div></div>'
     ).join("");
   } else {
     qp.style.display = "none";
   }
-  document.getElementById("moveCount").textContent=data.moves?(data.moves.length+" চাল খেলা হয়েছে"):"";
+  document.getElementById("moveCount").textContent=data.moves?(data.moves.length+" moves played"):"";
   document.getElementById("commentary").textContent=data.lastCommentaryBn||"";
 
   document.getElementById("whiteName").textContent = data.whiteName || "—";
@@ -1107,8 +1107,8 @@ async function poll(){try{
 
   if (data.status === "finished" && lastStatus !== "finished-" + data.result) {
     lastStatus = "finished-" + data.result;
-    const isWin = data.result && data.result.includes("চেকমেট");
-    showFlash(isWin ? "🎉 " + data.result : "🤝 " + (data.result || "ড্র"), isWin ? "#FFD866" : "#8FA3C0", isWin);
+    const isWin = data.result && data.result.includes("Checkmate");
+    showFlash(isWin ? "🎉 " + data.result : "🤝 " + (data.result || "Draw"), isWin ? "#FFD866" : "#8FA3C0", isWin);
     playEndGameSound(isWin);
   }
   if (data.status === "playing") lastStatus = "";
@@ -1139,13 +1139,13 @@ function showDonorPopup(){
   if (!topDonors.length) return;
   const d = topDonors[donorCycleIdx % topDonors.length];
   donorCycleIdx++;
-  const rankLabel = ["🥇 নাম্বার ওয়ান হেল্পার","🥈 নাম্বার টু হেল্পার","🥉 নাম্বার থ্রি হেল্পার"][topDonors.indexOf(d)] || "🏅 টপ হেল্পার";
+  const rankLabel = ["🥇 NUMBER ONE HELPER","🥈 NUMBER TWO HELPER","🥉 NUMBER THREE HELPER"][topDonors.indexOf(d)] || "🏅 TOP HELPER";
   const popup = document.getElementById("donorPopup");
   popup.innerHTML =
     '<div class="rankTag">' + rankLabel + '</div>' +
     (d.photo ? '<img class="dAvatar" src="'+d.photo+'">' : '<div class="dAvatarFallback">'+((d.name&&d.name[0])||"?")+'</div>') +
     '<div class="dName">' + d.name + '</div>' +
-    '<div class="dAmount">৳' + Math.round(d.amount) + '</div>';
+    '<div class="dAmount">₹' + Math.round(d.amount) + '</div>';
   popup.classList.add("show");
   setTimeout(() => { popup.classList.remove("show"); }, 4500); // এই সময়টায় কেউ চাইলে স্ক্রিনশট নিতে পারবে
 }
@@ -1159,7 +1159,7 @@ async function pollChessTips(){
     const res = await fetch("/events/chessbattle");
     const data = await res.json();
     (data.events || []).forEach(ev => {
-      showFlash("🙏 ধন্যবাদ " + (ev.name || "Anonymous") + "!", "#FFD866", true);
+      showFlash("🙏 Thank you " + (ev.name || "Anonymous") + "!", "#FFD866", true);
       playEndGameSound(true);
     });
   } catch(e){}
@@ -1511,32 +1511,32 @@ function urlBase64ToUint8Array(base64String) {
 }
 async function setupPush(id, statusEl) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    if (statusEl) statusEl.textContent = 'এই ব্রাউজারে push notification সাপোর্ট নেই — ট্যাব খোলা রাখলে এখানেই লাইভ আপডেট দেখা যাবে।';
+    if (statusEl) statusEl.textContent = 'Push notifications aren\'t supported in this browser — keep this tab open to see live updates here instead.';
     return false;
   }
   try {
     const reg = await navigator.serviceWorker.register('/gaming/sw.js', { scope: '/gaming/' });
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') {
-      if (statusEl) statusEl.textContent = 'নোটিফিকেশন অনুমতি দেননি — চাইলে ব্রাউজার সেটিংস থেকে পরে চালু করতে পারবেন।';
+      if (statusEl) statusEl.textContent = 'Notification permission was not granted — you can enable it later in your browser settings.';
       return false;
     }
     const keyRes = await fetch('/gaming/vapid-public-key');
     const { key } = await keyRes.json();
-    if (!key) { if (statusEl) statusEl.textContent = 'সার্ভারে push সেটআপ হয়নি।'; return false; }
+    if (!key) { if (statusEl) statusEl.textContent = 'Push isn\'t set up on the server yet.'; return false; }
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
     await fetch('/gaming/challenge/push-subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, subscription: sub }) });
-    if (statusEl) statusEl.textContent = '🔔 নোটিফিকেশন চালু হয়েছে — এবার আপনার পালা এলে মোবাইলেই জানিয়ে দেওয়া হবে।';
+    if (statusEl) statusEl.textContent = '🔔 Notifications are on — you\'ll get an alert on your phone when it\'s your turn.';
     return true;
   } catch (e) {
-    if (statusEl) statusEl.textContent = 'নোটিফিকেশন চালু করতে সমস্যা হয়েছে।';
+    if (statusEl) statusEl.textContent = 'Something went wrong turning on notifications.';
     return false;
   }
 }
 `;
 
-const CHALLENGE_JOIN_HTML = `<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><title>Challenge Nur</title>
+const CHALLENGE_JOIN_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Challenge Nur</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:460px;margin:0 auto;}
@@ -1552,24 +1552,24 @@ button{width:100%;padding:14px;border-radius:10px;border:none;background:#FFD866
 font-size:16px;margin-top:20px;cursor:pointer;}
 </style></head><body>
 <h1>♟️ Challenge Nur — Live!</h1>
-<p style="text-align:center;color:#7C8AAD;font-size:14px;">নাম আর ছবি দিয়ে লাইনে দাঁড়ান, turn এলে সরাসরি বোর্ডে চাল দিতে পারবেন।</p>
+<p style="text-align:center;color:#7C8AAD;font-size:14px;">Enter your name and photo to join the queue — when it's your turn, you'll play live on the board.</p>
 <form id="joinForm" enctype="multipart/form-data">
-  <label>আপনার নাম</label>
-  <input type="text" name="name" required maxlength="30" placeholder="যেমন: Rahim">
-  <label>আপনার ছবি (ঐচ্ছিক)</label>
+  <label>Your name</label>
+  <input type="text" name="name" required maxlength="30" placeholder="e.g. Alex">
+  <label>Your photo (optional)</label>
   <input type="file" name="photo" accept="image/*">
   <div class="tipBox" id="tipBox" style="display:none;">
-    <b>ইচ্ছা হলে সাপোর্ট/টিপস দিতে পারেন</b>
+    <b>You can support/tip if you'd like</b>
     <img id="tipQr" src="" alt="Scan to tip">
-    <div>QR স্ক্যান করুন অথবা <a id="tipLink" href="#" target="_blank">এই লিংকে</a> ক্লিক করুন</div>
-    <label style="text-align:left;">টিপস দিয়ে থাকলে কত টাকা, লিখে দিন (ঐচ্ছিক)</label>
-    <input type="number" name="tipAmount" min="0" step="1" placeholder="যেমন: 50">
+    <div>Scan the QR or click <a id="tipLink" href="#" target="_blank">this link</a></div>
+    <label style="text-align:left;">If you tipped, enter the amount (optional)</label>
+    <input type="number" name="tipAmount" min="0" step="1" placeholder="e.g. 50">
     <div class="disclaimer">
-      ⚠️ এই টিপস সম্পূর্ণ স্বেচ্ছামূলক — <b>গেম খেলার সাথে এর কোনো সম্পর্ক নেই, টিপস না দিয়েও খেলা যাবে।</b>
-      এটা কোনো টুর্নামেন্ট ফি, এন্ট্রি ফি বা জুয়া না। উপরের অ্যামাউন্টটা শুধু স্ক্রিনে আপনার নামের পাশে দেখানোর জন্য, নিজে লিখে দিচ্ছেন — এটা স্বয়ংক্রিয়ভাবে পেমেন্ট যাচাই করে না।
+      ⚠️ This tip is completely voluntary — <b>it has nothing to do with playing the game, you can play without tipping.</b>
+      This is not a tournament fee, entry fee, or gambling. The amount above is only shown next to your name on screen — you type it in yourself, it is not automatically verified as a real payment.
     </div>
   </div>
-  <button type="submit">লাইনে দাঁড়ান (Skip & Play)</button>
+  <button type="submit">Join queue (Skip & Play)</button>
 </form>
 <script>
 fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
@@ -1583,7 +1583,7 @@ ${PUSH_SETUP_JS}
 document.getElementById("joinForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = e.target.querySelector("button");
-  btn.disabled = true; btn.textContent = "লাইনে দাঁড়ানো হচ্ছে...";
+  btn.disabled = true; btn.textContent = "Joining queue...";
   const fd = new FormData(e.target);
   const res = await fetch("/gaming/challenge/join", { method: "POST", body: fd });
   const data = await res.json();
@@ -1594,7 +1594,7 @@ document.getElementById("joinForm").addEventListener("submit", async (e) => {
 });
 </script></body></html>`;
 
-const CHALLENGE_STATUS_HTML = `<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><title>Queue Status</title>
+const CHALLENGE_STATUS_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Queue Status</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 * { box-sizing: border-box; }
@@ -1614,14 +1614,14 @@ button{flex:1;padding:12px;border-radius:10px;border:none;font-weight:700;font-s
   text-align:center;padding:12px;display:none;animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.55;}}
 </style></head><body>
-<div id="alertBanner">🔔 প্রায় আপনার পালা — মাত্র ২ জন বাকি, তৈরি থাকুন!</div>
+<div id="alertBanner">🔔 Your turn is almost here — only 2 people left, get ready!</div>
 <iframe id="liveFrame" src="/gaming/overlay/chess"></iframe>
 <div id="hud">
   <div id="posRow"><div id="pos">...</div></div>
-  <div id="msg">লোড হচ্ছে...</div>
+  <div id="msg">Loading...</div>
   <div class="btnRow">
-    <button id="notifyBtn">🔔 নোটিফিকেশন চালু করুন</button>
-    <button id="leaveBtn">✖ লাইন থেকে সরে যান</button>
+    <button id="notifyBtn">🔔 Turn on notifications</button>
+    <button id="leaveBtn">✖ Leave the queue</button>
   </div>
   <div id="pushStatus"></div>
 </div>
@@ -1649,9 +1649,9 @@ document.getElementById("notifyBtn").addEventListener("click", async () => {
   if (ok) document.getElementById("notifyBtn").style.display = "none";
 });
 document.getElementById("leaveBtn").addEventListener("click", async () => {
-  if (!confirm("আপনি কি সত্যিই লাইন থেকে সরে যেতে চান?")) return;
+  if (!confirm("Are you sure you want to leave the queue?")) return;
   await fetch("/gaming/challenge/leave", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ id }) });
-  document.getElementById("msg").textContent = "আপনি লাইন থেকে সরে গেছেন। ধন্যবাদ!";
+  document.getElementById("msg").textContent = "You've left the queue. Thank you!";
   document.getElementById("pos").textContent = "—";
 });
 let lastPosition = null;
@@ -1662,7 +1662,7 @@ async function poll(){
     if (data.isYourTurn) { location.href = "/gaming/challenge/play?id="+id; return; }
     if (data.position) {
       document.getElementById("pos").textContent = "#"+data.position;
-      document.getElementById("msg").textContent = "মোট "+data.total+" জন লাইনে আছেন, অপেক্ষা করুন...";
+      document.getElementById("msg").textContent = data.total+" people total in the queue, please wait...";
       const banner = document.getElementById("alertBanner");
       if (data.position <= 3 && lastPosition !== data.position) {
         if (data.position === 3) { banner.style.display = "block"; beep([880,660,880,660],true); setTimeout(()=>banner.style.display="none", 6000); }
@@ -1671,14 +1671,14 @@ async function poll(){
       lastPosition = data.position;
     } else {
       document.getElementById("pos").textContent = "—";
-      document.getElementById("msg").textContent = "আপনার সময় শেষ হয়ে থাকতে পারে বা লাইন খুঁজে পাওয়া যাচ্ছে না।";
+      document.getElementById("msg").textContent = "Your turn may already be over, or the queue entry can't be found.";
     }
   }catch(e){}
 }
 setInterval(poll, 3000); poll();
 </script></body></html>`;
 
-const CHALLENGE_PLAY_HTML = `<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><title>Your Move!</title>
+const CHALLENGE_PLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Your Move!</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body{margin:0;background:#0a0e1f;color:#fff;font-family:sans-serif;padding:16px;text-align:center;}
@@ -1700,7 +1700,7 @@ filter:drop-shadow(0 1px 0 #6b6252) drop-shadow(0 3px 3px rgba(0,0,0,0.6));}
 .piece-b{background:linear-gradient(160deg,#3a3a3a 0%,#181818 45%,#000000 100%);
 -webkit-background-clip:text;background-clip:text;color:transparent;
 filter:drop-shadow(0 1px 0 #000) drop-shadow(0 3px 3px rgba(0,0,0,0.7));}
-.ghostPiece{position:absolute;font-size:26px;pointer-events:none;z-index:20;transition:left 0.45s ease,top 0.45s ease;}
+.ghostPiece{position:absolute;font-size:26px;pointer-events:none;z-index:20;transition:left 1.1s ease-in-out,top 1.1s ease-in-out;}
 #status{color:#7C8AAD;font-size:14px;margin-top:10px;}
 #ytWrap{margin-top:20px;}
 #ytFrame{width:100%;max-width:400px;aspect-ratio:16/9;border-radius:10px;}
@@ -1718,16 +1718,16 @@ filter:drop-shadow(0 1px 0 #000) drop-shadow(0 3px 3px rgba(0,0,0,0.7));}
 <div id="celebrate" style="display:none;">
   <div id="celebAvatarWrap"></div>
   <div class="cName" id="celebName"></div>
-  <div class="cSub">আপনার পালা শুরু হয়ে গেছে!</div>
+  <div class="cSub">Your turn has started!</div>
   <div class="confetti">🎉 ♟️ 🎊 ✨</div>
 </div>
-<h1>আপনার চাল! আপনি কালো ঘুঁটি খেলছেন</h1>
+<h1>Your move! You're playing Black</h1>
 <div id="boardWrap"><div id="board"></div></div>
-<div id="status">লোড হচ্ছে...</div>
+<div id="status">Loading...</div>
 <div id="ytWrap">
   <iframe id="ytFrame" src="https://www.youtube.com/embed/live_stream?channel=UCVP5_uwrKIp7rfMNgolnEqA&autoplay=1&mute=1"
     frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-  <div class="ytNote">🔴 লাইভে যা দেখছেন সেটা কয়েক সেকেন্ড দেরিতে আসতে পারে (স্ট্রিমিং delay)</div>
+  <div class="ytNote">🔴 What you see live may lag a few seconds behind (streaming delay)</div>
 </div>
 <script>
 const params = new URLSearchParams(location.search);
@@ -1754,7 +1754,7 @@ function runCelebration(name, photoUrl){
   wrap.innerHTML = photoUrl
     ? '<img src="'+photoUrl+'">'
     : '<div class="avatarFallback">'+((name&&name[0])||"?")+'</div>';
-  document.getElementById("celebName").textContent = "🎉 " + (name||"খেলোয়াড়") + " 🎉";
+  document.getElementById("celebName").textContent = "🎉 " + (name||"Player") + " 🎉";
   document.getElementById("celebrate").style.display = "flex";
   document.getElementById("celebrate").style.opacity = "1";
   smallAlarm();
@@ -1807,7 +1807,7 @@ function renderBoard(fen, lastMove, animate){
         ghost.style.left = (toRect.left - wrapRect.left) + "px";
         ghost.style.top = (toRect.top - wrapRect.top) + "px";
       });
-      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); }, 480);
+      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); }, 1150);
       return;
     }
   }
@@ -1844,7 +1844,7 @@ function onSquareClick(e){
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ id, from, to })
     }).then(r=>r.json()).then(d=>{
-      if (!d.ok) document.getElementById("status").textContent = "❌ " + (d.error||"অবৈধ চাল, আবার চেষ্টা করুন");
+      if (!d.ok) document.getElementById("status").textContent = "❌ " + (d.error||"Invalid move, try again");
     });
   }
 }
@@ -1854,7 +1854,7 @@ async function poll(){
     const res = await fetch("/gaming/challenge/play-state?id="+id);
     const data = await res.json();
     if (!data.active) {
-      document.getElementById("status").textContent = "গেম শেষ হয়ে গেছে। ধন্যবাদ খেলার জন্য! এখনই আপনাকে লাইভে ফিরিয়ে নিয়ে যাচ্ছি...";
+      document.getElementById("status").textContent = "Game over. Thanks for playing! Taking you back to the live stream now...";
       if (!gameEndedRedirectStarted) {
         gameEndedRedirectStarted = true;
         setTimeout(() => { location.href = "/gaming/overlay/chess"; }, 3000); // খেলা শেষে সাথে সাথেই চলমান লাইভে ফিরিয়ে দেওয়া
@@ -1863,7 +1863,7 @@ async function poll(){
     }
     if (!hasCelebrated) runCelebration(data.name, data.photoUrl);
     renderBoard(data.fen, data.lastMove, hasCelebrated);
-    document.getElementById("status").textContent = data.turn === "b" ? "✅ আপনার turn — একটা ঘুঁটি ক্লিক করুন, তারপর কোথায় নিতে চান সেখানে ক্লিক করুন" : "⏳ Nur ভাবছে...";
+    document.getElementById("status").textContent = data.turn === "b" ? "✅ Your turn — click a piece, then click where you want to move it" : "⏳ Nur is thinking...";
   }catch(e){}
 }
 setInterval(poll, 1500); poll();
@@ -1924,10 +1924,10 @@ module.exports = function mountGaming(app) {
 
   app.post("/gaming/challenge/move", express.json(), (req, res) => {
     const { id, from, to } = req.body || {};
-    if (!activeChallenge || activeChallenge.id !== id) return res.json({ ok: false, error: "এই মুহূর্তে আপনার turn না" });
-    if (activeChallenge.chess.turn() !== "b") return res.json({ ok: false, error: "এখনো আপনার turn আসেনি" });
+    if (!activeChallenge || activeChallenge.id !== id) return res.json({ ok: false, error: "It's not your turn right now" });
+    if (activeChallenge.chess.turn() !== "b") return res.json({ ok: false, error: "Your turn hasn't come yet" });
     const move = activeChallenge.chess.move({ from, to, promotion: "q" });
-    if (!move) return res.json({ ok: false, error: "অবৈধ চাল" });
+    if (!move) return res.json({ ok: false, error: "Invalid move" });
     activeChallenge.lastHumanMoveAt = Date.now();
     activeChallenge.lastMove = { from: move.from, to: move.to }; // play পেজেই নিজের চালটাও animate দেখানোর জন্য
     res.json({ ok: true });
