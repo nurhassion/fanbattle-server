@@ -355,6 +355,12 @@ function spawnStockfish(skillLevel) {
   engine.on("error", (err) => {
     console.error("❌ Stockfish চালু করা যায়নি:", err.message, "| ব্যবহৃত path:", bin);
   });
+  engine.on("exit", (code, signal) => {
+    // প্রসেসটা মাঝপথে হঠাৎ বন্ধ হয়ে গেলে (crash/OOM kill ইত্যাদি) এখানে ধরা পড়বে —
+    // getCandidateMoves-এর ৬ সেকেন্ড টাইমআউট এমনিতেই বোর্ড আটকে থাকা আটকাবে,
+    // কিন্তু এই লগ থাকলে আসল কারণটা (কেন Stockfish মারা গেল) পরে বোঝা সহজ হবে
+    if (code !== 0 && code !== null) console.error(`⚠️ Stockfish প্রসেস বন্ধ হয়ে গেছে (exit code ${code}, signal ${signal})`);
+  });
   const send = (cmd) => engine.stdin.write(cmd + "\n");
   send("uci");
   send(`setoption name Skill Level value ${skillLevel}`);
@@ -363,11 +369,28 @@ function spawnStockfish(skillLevel) {
 }
 
 // শুধু বেস্ট মুভ না, top ৩টা candidate move (UCI ফরম্যাটে, যেমন "e2e4") ফেরত দেয় —
-// দর্শকদের আগে prediction দেখানো, পরে সবচেয়ে ভালোটা highlight করার জন্য এটা দরকার
+// দর্শকদের আগে prediction দেখানো, পরে সবচেয়ে ভালোটা highlight করার জন্য এটা দরকার।
+// ⏱️ TIMEOUT SAFETY NET: Stockfish প্রসেস কোনো কারণে হ্যাং/ক্র্যাশ করলে (যেমন
+// low-memory hosting-এ মাঝেমধ্যে হয়) আগে এই Promise কখনো resolve না হয়ে পুরো
+// game loop-টাই চিরদিনের জন্য আটকে যেত — বোর্ড এক জায়গায় স্থির হয়ে থাকতো, নতুন
+// কোনো চাল আর কখনো আসতো না। এখন movetime-এর কয়েক সেকেন্ড পরও reply না এলে
+// resolve({bestmove:null}) দিয়ে দেওয়া হয়, যাতে বাইরের লুপ সেটা ধরে পরের গেম শুরু
+// করে দিতে পারে — সিস্টেম নিজে থেকেই সেরে ওঠে (self-heals), স্থায়ীভাবে আটকে থাকে না।
 function getCandidateMoves(engine, fen, movetimeMs = 1200) {
   return new Promise((resolve) => {
     const candidates = {}; // multipv index -> {uci, cp}
     let resolved = false;
+    const finish = (result) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutHandle);
+      engine.proc.stdout.off("data", onData);
+      resolve(result);
+    };
+    const timeoutHandle = setTimeout(() => {
+      console.error("⚠️ Stockfish " + movetimeMs + "ms + বাফার সময়েও reply দেয়নি — এই চালটা বাদ দিয়ে (bestmove:null) এগিয়ে যাচ্ছি, যাতে বোর্ড চিরস্থায়ীভাবে আটকে না থাকে।");
+      finish({ bestmove: null, candidates: [] });
+    }, movetimeMs + 6000);
     const onData = (d) => {
       const text = d.toString();
       for (const line of text.split("\n")) {
@@ -384,13 +407,11 @@ function getCandidateMoves(engine, fen, movetimeMs = 1200) {
         }
       }
       const bmMatch = text.match(/bestmove\s+(\S+)/);
-      if (bmMatch && !resolved) {
-        resolved = true;
-        engine.proc.stdout.off("data", onData);
+      if (bmMatch) {
         const list = Object.keys(candidates)
           .sort((a, b) => a - b)
           .map((k) => candidates[k]);
-        resolve({ bestmove: bmMatch[1] === "(none)" ? null : bmMatch[1], candidates: list.slice(0, 3) });
+        finish({ bestmove: bmMatch[1] === "(none)" ? null : bmMatch[1], candidates: list.slice(0, 3) });
       }
     };
     engine.proc.stdout.on("data", onData);
@@ -953,21 +974,42 @@ function renderBoard(fen, lastMove) {
       const isWhite = movingPiece.piece === movingPiece.piece.toUpperCase();
       ghost.className = "ghostPieceMain piece " + (isWhite ? "piece-w" : "piece-b");
       ghost.textContent = PIECE_GLYPH[movingPiece.piece] || "";
-      ghost.style.cssText = "position:absolute;z-index:30;display:flex;align-items:center;justify-content:center;font-size:44px;pointer-events:none;transition:left 1.1s ease-in-out,top 1.1s ease-in-out;";
+      const ANIM_MS = 1300;
+      ghost.style.cssText = "position:absolute;z-index:30;display:flex;align-items:center;justify-content:center;font-size:44px;pointer-events:none;transition:left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out;";
       ghost.style.left = (fromRect.left - wrapRect.left) + "px";
       ghost.style.top = (fromRect.top - wrapRect.top) + "px";
       ghost.style.width = fromRect.width + "px";
       ghost.style.height = fromRect.height + "px";
       wrap.appendChild(ghost);
-      requestAnimationFrame(() => {
-        ghost.style.left = (toRect.left - wrapRect.left) + "px";
-        ghost.style.top = (toRect.top - wrapRect.top) + "px";
-      });
+      const isKnight = movingPiece.piece.toLowerCase() === "n";
+      if (isKnight) {
+        // ঘোড়ার আসল "L" আকৃতির পথ ধরে চলা দেখানো — আগে লম্বা লেগ (২ ঘর), তারপর ছোট লেগ (১ ঘর) —
+        // সরাসরি কোনাকুনি "শর্টকাট" দিয়ে না গিয়ে, দর্শক যেন বুঝতে পারে ঘোড়া ঠিক কোন পথে গেল
+        const dr = lastToRC.r - lastFromRC.r, dc = lastToRC.c - lastFromRC.c;
+        const longAxisIsRow = Math.abs(dr) === 2;
+        const midRC = longAxisIsRow ? { r: lastFromRC.r + dr, c: lastFromRC.c } : { r: lastFromRC.r, c: lastFromRC.c + dc };
+        const midEl = boardEl.querySelector('[data-square="' + rcToSquare(midRC.r, midRC.c) + '"]');
+        const midRect = midEl ? midEl.getBoundingClientRect() : null;
+        ghost.style.transition = "left "+(ANIM_MS*0.55/1000)+"s ease-in,top "+(ANIM_MS*0.55/1000)+"s ease-in";
+        requestAnimationFrame(() => {
+          if (midRect) { ghost.style.left = (midRect.left - wrapRect.left) + "px"; ghost.style.top = (midRect.top - wrapRect.top) + "px"; }
+        });
+        setTimeout(() => {
+          ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out";
+          ghost.style.left = (toRect.left - wrapRect.left) + "px";
+          ghost.style.top = (toRect.top - wrapRect.top) + "px";
+        }, ANIM_MS * 0.55);
+      } else {
+        requestAnimationFrame(() => {
+          ghost.style.left = (toRect.left - wrapRect.left) + "px";
+          ghost.style.top = (toRect.top - wrapRect.top) + "px";
+        });
+      }
       setTimeout(() => {
         ghost.remove();
         drawGrid(boardEl, grid, lastFromRC, lastToRC, null);
         playMoveSound(false);
-      }, 1150);
+      }, ANIM_MS);
       prevFenBoard = boardPart;
       return;
     }
@@ -1764,6 +1806,7 @@ function runCelebration(name, photoUrl){
   }, 2500); // ২.৫ সেকেন্ড সেলিব্রেশন, তারপর অটোমেটিক্যালি সরে গিয়ে বোর্ড দেখাবে
 }
 function squareName(r,c){ return "abcdefgh"[c] + (8-r); }
+function squareToRC(sq){ return { r: 8 - parseInt(sq[1],10), c: sq.charCodeAt(0) - 97 }; }
 let lastRenderedMoveKey = "";
 function renderBoard(fen, lastMove, animate){
   const boardEl = document.getElementById("board");
@@ -1796,18 +1839,40 @@ function renderBoard(fen, lastMove, animate){
       const isWhite = movingPiece.piece === movingPiece.piece.toUpperCase();
       ghost.className = "ghostPiece piece " + (isWhite ? "piece-w" : "piece-b");
       ghost.textContent = PIECE_GLYPH[movingPiece.piece] || "";
+      const ANIM_MS = 1300;
       ghost.style.left = (fromRect.left - wrapRect.left) + "px";
       ghost.style.top = (fromRect.top - wrapRect.top) + "px";
       ghost.style.width = fromRect.width + "px";
       ghost.style.height = fromRect.height + "px";
       ghost.style.display = "flex"; ghost.style.alignItems = "center"; ghost.style.justifyContent = "center";
+      ghost.style.transition = "left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out";
       wrap.appendChild(ghost);
       drawGrid(grid, lastMove, true); // destination square-এ আপাতত গুটি লুকানো থাকবে animation শেষ না হওয়া পর্যন্ত
-      requestAnimationFrame(() => {
-        ghost.style.left = (toRect.left - wrapRect.left) + "px";
-        ghost.style.top = (toRect.top - wrapRect.top) + "px";
-      });
-      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); }, 1150);
+      const isKnight = movingPiece.piece.toLowerCase() === "n";
+      if (isKnight) {
+        // ঘোড়ার আসল "L" আকৃতির পথ ধরে চলা দেখানো — সরাসরি কোনাকুনি "শর্টকাট" না নিয়ে
+        const fromRC = squareToRC(lastMove.from), toRC = squareToRC(lastMove.to);
+        const dr = toRC.r - fromRC.r, dc = toRC.c - fromRC.c;
+        const longAxisIsRow = Math.abs(dr) === 2;
+        const midRC = longAxisIsRow ? { r: fromRC.r + dr, c: fromRC.c } : { r: fromRC.r, c: fromRC.c + dc };
+        const midEl = document.getElementById("board").querySelector('[data-square="' + squareName(midRC.r, midRC.c) + '"]');
+        const midRect = midEl ? midEl.getBoundingClientRect() : null;
+        ghost.style.transition = "left "+(ANIM_MS*0.55/1000)+"s ease-in,top "+(ANIM_MS*0.55/1000)+"s ease-in";
+        requestAnimationFrame(() => {
+          if (midRect) { ghost.style.left = (midRect.left - wrapRect.left) + "px"; ghost.style.top = (midRect.top - wrapRect.top) + "px"; }
+        });
+        setTimeout(() => {
+          ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out";
+          ghost.style.left = (toRect.left - wrapRect.left) + "px";
+          ghost.style.top = (toRect.top - wrapRect.top) + "px";
+        }, ANIM_MS * 0.55);
+      } else {
+        requestAnimationFrame(() => {
+          ghost.style.left = (toRect.left - wrapRect.left) + "px";
+          ghost.style.top = (toRect.top - wrapRect.top) + "px";
+        });
+      }
+      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); }, ANIM_MS);
       return;
     }
   }
