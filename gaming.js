@@ -2070,7 +2070,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 async function setupPush(id, statusEl) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    if (statusEl) statusEl.textContent = 'Push notifications aren\'t supported in this browser — keep this tab open to see live updates here instead.';
+    if (statusEl) statusEl.textContent = 'Push notifications aren\\'t supported in this browser — keep this tab open to see live updates here instead.';
     return false;
   }
   try {
@@ -2082,11 +2082,11 @@ async function setupPush(id, statusEl) {
     }
     const keyRes = await fetch('/gaming/vapid-public-key');
     const { key } = await keyRes.json();
-    if (!key) { if (statusEl) statusEl.textContent = 'Push isn\'t set up on the server yet.'; return false; }
+    if (!key) { if (statusEl) statusEl.textContent = 'Push isn\\'t set up on the server yet.'; return false; }
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
     await fetch('/gaming/challenge/push-subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, subscription: sub }) });
-    if (statusEl) statusEl.textContent = '🔔 Notifications are on — you\'ll get an alert on your phone when it\'s your turn.';
+    if (statusEl) statusEl.textContent = '🔔 Notifications are on — you\\'ll get an alert on your phone when it\\'s your turn.';
     return true;
   } catch (e) {
     if (statusEl) statusEl.textContent = 'Something went wrong turning on notifications.';
