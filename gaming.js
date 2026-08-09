@@ -1212,7 +1212,7 @@ async function prefillBgForm(){
     document.getElementById("bgMusicUrlInput").value = cfg.bgMusicUrl || "";
     document.getElementById("bgMusicVolumeInput").value = cfg.bgMusicVolume ?? 0.15;
     document.getElementById("volLabel").textContent = Math.round((cfg.bgMusicVolume ?? 0.15) * 100) + "%";
-    document.getElementById("commentaryUrlsInput").value = (cfg.commentaryUrls || []).join("\n");
+    document.getElementById("commentaryUrlsInput").value = (cfg.commentaryUrls || []).join("\\n");
     document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
     bgFormPrefilled = true;
   } catch(e){}
@@ -1229,7 +1229,7 @@ safeInit("bgSettingsFormSubmit", () => {
     const body = {
       bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
       bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
-      commentaryUrls: document.getElementById("commentaryUrlsInput").value.split("\n").map(s=>s.trim()).filter(Boolean),
+      commentaryUrls: document.getElementById("commentaryUrlsInput").value.split("\\n").map(s=>s.trim()).filter(Boolean),
       loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
       celebVoiceURI: selectedCelebVoice ? selectedCelebVoice.voiceURI : "",
     };
