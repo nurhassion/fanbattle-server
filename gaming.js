@@ -129,12 +129,12 @@ function textToSpeech(text) {
 // প্রতিটা নতুন ম্যাচে বোর্ডের রঙ থিম বদলাতে — ক্লাসিক লুক (কাঠের বোর্ড, গোলাকার গুটির আকৃতি) ঠিক রেখেই
 // শুধু রঙ কম্বিনেশন পাল্টায়, যাতে ওভারঅল টেমপ্লেটটা একঘেয়ে না লাগে
 const BOARD_THEMES = [
-  { light: "#EFE0BF", dark: "#5C3A21", pcW1: "#ffffff", pcW2: "#d4cbb8", pcB1: "#3a3a3a", pcB2: "#000000", border: "linear-gradient(135deg,#B8874A,#3E2712)" }, // ক্লাসিক কাঠ
-  { light: "#DDEBF7", dark: "#3B5F82", pcW1: "#ffffff", pcW2: "#c9d9e8", pcB1: "#1a2c3d", pcB2: "#0a1420", border: "linear-gradient(135deg,#5A87B0,#1E3A54)" }, // নীল সমুদ্র
-  { light: "#E9F0DF", dark: "#4A6741", pcW1: "#ffffff", pcW2: "#d2e0c4", pcB1: "#2b3a26", pcB2: "#111a0d", border: "linear-gradient(135deg,#7A9E6B,#2E4527)" }, // সবুজ বন
-  { light: "#F3E3EC", dark: "#6B3F5C", pcW1: "#ffffff", pcW2: "#e3cbdb", pcB1: "#3a2333", pcB2: "#180d15", border: "linear-gradient(135deg,#A5628F,#4A2740)" }, // বেগুনি-গোলাপি
-  { light: "#EDEDED", dark: "#3F4448", pcW1: "#ffffff", pcW2: "#d8d8d8", pcB1: "#26292b", pcB2: "#0a0b0c", border: "linear-gradient(135deg,#8A9196,#2A2E31)" }, // মনোক্রোম গ্রে
-  { light: "#F5E9D3", dark: "#7A2E2E", pcW1: "#fff8ec", pcW2: "#e3c9a1", pcB1: "#3a1414", pcB2: "#180606", border: "linear-gradient(135deg,#B0524A,#5A1E1E)" }, // পোড়া লাল-কমলা
+  { light: "#EFE0BF", dark: "#5C3A21", pcW1: "#ffffff", pcW2: "#d4cbb8", pcB1: "#3a3a3a", pcB2: "#000000", border: "linear-gradient(135deg,#B8874A,#3E2712)", accent: "#E8B33D" }, // ক্লাসিক কাঠ
+  { light: "#DDEBF7", dark: "#3B5F82", pcW1: "#ffffff", pcW2: "#c9d9e8", pcB1: "#1a2c3d", pcB2: "#0a1420", border: "linear-gradient(135deg,#5A87B0,#1E3A54)", accent: "#5EC8FF" }, // নীল সমুদ্র
+  { light: "#E9F0DF", dark: "#4A6741", pcW1: "#ffffff", pcW2: "#d2e0c4", pcB1: "#2b3a26", pcB2: "#111a0d", border: "linear-gradient(135deg,#7A9E6B,#2E4527)", accent: "#9EDB6E" }, // সবুজ বন
+  { light: "#F3E3EC", dark: "#6B3F5C", pcW1: "#ffffff", pcW2: "#e3cbdb", pcB1: "#3a2333", pcB2: "#180d15", border: "linear-gradient(135deg,#A5628F,#4A2740)", accent: "#F088C4" }, // বেগুনি-গোলাপি
+  { light: "#EDEDED", dark: "#3F4448", pcW1: "#ffffff", pcW2: "#d8d8d8", pcB1: "#26292b", pcB2: "#0a0b0c", border: "linear-gradient(135deg,#8A9196,#2A2E31)", accent: "#E0E4E8" }, // মনোক্রোম গ্রে
+  { light: "#F5E9D3", dark: "#7A2E2E", pcW1: "#fff8ec", pcW2: "#e3c9a1", pcB1: "#3a1414", pcB2: "#180606", border: "linear-gradient(135deg,#B0524A,#5A1E1E)", accent: "#FF8A5C" }, // পোড়া লাল-কমলা
 ];
 function randomBoardTheme() { return BOARD_THEMES[Math.floor(Math.random() * BOARD_THEMES.length)]; }
 
@@ -793,27 +793,27 @@ body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 1
 padding:16px 20px;height:100vh;overflow:hidden;}
 h1{text-align:center;margin:0 0 12px;font-size:24px;letter-spacing:0.5px;font-weight:800;
 color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-.layout{display:grid;grid-template-columns:1fr 4fr 1.35fr;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
+.layout{display:grid;grid-template-columns:1.3fr 3.8fr 1.4fr;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
 .sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
-.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 16px;
-box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1;min-height:0;}
-.rulesBox h3{margin:0 0 10px;font-size:12px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;}
-.ruleRow{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #202a44;}
+.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:16px 18px;
+box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1.1;min-height:0;}
+.rulesBox h3{margin:0 0 12px;font-size:15px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;}
+.ruleRow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #202a44;}
 .ruleRow:last-child{border-bottom:none;}
-.ruleGlyph{font-size:26px;width:32px;text-align:center;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
+.ruleGlyph{font-size:36px;width:42px;text-align:center;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
 .ruleGlyph.hi{animation:glow 1.4s ease-in-out infinite;}
 @keyframes glow{0%,100%{filter:drop-shadow(0 0 6px rgba(255,216,102,0.4));}50%{filter:drop-shadow(0 0 14px rgba(255,216,102,1));}}
-.ruleText{font-size:12px;color:#B8C4D9;line-height:1.4;}
+.ruleText{font-size:16px;color:#B8C4D9;line-height:1.5;}
 .ruleText b{color:#fff;}
 .playerCard{background:#161b2e;border:1px solid #2a3352;border-radius:16px;padding:14px;
 box-shadow:0 10px 24px rgba(0,0,0,0.55);text-align:center;}
 .playerCard.active{border-color:#FFD866;box-shadow:0 0 0 2px #FFD866, 0 10px 30px rgba(255,216,102,0.3);}
-/* সাদা/Nur-এর কার্ড — কোনো ছবি দেখানো হবে না তাই ছোট রাখা, বাঁচানো জায়গা নিয়ম+স্ক্যানার বক্সে যাচ্ছে */
-.playerCard.compact{padding:8px;flex:0 0 auto;}
-.playerCard.compact .avatar{width:38px;height:38px;font-size:16px;margin-bottom:4px;}
-.playerCard.compact .pName{font-size:13px;}
-.playerCard.compact .pLabel{font-size:8px;}
-.playerCard.compact .captured{margin-top:4px;min-height:16px;font-size:13px;}
+/* সাদা/Nur-এর কার্ড — আরো বড় করা হলো */
+.playerCard.compact{padding:20px 14px;flex:0 0 auto;}
+.playerCard.compact .avatar{width:68px;height:68px;font-size:28px;margin-bottom:8px;}
+.playerCard.compact .pName{font-size:19px;}
+.playerCard.compact .pLabel{font-size:11px;}
+.playerCard.compact .captured{margin-top:8px;min-height:20px;font-size:17px;}
 .avatar{width:88px;height:88px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;
 font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid #2a3352;overflow:hidden;}
 .avatar.black{background:#B0BEC5;}
@@ -890,12 +890,15 @@ animation:confettiFall linear forwards;}
 @keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1;}100%{transform:translateY(108vh) rotate(720deg);opacity:0.9;}}
 
 /* সরাসরি টিপস QR — মূল layout-এর ভেতরেই, বাম কলামে নিয়মের বক্সের নিচে */
-#tipBoxOverlay{flex:1;min-height:0;}
-#tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px;text-align:center;
-box-shadow:0 10px 24px rgba(0,0,0,0.5);height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
-#tipQrImg{width:150px;height:150px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
-.tipLabel{color:#FFD866;font-weight:800;font-size:18px;margin-top:10px;}
-.tipSub{color:#5a6a8a;font-size:10.5px;margin-top:4px;line-height:1.4;max-width:200px;}
+#tipBoxOverlay{flex:1.3;min-height:0;}
+#tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:16px;text-align:center;
+box-shadow:0 10px 24px rgba(0,0,0,0.5);height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+#tipQrWrap::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 20%,rgba(255,216,102,0.12),transparent 60%);pointer-events:none;}
+#tipQrImg{width:min(78%,210px);height:auto;aspect-ratio:1;border-radius:12px;background:#fff;padding:8px;display:block;margin:0 auto;
+box-shadow:0 0 0 3px #FFD866,0 8px 24px rgba(255,216,102,0.25);}
+.tipLabel{color:#FFD866;font-weight:800;font-size:21px;margin-top:12px;}
+.tipHeart{font-size:15px;margin-top:2px;letter-spacing:3px;opacity:0.85;}
+.tipSub{color:#5a6a8a;font-size:12px;margin-top:5px;line-height:1.45;max-width:220px;}
 /* টপ ৩ ডোনার — এখন স্থায়ী র‍্যাংক করা লিস্ট, উপরে #১, নিচে #৩ — আর পপ-আপ করে ভেসে ওঠে না */
 #topDonorsBox{flex:1.1;}
 .topDonorRow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #202a44;}
@@ -936,6 +939,7 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
       <div id="tipQrWrap">
         <img id="tipQrImg" src="" alt="Scan to help">
         <div class="tipLabel">🙏 Help Me</div>
+        <div class="tipHeart">♟️ ❤️ ♟️</div>
         <div class="tipSub">Voluntary support — not tied to the game, never required</div>
       </div>
     </div>
@@ -990,7 +994,7 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
       </div>
     </div>
     <!-- টপ ৩ ডোনার — এখন এখানেই স্থায়ীভাবে থাকবে (আগের মতো পপ-আপ করে ভেসে ওঠা-মিলিয়ে যাওয়া না) -->
-    <div class="rulesBox" id="topDonorsBox" style="display:none;">
+    <div class="rulesBox" id="topDonorsBox">
       <h3>🏆 Top Supporters</h3>
       <div id="topDonorList"></div>
     </div>
@@ -1107,6 +1111,7 @@ function applyBoardTheme(theme){
   root.setProperty("--pc-b1", theme.pcB1);
   root.setProperty("--pc-b2", theme.pcB2);
   root.setProperty("--board-border", theme.border);
+  root.setProperty("--arrow-color", theme.accent || "#E8B33D");
 }
 
 const PIECE_GLYPH = { p:"♟",r:"♜",n:"♞",b:"♝",q:"♛",k:"♚", P:"♟",R:"♜",N:"♞",B:"♝",Q:"♛",K:"♚" };
@@ -1254,16 +1259,28 @@ function squareCenter(sq) {
   const { r, c } = squareToRC(sq);
   return { x: c * 58 + 29, y: r * 58 + 29 };
 }
+function hexToRgb(hex){
+  const h = hex.replace("#","");
+  const n = h.length===3 ? h.split("").map(c=>c+c).join("") : h;
+  const num = parseInt(n,16);
+  return { r:(num>>16)&255, g:(num>>8)&255, b:num&255 };
+}
 function renderArrows(candidates, chosenMove) {
   const svg = document.getElementById("arrowLayer");
-  svg.innerHTML = '<defs><marker id="ah1" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#E8B33D"/></marker><marker id="ah2" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="rgba(232,179,61,0.5)"/></marker></defs>';
+  const accent = (getComputedStyle(document.documentElement).getPropertyValue("--arrow-color") || "#E8B33D").trim();
+  const { r, g, b } = hexToRgb(accent.startsWith("#") ? accent : "#E8B33D");
+  const dim = "rgba(" + r + "," + g + "," + b + ",0.42)";
+  svg.innerHTML = '<defs>' +
+    '<marker id="ah1" markerWidth="9" markerHeight="9" refX="4.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="'+accent+'"/></marker>' +
+    '<marker id="ah2" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="'+dim+'"/></marker>' +
+  '</defs>';
   (candidates || []).forEach((c) => {
     if (chosenMove && c.from === chosenMove.from && c.to === chosenMove.to) return; // chosen আলাদাভাবে আঁকা হবে, ডুপ্লিকেট না
     const p1 = squareCenter(c.from), p2 = squareCenter(c.to);
     const line = document.createElementNS("http://www.w3.org/2000/svg","line");
     line.setAttribute("x1", p1.x); line.setAttribute("y1", p1.y);
     line.setAttribute("x2", p2.x); line.setAttribute("y2", p2.y);
-    line.setAttribute("stroke", "rgba(232,179,61,0.45)"); line.setAttribute("stroke-width", "4");
+    line.setAttribute("stroke", dim); line.setAttribute("stroke-width", "4.5"); line.setAttribute("stroke-linecap", "round");
     line.setAttribute("marker-end", "url(#ah2)");
     svg.appendChild(line);
   });
@@ -1272,8 +1289,9 @@ function renderArrows(candidates, chosenMove) {
     const line = document.createElementNS("http://www.w3.org/2000/svg","line");
     line.setAttribute("x1", p1.x); line.setAttribute("y1", p1.y);
     line.setAttribute("x2", p2.x); line.setAttribute("y2", p2.y);
-    line.setAttribute("stroke", "#E8B33D"); line.setAttribute("stroke-width", "6");
-    line.setAttribute("marker-end", "url(#ah1)"); line.style.filter = "drop-shadow(0 0 4px rgba(232,179,61,0.8))";
+    line.setAttribute("stroke", accent); line.setAttribute("stroke-width", "6.5"); line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("marker-end", "url(#ah1)");
+    line.style.filter = "drop-shadow(0 0 5px rgba(" + r + "," + g + "," + b + ",0.85))";
     svg.appendChild(line);
   }
 }
@@ -1445,20 +1463,19 @@ fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
   }
 });
 
-// টপ ৩ ডোনার — এখন স্থায়ী র‍্যাংক করা লিস্ট, পপ-আপ করে আর ভেসে ওঠে না
+// টপ ৩ ডোনার — এখন স্থায়ী র‍্যাংক করা লিস্ট, পপ-আপ করে আর ভেসে ওঠে না।
+// আগে কোনো ডোনার না থাকলে বক্সটাই লুকিয়ে ফেলা হতো (যার ফলে জায়গাটা "হারিয়ে যেত")
+// — এখন সবসময় দেখাবে, খালি থাকলে placeholder টেক্সট দেখাবে, যাতে লেআউট স্থির থাকে
 async function refreshTopDonors(){
   try {
     const res = await fetch("/top-donors/chessbattle");
     const data = await res.json();
     const top = data.top || [];
-    const box = document.getElementById("topDonorsBox");
-    if (!top.length) { box.style.display = "none"; return; }
-    box.style.display = "block";
-    document.getElementById("topDonorList").innerHTML = top.map((d, i) => (
+    document.getElementById("topDonorList").innerHTML = top.length ? top.map((d, i) => (
       '<div class="topDonorRow"><div class="rankNum">' + (i+1) + '</div>' +
       (d.photo ? '<img class="tdAvatar" src="'+d.photo+'">' : '<div class="tdAvatarFallback">'+((d.name&&d.name[0])||"?")+'</div>') +
       '<div><div class="tdName">' + d.name + '</div><div class="tdAmount">₹' + Math.round(d.amount) + '</div></div></div>'
-    )).join("");
+    )).join("") : '<div style="font-size:12px;color:#5a6a8a;padding:8px 0;">No tips yet — be the first! 🙏</div>';
   } catch(e){}
 }
 refreshTopDonors();
