@@ -820,7 +820,10 @@ font-size:76px;font-weight:900;opacity:0;pointer-events:none;text-align:center;p
 25%{transform:scale(1) rotate(0);}85%{opacity:1;}100%{opacity:0;}}
 
 /* সরাসরি টিপস QR — বাম পাশের নিয়মের বক্সের ঠিক নিচে, স্থায়ীভাবে বসানো একটা ছোট কার্ড */
-#tipBoxOverlay{position:fixed;left:20px;bottom:16px;width:220px;z-index:15;}
+/* সরাসরি টিপস QR — এখন আর position:fixed viewport-কোণায় না, বরং মূল layout-এর
+   বাম কলামেই (নিয়মের বক্সের ঠিক নিচে) normal flow-তে বসানো, যাতে OBS-এ zoom/crop
+   করলেও এটা বাকি সবকিছুর সাথেই থেকে যায়, ফ্রেমের বাইরে হারিয়ে না যায় */
+#tipBoxOverlay{width:100%;}
 #tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;text-align:center;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);}
 #tipQrImg{width:96px;height:96px;border-radius:8px;background:#fff;padding:4px;display:block;margin:0 auto;}
@@ -851,6 +854,17 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
     <div class="rulesBox" id="rulesBox">
       <h3>How Pieces Move</h3>
       <div id="rulesList"></div>
+    </div>
+    <!-- সরাসরি টিপস — মূল layout-এর ভেতরেই (fixed viewport-position না) যাতে OBS-এ
+         zoom/crop করলেও এটা ফ্রেমের বাইরে হারিয়ে না যায়, বাকি সবকিছুর সাথেই থাকে।
+         স্ক্যানারটা স্থায়ীভাবে এখানেই থাকবে, তার উপরে মাঝেমধ্যে টপ ৩ ডোনার/হেল্পারের নাম পপ-আপ হয়ে ভেসে উঠবে -->
+    <div id="tipBoxOverlay" style="display:none;">
+      <div id="tipQrWrap">
+        <img id="tipQrImg" src="" alt="Scan to help">
+        <div class="tipLabel">🙏 Help Me</div>
+        <div class="tipSub">Voluntary support — not tied to the game, never required</div>
+      </div>
+      <div id="donorPopup"></div>
     </div>
   </div>
 
@@ -886,16 +900,6 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
 </div>
 
 <div class="flash" id="flash"></div>
-
-<!-- সরাসরি টিপস — স্ক্যানারটা স্থায়ীভাবে এখানেই থাকবে, তার উপরে মাঝেমধ্যে টপ ৩ ডোনার/হেল্পারের নাম পপ-আপ হয়ে ভেসে উঠবে -->
-<div id="tipBoxOverlay" style="display:none;">
-  <div id="tipQrWrap">
-    <img id="tipQrImg" src="" alt="Scan to help">
-    <div class="tipLabel">🙏 Help Me</div>
-    <div class="tipSub">Voluntary support — not tied to the game, never required</div>
-  </div>
-  <div id="donorPopup"></div>
-</div>
 
 <button id="soundBtn" style="position:fixed;top:12px;right:12px;background:#E8B33D;border:none;
 border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;">🔊 Turn on sound</button>
