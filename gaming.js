@@ -1099,8 +1099,12 @@ function renderRules() {
     '<div class="ruleText"><b>' + r.name + ':</b> ' + r.text + '</div></div>'
   ).join("");
 }
-renderRules();
-setInterval(() => { ruleIdx = (ruleIdx + 1) % PIECE_RULES.length; renderRules(); }, 4000);
+// safeInit — একটা অংশ কোনো কারণে fail করলেও (যেমন কোনো element খুঁজে না পেলে) বাকি সব অংশ
+// যেন স্বাভাবিকভাবে চলতে থাকে, পুরো পেজ যেন এক জায়গার ভুলে সম্পূর্ণ ফাঁকা/অকেজো হয়ে না যায়
+function safeInit(label, fn) {
+  try { fn(); } catch (e) { console.error("⚠️ overlay init failed [" + label + "]:", e); }
+}
+safeInit("renderRules", () => { renderRules(); setInterval(() => { ruleIdx = (ruleIdx + 1) % PIECE_RULES.length; renderRules(); }, 4000); });
 
 let lastKey="";const audioEl=document.getElementById("narrator");let queue=[];
 let audioCtx = null;
@@ -1152,8 +1156,7 @@ function playNextCommentaryClip(){
   commentaryAudioEl.src = url;
   commentaryAudioEl.play().catch(()=>{});
 }
-loadChessConfig();
-setInterval(loadChessConfig, 15000); // সেভ করলে ১৫ সেকেন্ডের মধ্যেই লাইভে প্রতিফলিত হবে
+safeInit("loadChessConfig", () => { loadChessConfig(); setInterval(loadChessConfig, 15000); }); // সেভ করলে ১৫ সেকেন্ডের মধ্যেই লাইভে প্রতিফলিত হবে
 
 // ---------- ডোনার সেলিব্রেশনের ভয়েস — Fan Battle Live-এর মতোই ব্রাউজারের Web Speech API + ভয়েস বাছাই ----------
 let availableVoices = [];
@@ -1176,15 +1179,17 @@ function populateVoices(){
   selectedCelebVoice = match || sorted[0];
   if (selectedCelebVoice) sel.value = selectedCelebVoice.voiceURI;
 }
-if (window.speechSynthesis) {
-  window.speechSynthesis.onvoiceschanged = populateVoices;
-  populateVoices();
-}
-document.getElementById("celebVoiceSelect").addEventListener("change", (e) => {
-  selectedCelebVoice = availableVoices.find(v => v.voiceURI === e.target.value) || null;
-});
-document.getElementById("testVoiceBtn").addEventListener("click", () => {
-  speakCeleb("Thank you Rahim for the 50 rupee tip!");
+safeInit("voicePicker", () => {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = populateVoices;
+    populateVoices();
+  }
+  document.getElementById("celebVoiceSelect").addEventListener("change", (e) => {
+    selectedCelebVoice = availableVoices.find(v => v.voiceURI === e.target.value) || null;
+  });
+  document.getElementById("testVoiceBtn").addEventListener("click", () => {
+    speakCeleb("Thank you Rahim for the 50 rupee tip!");
+  });
 });
 function speakCeleb(text){
   if (!window.speechSynthesis) return;
@@ -1212,27 +1217,31 @@ async function prefillBgForm(){
     bgFormPrefilled = true;
   } catch(e){}
 }
-prefillBgForm();
-document.getElementById("bgMusicVolumeInput").addEventListener("input", (e) => {
-  document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
+safeInit("bgSettingsForm", () => {
+  prefillBgForm();
+  document.getElementById("bgMusicVolumeInput").addEventListener("input", (e) => {
+    document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
+  });
 });
-document.getElementById("bgSettingsForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const body = {
-    bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
-    bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
-    commentaryUrls: document.getElementById("commentaryUrlsInput").value.split("\n").map(s=>s.trim()).filter(Boolean),
-    loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
-    celebVoiceURI: selectedCelebVoice ? selectedCelebVoice.voiceURI : "",
-  };
-  const statusEl = document.getElementById("bgSettingsStatus");
-  try {
-    const res = await fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
-    statusEl.textContent = res.ok ? "✅ সেভ হয়েছে — কয়েক সেকেন্ডের মধ্যেই লাইভে কার্যকর হবে।" : "❌ সেভ করা যায়নি।";
-    chessConfigCache = null; // পরের loadChessConfig() call-এ জোর করে নতুন করে apply হবে
-  } catch(err) {
-    statusEl.textContent = "❌ সেভ করা যায়নি — নেটওয়ার্ক সমস্যা।";
-  }
+safeInit("bgSettingsFormSubmit", () => {
+  document.getElementById("bgSettingsForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
+      bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
+      commentaryUrls: document.getElementById("commentaryUrlsInput").value.split("\n").map(s=>s.trim()).filter(Boolean),
+      loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+      celebVoiceURI: selectedCelebVoice ? selectedCelebVoice.voiceURI : "",
+    };
+    const statusEl = document.getElementById("bgSettingsStatus");
+    try {
+      const res = await fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      statusEl.textContent = res.ok ? "✅ সেভ হয়েছে — কয়েক সেকেন্ডের মধ্যেই লাইভে কার্যকর হবে।" : "❌ সেভ করা যায়নি।";
+      chessConfigCache = null; // পরের loadChessConfig() call-এ জোর করে নতুন করে apply হবে
+    } catch(err) {
+      statusEl.textContent = "❌ সেভ করা যায়নি — নেটওয়ার্ক সমস্যা।";
+    }
+  });
 });
 
 // প্রফেশনাল, তীক্ষ্ণ "wood tap" শব্দ — দুটো স্তর (আঘাত + হালকা অনুরণন), খুব সংক্ষিপ্ত, বিরক্তিকর না
@@ -1570,7 +1579,7 @@ async function poll(){try{
   const key=JSON.stringify(data.audioPlaylist||[]);
   if(data.audioPlaylist&&key!==lastKey){lastKey=key;queue=[...data.audioPlaylist];playQueue();}
 }catch(e){}}
-setInterval(poll,1200);poll();
+safeInit("mainPoll", () => { setInterval(poll,1200); poll(); });
 
 // জেতার সময় সত্যিকারের উড়ন্ত কনফেটি — CSS keyframe দিয়ে অনেকগুলো ছোট রঙিন ফালি উপর থেকে পড়ে
 function launchConfetti(){
@@ -1607,9 +1616,7 @@ async function refreshRecentDonors(){
     ).join("") : '<div style="font-size:11px;color:#5a6a8a;">No tips yet</div>';
   } catch(e){}
 }
-refreshRecentDonors();
-setInterval(refreshRecentDonors, 20000);
-setInterval(toggleAltPanel, 9000); // প্রতি ৯ সেকেন্ডে queue list ↔ recent supporters পালাক্রমে দেখাবে
+safeInit("altPanel", () => { refreshRecentDonors(); setInterval(refreshRecentDonors, 20000); setInterval(toggleAltPanel, 9000); }); // প্রতি ৯ সেকেন্ডে queue list ↔ recent supporters পালাক্রমে দেখাবে
 
 // ---------- সরাসরি টিপস QR ----------
 fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
@@ -1642,8 +1649,7 @@ async function refreshTopDonors(){
     fillTopSupporterPanel(3, top[2]);
   } catch(e){}
 }
-refreshTopDonors();
-setInterval(refreshTopDonors, 20000); // প্রতি ২০ সেকেন্ডে সবশেষ টপ ৩ রিফ্রেশ
+safeInit("topDonors", () => { refreshTopDonors(); setInterval(refreshTopDonors, 20000); }); // প্রতি ২০ সেকেন্ডে সবশেষ টপ ৩ রিফ্রেশ
 
 // নতুন কোনো real payment এলে (verified, চেস চ্যানেলের) নাম নিয়ে সেলিব্রেশন
 async function pollChessTips(){
@@ -1662,7 +1668,7 @@ async function pollChessTips(){
     });
   } catch(e){}
 }
-setInterval(pollChessTips, 4000);
+safeInit("pollChessTips", () => { setInterval(pollChessTips, 4000); });
 
 // Fan Battle Live-এর মতোই — ছবি (থাকলে) বড় করে, নাম আর টাকার অ্যামাউন্ট সহ সেলিব্রেশন কার্ড
 let donorCelebTimeout = null;
