@@ -776,7 +776,7 @@ body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 1
 padding:16px 20px;height:100vh;overflow:hidden;}
 h1{text-align:center;margin:0 0 12px;font-size:24px;letter-spacing:0.5px;font-weight:800;
 color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-.layout{display:grid;grid-template-columns:280px 1fr 400px;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
+.layout{display:grid;grid-template-columns:1fr 4.6fr 1fr;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
 .sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 16px;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1;min-height:0;}
@@ -820,14 +820,17 @@ background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
 #altPanel .rulesBox{flex:1;position:relative;}
 #altPanel .altView{display:none;}
 #altPanel .altView.show{display:block;}
-.centerCol{display:flex;flex-direction:column;align-items:center;height:100%;min-height:0;}
-#opening{color:#7C8AAD;font-size:13px;margin-bottom:8px;font-weight:600;}
-#boardWrap{position:relative;width:496px;flex-shrink:0;}
-#board{display:grid;grid-template-columns:repeat(8,62px);grid-template-rows:repeat(8,62px);
-width:496px;border:10px solid;border-image:linear-gradient(135deg,#B8874A,#3E2712) 1;border-radius:8px;
+.centerCol{display:flex;flex-direction:column;align-items:center;height:100%;min-height:0;width:100%;}
+#opening{color:#7C8AAD;font-size:15px;margin-bottom:8px;font-weight:600;}
+/* বোর্ডটা এখন fluid — সেন্টার কলামের যতটা জায়গা আছে (৭০%-এর কাছাকাছি) তার সাথেই স্কেল হয়,
+   fixed pixel-এ আটকে থেকে চারপাশে ফাঁকা জায়গা রাখে না। max-width শুধু অতিরিক্ত ওয়াইড মনিটরে
+   বোর্ডটা অস্বাভাবিক বড় হয়ে যাওয়া আটকাতে */
+#boardWrap{position:relative;width:min(94%, calc((100vh - 260px) * 1));max-width:900px;aspect-ratio:1;flex-shrink:1;}
+#board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+width:100%;height:100%;border:10px solid;border-image:linear-gradient(135deg,#B8874A,#3E2712) 1;border-radius:8px;
 box-shadow:0 20px 46px rgba(0,0,0,0.75), inset 0 0 0 2px rgba(0,0,0,0.5);}
-#arrowLayer{position:absolute;top:10px;left:10px;width:476px;height:476px;pointer-events:none;}
-.sq{display:flex;align-items:center;justify-content:center;font-size:44px;user-select:none;position:relative;}
+#arrowLayer{position:absolute;top:10px;left:10px;width:calc(100% - 20px);height:calc(100% - 20px);pointer-events:none;}
+.sq{display:flex;align-items:center;justify-content:center;font-size:clamp(28px,5.2vw,64px);user-select:none;position:relative;}
 .light{background:#EFE0BF;}
 .dark{background:#5C3A21;}
 .sq.lastFrom{box-shadow:inset 0 0 0 4px rgba(76,217,100,0.85);}
@@ -839,18 +842,22 @@ filter:drop-shadow(0 2px 0 #6b6252) drop-shadow(0 6px 5px rgba(0,0,0,0.6));}
 .piece-b{background:linear-gradient(160deg,#3a3a3a 0%,#181818 45%,#000000 100%);
 -webkit-background-clip:text;background-clip:text;color:transparent;
 filter:drop-shadow(0 2px 0 #000) drop-shadow(0 6px 5px rgba(0,0,0,0.7));}
-#thinking{color:#7C8AAD;font-size:12px;margin-top:10px;min-height:16px;}
+#thinking{color:#7C8AAD;font-size:13px;margin-top:10px;min-height:16px;}
 #thinking.active{animation:pulse 1.2s ease-in-out infinite;}
 @keyframes pulse{0%,100%{opacity:0.35;}50%{opacity:1;}}
-#predictLabel{color:#FFD866;font-size:15px;min-height:20px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;}
-#moveCount{color:#7C8AAD;font-size:11px;margin-top:6px;}
-#commentary{margin-top:10px;font-size:15px;color:#FFD866;max-width:480px;text-align:center;min-height:20px;font-weight:600;}
-/* "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — win-probability বার */
-#evalBarWrap{width:496px;margin-top:12px;display:none;}
-#evalBarTrack{display:flex;height:16px;border-radius:8px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
-#evalBarWhite{background:linear-gradient(90deg,#e8e2d4,#fff);transition:flex-basis 1s ease;}
-#evalBarBlack{background:linear-gradient(90deg,#111,#333);transition:flex-basis 1s ease;}
-#evalLabel{display:flex;justify-content:space-between;font-size:10px;color:#7C8AAD;margin-top:4px;font-weight:700;}
+#predictLabel{color:#FFD866;font-size:16px;min-height:20px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;}
+#moveCount{color:#7C8AAD;font-size:12px;margin-top:6px;}
+#commentary{margin-top:10px;font-size:16px;color:#FFD866;max-width:90%;text-align:center;min-height:20px;font-weight:600;}
+/* "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — দুই পক্ষের জন্য দুটো আলাদা, স্পষ্ট বৈসাদৃশ্যপূর্ণ রঙ,
+   মাঝখানে স্থির একটা ছোট গোল ব্যাজে win% লেখা, আর দুই প্রান্তে যে খেলছে তার নাম (প্রতি ম্যাচে বদলায়) */
+#evalBarWrap{width:min(94%,700px);margin-top:14px;display:none;}
+#evalNames{display:flex;justify-content:space-between;font-size:11px;color:#B8C4D9;font-weight:700;margin-bottom:4px;padding:0 2px;}
+#evalBarTrack{position:relative;display:flex;height:18px;border-radius:9px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
+#evalBarWhite{background:linear-gradient(90deg,#c99a3f,#FFD866);transition:flex-basis 1s ease;}
+#evalBarBlack{background:linear-gradient(90deg,#7C4DFF,#5A32D6);transition:flex-basis 1s ease;}
+#evalBarBadge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;
+border-radius:50%;background:#0a0e1f;border:2px solid #fff;display:flex;align-items:center;justify-content:center;
+font-size:8.5px;font-weight:900;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.6);z-index:2;text-align:center;line-height:1.05;}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;
 font-size:76px;font-weight:900;opacity:0;pointer-events:none;text-align:center;padding:20px;background:rgba(0,0,0,0.45);z-index:60;}
 .flash.show{animation:pop 3.2s ease-out forwards;}
@@ -926,10 +933,14 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
     <div id="predictLabel"></div>
     <div id="moveCount"></div>
     <div id="commentary"></div>
-    <!-- "এই মুহূর্তে থামলে কে কতটা এগিয়ে" win-probability বার -->
+    <!-- "এই মুহূর্তে থামলে কে কতটা এগিয়ে" win-probability বার — দুই রঙ, মাঝে স্থির win% ব্যাজ, দুই প্রান্তে খেলোয়াড়ের নাম -->
     <div id="evalBarWrap">
-      <div id="evalBarTrack"><div id="evalBarWhite"></div><div id="evalBarBlack"></div></div>
-      <div id="evalLabel"><span id="evalLabelWhite">White 50%</span><span id="evalLabelBlack">Black 50%</span></div>
+      <div id="evalNames"><span id="evalNameWhite">White</span><span id="evalNameBlack">Black</span></div>
+      <div id="evalBarTrack">
+        <div id="evalBarWhite"></div>
+        <div id="evalBarBadge">50%</div>
+        <div id="evalBarBlack"></div>
+      </div>
     </div>
   </div>
 
@@ -1259,15 +1270,19 @@ async function poll(){try{
   document.getElementById("whiteCard").classList.toggle("active", data.fen && data.fen.includes(" w "));
   document.getElementById("blackCard").classList.toggle("active", data.fen && data.fen.includes(" b "));
 
-  // "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — win-probability বার
+  // "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — win-probability বার, প্রতি ম্যাচে নাম বদলায়
   const evalWrap = document.getElementById("evalBarWrap");
+  document.getElementById("evalNameWhite").textContent = data.whiteName || "White";
+  document.getElementById("evalNameBlack").textContent = data.blackName || "Black";
   if (typeof data.whiteWinPct === "number" && data.status === "playing") {
     evalWrap.style.display = "block";
     const wp = Math.max(2, Math.min(98, data.whiteWinPct));
     document.getElementById("evalBarWhite").style.flexBasis = wp + "%";
     document.getElementById("evalBarBlack").style.flexBasis = (100 - wp) + "%";
-    document.getElementById("evalLabelWhite").textContent = "White " + wp + "%";
-    document.getElementById("evalLabelBlack").textContent = "Black " + (100 - wp) + "%";
+    const badge = document.getElementById("evalBarBadge");
+    const leadingIsWhite = wp >= 50;
+    badge.textContent = (leadingIsWhite ? wp : (100 - wp)) + "%"; // যে পক্ষ এগিয়ে, মাঝের ব্যাজে তার শতাংশটাই দেখাবে
+    badge.style.borderColor = leadingIsWhite ? "#FFD866" : "#7C4DFF"; // এগিয়ে থাকা পক্ষের রঙে বর্ডার — এক নজরেই বোঝা যায়
   } else {
     evalWrap.style.display = "none";
   }
