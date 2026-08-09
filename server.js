@@ -1317,6 +1317,7 @@ app.get('/events/:channel', (req, res) => {
 // tip দিলে যোগ হয়ে যায়), তাই সবসময় সরাসরি saved records থেকে হিসাব করা হয়
 app.get('/top-donors/:channel', (req, res) => {
   const channel = req.params.channel;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 3, 20);
   const totals = {};
   loadRecords().forEach(r => {
     if (r.side !== channel) return;
@@ -1326,8 +1327,24 @@ app.get('/top-donors/:channel', (req, res) => {
   const top = Object.entries(totals)
     .map(([name, amount]) => ({ name, amount, photo: (donorPhotoMap[name] && donorPhotoMap[name].photo) || null }))
     .sort((a, b) => b.amount - a.amount)
-    .slice(0, 3);
+    .slice(0, limit);
   res.json({ top });
+});
+
+// Chess overlay-র "alternating" প্যানেলে (queue ↔ recent tippers) দেখানোর জন্য —
+// এটা cumulative total না, বরং সাম্প্রতিক কয়েকজন আলাদা দাতার নাম (নতুন থেকে পুরনো)
+app.get('/recent-donors/:channel', (req, res) => {
+  const channel = req.params.channel;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 6, 20);
+  const seen = new Set();
+  const recent = [];
+  loadRecords().filter(r => r.side === channel).reverse().forEach(r => {
+    const key = (r.name || 'Anonymous').trim() || 'Anonymous';
+    if (seen.has(key)) return;
+    seen.add(key);
+    recent.push({ name: key, amount: parseFloat(r.amount) || 0, photo: (donorPhotoMap[key] && donorPhotoMap[key].photo) || null });
+  });
+  res.json({ recent: recent.slice(0, limit) });
 });
 
 app.get('/', (req, res) => { res.send('Fan Battle Live automation server is running. <a href="/overlay">Open the live overlay</a>'); });
