@@ -806,7 +806,8 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:14px;}
 #bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
 h1{text-align:center;margin:0 0 12px;font-size:24px;letter-spacing:0.5px;font-weight:800;
 color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-.layout{display:grid;grid-template-columns:1.3fr 3.2fr 1.4fr;gap:14px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
+.layout{display:grid;grid-template-columns:1.5fr 3fr 0.95fr 1.05fr;gap:12px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
+.topSupCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 18px;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1.1;min-height:0;}
@@ -814,13 +815,13 @@ box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflo
    তাই এখানে overflow বন্ধ করে, সবগুলো (৬টা) নিয়ম একসাথে বক্সের ভেতরেই এঁটে যাওয়ার মতো ছোট করে রাখা */
 #rulesBox{overflow:hidden;display:flex;flex-direction:column;}
 #rulesBox #rulesList{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;}
-.rulesBox h3{margin:0 0 8px;font-size:14px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;flex-shrink:0;}
-.ruleRow{display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid #202a44;}
+.rulesBox h3{margin:0 0 6px;font-size:13px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;flex-shrink:0;}
+.ruleRow{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #202a44;}
 .ruleRow:last-child{border-bottom:none;}
-.ruleGlyph{font-size:26px;width:32px;text-align:center;flex-shrink:0;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
+.ruleGlyph{font-size:21px;width:26px;text-align:center;flex-shrink:0;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
 .ruleGlyph.hi{animation:glow 1.4s ease-in-out infinite;}
 @keyframes glow{0%,100%{filter:drop-shadow(0 0 6px rgba(255,216,102,0.4));}50%{filter:drop-shadow(0 0 14px rgba(255,216,102,1));}}
-.ruleText{font-size:12.5px;color:#B8C4D9;line-height:1.3;}
+.ruleText{font-size:11px;color:#B8C4D9;line-height:1.25;}
 .ruleText b{color:#fff;}
 .playerCard{background:#161b2e;border:1px solid #2a3352;border-radius:16px;padding:14px;
 box-shadow:0 10px 24px rgba(0,0,0,0.55);text-align:center;}
@@ -849,6 +850,11 @@ background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
 .bigInfoFooter .pName{font-size:17px;}
 .bigInfoFooter .pLabel{font-size:9px;}
 .bigInfoFooter .tipLine{color:#FFD866;font-size:12px;font-weight:700;margin-top:2px;min-height:15px;}
+/* queue/recent-tippers অল্টারনেটিং প্যানেল — Nadia কার্ডের নিচে, আগের মতোই */
+#altPanel{flex:1;display:flex;flex-direction:column;min-height:0;}
+#altPanel .rulesBox{flex:1;position:relative;}
+#altPanel .altView{display:none;}
+#altPanel .altView.show{display:block;}
 /* টপ ৩ সাপোর্টার — ৩টা স্ট্যাক করা প্যানেল, প্রতিটাতে ৯০% ছবি + ১০% নাম/অ্যামাউন্ট, কোনো বাড়তি ফাঁকা জায়গা নেই */
 .topSupporterPanel{flex:1;display:flex;flex-direction:column;min-height:0;background:#161b2e;
 border:1px solid #2a3352;border-radius:14px;overflow:hidden;box-shadow:0 10px 24px rgba(0,0,0,0.5);}
@@ -998,6 +1004,14 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
     </div>
   </div>
 
+  <!-- টপ ৩ সাপোর্টার — বোর্ড আর Nadia-প্যানেলের মাঝের গ্যাপে, ওপর থেকে নিচ পর্যন্ত ৩টা প্যানেল,
+       প্রতিটাতে ৯০% ছবি + ১০% নাম/অ্যামাউন্ট, কোনো বাড়তি ফাঁকা জায়গা নেই -->
+  <div class="topSupCol">
+    <div class="topSupporterPanel" id="topSup1"><div class="tsPhoto" id="tsPhoto1"><div class="tsRank">1</div></div><div class="tsInfo" id="tsInfo1">—</div></div>
+    <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
+    <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
+  </div>
+
   <div class="sideCol">
     <!-- প্রতিপক্ষ/challenger-এর বড় ছবির কার্ড — শুধু ছবি আর নাম, আর কিছু না -->
     <div class="playerCard big" id="blackCard">
@@ -1006,18 +1020,27 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
         <div class="pName" id="blackName">—</div>
       </div>
     </div>
-    <!-- টপ ৩ সাপোর্টার — ৩টা স্থায়ী স্ট্যাক করা প্যানেল, উপরে #১ নিচে #৩, প্রতিটাতে ৯০% ছবি + ১০% নাম/অ্যামাউন্ট,
-         কোনো বাড়তি ফাঁকা জায়গা নেই — সম্পূর্ণ column height তিনটা প্যানেলে সমানভাবে ভাগ হয়ে যায় -->
-    <div class="topSupporterPanel" id="topSup1"><div class="tsPhoto" id="tsPhoto1"><div class="tsRank">1</div></div><div class="tsInfo" id="tsInfo1">—</div></div>
-    <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
-    <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
+    <!-- queue list ও recent tippers list — একই জায়গায় পালাক্রমে (alternate) দেখানো হয়, যেমন আগে ছিল -->
+    <div id="altPanel">
+      <div class="rulesBox">
+        <div class="altView show" id="queueView">
+          <h3>🔴 Now Playing / Up Next</h3>
+          <div id="currentPlayerLine" style="color:#FFD866;font-weight:800;font-size:13px;margin-bottom:8px;"></div>
+          <div id="queueList"></div>
+        </div>
+        <div class="altView" id="donorView">
+          <h3>💛 Recent Supporters</h3>
+          <div id="recentDonorList"></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- ব্যাকগ্রাউন্ড মিউজিক ও কাস্টম কমেন্ট্রি সেটিংস — এটা দর্শক/স্ট্রিম কখনো দেখবে না, স্বাভাবিক ফ্রেম-উচ্চতার
      নিচে থাকে, শুধু আপনি নিজের মনিটরে স্ক্রল করলেই দেখা যাবে। এখান থেকে সেভ করা সাথে সাথেই লাইভে কার্যকর হয়ে যায়। -->
 <div id="bgSettingsPanel">
-  <h2>🎵 Background Music & Commentary Settings</h2>
+  <h2>🎵 Background Music, Commentary & Voice Settings</h2>
   <div class="hint2">এটা স্ক্রিনে/স্ট্রিমে দেখা যাবে না — শুধু আপনার নিজের মনিটরে, স্ক্রল করে নামলে দেখা যাবে।</div>
   <form id="bgSettingsForm">
     <label>ব্যাকগ্রাউন্ড মিউজিক লিংক (কপিরাইট-ফ্রি MP3/অডিও URL — খালি রাখলে মিউজিক বাজবে না)</label>
@@ -1026,14 +1049,18 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
     <label>মিউজিকের ভলিউম — <span id="volLabel">15%</span></label>
     <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
 
-    <label>আপনার নিজের কমেন্ট্রি লাইন (একটা লাইনে একটা করে, ঘুরেফিরে loop হবে)</label>
-    <textarea id="customLinesInput" placeholder="যেমন:
-স্বাগতম আমার লাইভ চেস চ্যানেলে!
-নিচের QR স্ক্যান করে সাপোর্ট করতে পারেন।
-চ্যালেঞ্জ করতে description-এর লিংকে ক্লিক করুন।"></textarea>
+    <label>আপনার নিজের রেকর্ড করা কমেন্ট্রি অডিও লিংক (একটা লাইনে একটা করে URL — একাধিক দিলে ঘুরেফিরে বাজবে)</label>
+    <textarea id="commentaryUrlsInput" placeholder="https://...commentary1.mp3
+https://...commentary2.mp3"></textarea>
+    <div class="hint2" style="margin-top:4px;">এখানে টেক্সট না, সরাসরি আপনার আপলোড করা অডিও ফাইলের লিংক দিন — এটা TTS-এ কনভার্ট হবে না, সরাসরি বাজবে।</div>
 
-    <label>কত সেকেন্ড পরপর একটা করে লাইন বলা হবে (যেমন ৯০ সেকেন্ড = দেড় মিনিট)</label>
+    <label>কত সেকেন্ড পরপর একটা করে কমেন্ট্রি ক্লিপ বাজবে (যেমন ৯০ সেকেন্ড = দেড় মিনিট)</label>
     <input type="number" id="loopIntervalInput" min="20" value="90">
+
+    <label>ডোনার সেলিব্রেশন ঘোষণার ভয়েস (Fan Battle Live-এর মতোই — আপনার ব্রাউজারে যেসব ভয়েস আছে)</label>
+    <select id="celebVoiceSelect"></select>
+    <button type="button" id="testVoiceBtn" style="margin-top:8px;background:#26314f;color:#fff;padding:8px 14px;
+    border-radius:8px;border:none;cursor:pointer;font-size:12px;">🔊 Test voice</button>
 
     <button type="submit">সেভ করুন</button>
     <div id="bgSettingsStatus"></div>
@@ -1090,10 +1117,13 @@ document.getElementById("soundBtn").addEventListener("click", () => {
 function playQueue(){if(queue.length===0)return;audioEl.src=queue.shift();audioEl.play().catch(()=>{});}
 audioEl.addEventListener("ended",playQueue);
 
-// ---------- ব্যাকগ্রাউন্ড মিউজিক + কাস্টম লুপিং কমেন্ট্রি (/gaming/chess-admin থেকে সেট করা) ----------
+// ---------- ব্যাকগ্রাউন্ড মিউজিক + আপনার নিজের রেকর্ড করা কমেন্ট্রি অডিও লুপ (/gaming/chess-admin থেকে সেট করা) ----------
 let chessConfigCache = null;
-let customLineIdx = 0;
-let customLoopTimer = null;
+let commentaryIdx = 0;
+let commentaryLoopTimer = null;
+const commentaryAudioEl = document.createElement("audio");
+commentaryAudioEl.id = "commentaryAudio";
+document.body.appendChild(commentaryAudioEl);
 async function loadChessConfig(){
   try {
     const res = await fetch("/gaming/chess-config");
@@ -1108,24 +1138,64 @@ async function loadChessConfig(){
       bgMusicEl.removeAttribute("src");
     }
     bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
-    if (customLoopTimer) clearInterval(customLoopTimer);
-    if (cfg.customLines && cfg.customLines.length) {
-      customLoopTimer = setInterval(sayNextCustomLine, (cfg.loopIntervalSec || 90) * 1000);
+    if (commentaryLoopTimer) clearInterval(commentaryLoopTimer);
+    if (cfg.commentaryUrls && cfg.commentaryUrls.length) {
+      commentaryLoopTimer = setInterval(playNextCommentaryClip, (cfg.loopIntervalSec || 90) * 1000);
     }
   } catch(e){}
 }
-async function sayNextCustomLine(){
-  if (!chessConfigCache || !chessConfigCache.customLines || !chessConfigCache.customLines.length) return;
-  const line = chessConfigCache.customLines[customLineIdx % chessConfigCache.customLines.length];
-  customLineIdx++;
-  try {
-    const res = await fetch("/gaming/tts?text=" + encodeURIComponent(line));
-    const data = await res.json();
-    if (data.url) { queue.push(data.url); if (audioEl.paused) playQueue(); }
-  } catch(e){}
+function playNextCommentaryClip(){
+  // আপনার নিজের আপলোড করা অডিও ফাইল সরাসরি বাজানো হচ্ছে — কোনো TTS/টেক্সট কনভার্সন নেই
+  if (!chessConfigCache || !chessConfigCache.commentaryUrls || !chessConfigCache.commentaryUrls.length) return;
+  const url = chessConfigCache.commentaryUrls[commentaryIdx % chessConfigCache.commentaryUrls.length];
+  commentaryIdx++;
+  commentaryAudioEl.src = url;
+  commentaryAudioEl.play().catch(()=>{});
 }
 loadChessConfig();
-setInterval(loadChessConfig, 15000); // অ্যাডমিন পেজ থেকে সেভ করলে ১৫ সেকেন্ডের মধ্যেই লাইভে প্রতিফলিত হবে
+setInterval(loadChessConfig, 15000); // সেভ করলে ১৫ সেকেন্ডের মধ্যেই লাইভে প্রতিফলিত হবে
+
+// ---------- ডোনার সেলিব্রেশনের ভয়েস — Fan Battle Live-এর মতোই ব্রাউজারের Web Speech API + ভয়েস বাছাই ----------
+let availableVoices = [];
+let selectedCelebVoice = null;
+function scoreVoiceForBn(v){
+  let score = 0;
+  if (/bn|beng|india|hindi/i.test(v.lang) || /bn|beng|india/i.test(v.name)) score += 5;
+  if (/en-IN|en-GB|en-US/i.test(v.lang)) score += 2;
+  if (/Google|Natural|Neural|Premium/i.test(v.name)) score += 3;
+  return score;
+}
+function populateVoices(){
+  availableVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  const sel = document.getElementById("celebVoiceSelect");
+  if (!availableVoices.length) { sel.innerHTML = '<option value="">(কোনো ভয়েস পাওয়া যায়নি)</option>'; return; }
+  const sorted = [...availableVoices].sort((a,b) => scoreVoiceForBn(b) - scoreVoiceForBn(a));
+  sel.innerHTML = sorted.map(v => '<option value="'+v.voiceURI+'">'+v.name+' ('+v.lang+')</option>').join("");
+  const savedURI = chessConfigCache && chessConfigCache.celebVoiceURI;
+  const match = savedURI ? sorted.find(v => v.voiceURI === savedURI) : null;
+  selectedCelebVoice = match || sorted[0];
+  if (selectedCelebVoice) sel.value = selectedCelebVoice.voiceURI;
+}
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = populateVoices;
+  populateVoices();
+}
+document.getElementById("celebVoiceSelect").addEventListener("change", (e) => {
+  selectedCelebVoice = availableVoices.find(v => v.voiceURI === e.target.value) || null;
+});
+document.getElementById("testVoiceBtn").addEventListener("click", () => {
+  speakCeleb("Thank you Rahim for the 50 rupee tip!");
+});
+function speakCeleb(text){
+  if (!window.speechSynthesis) return;
+  try {
+    const utter = new SpeechSynthesisUtterance(text);
+    if (selectedCelebVoice) utter.voice = selectedCelebVoice;
+    utter.rate = 1.0; utter.pitch = 1.0;
+    window.speechSynthesis.cancel(); // আগেরটা কথা বলছে থাকলে থামিয়ে নতুনটা বলুক
+    window.speechSynthesis.speak(utter);
+  } catch(e){}
+}
 
 // ---------- নিচে-স্ক্রল-করা সেটিংস ফর্ম — লোড করা ও সেভ করা ----------
 let bgFormPrefilled = false;
@@ -1137,7 +1207,7 @@ async function prefillBgForm(){
     document.getElementById("bgMusicUrlInput").value = cfg.bgMusicUrl || "";
     document.getElementById("bgMusicVolumeInput").value = cfg.bgMusicVolume ?? 0.15;
     document.getElementById("volLabel").textContent = Math.round((cfg.bgMusicVolume ?? 0.15) * 100) + "%";
-    document.getElementById("customLinesInput").value = (cfg.customLines || []).join("\n");
+    document.getElementById("commentaryUrlsInput").value = (cfg.commentaryUrls || []).join("\n");
     document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
     bgFormPrefilled = true;
   } catch(e){}
@@ -1151,8 +1221,9 @@ document.getElementById("bgSettingsForm").addEventListener("submit", async (e) =
   const body = {
     bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
     bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
-    customLines: document.getElementById("customLinesInput").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    commentaryUrls: document.getElementById("commentaryUrlsInput").value.split("\n").map(s=>s.trim()).filter(Boolean),
     loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+    celebVoiceURI: selectedCelebVoice ? selectedCelebVoice.voiceURI : "",
   };
   const statusEl = document.getElementById("bgSettingsStatus");
   try {
@@ -1427,6 +1498,17 @@ async function poll(){try{
 
   document.getElementById("opening").textContent = data.mode === "challenge" ? "🔴 LIVE — " + data.blackName + " vs " + data.whiteName : (data.openingName?("Opening: "+data.openingName):"");
 
+  document.getElementById("currentPlayerLine").textContent = data.blackName ? ("Now playing: " + data.blackName) : "";
+  if (data.queue && data.queue.length) {
+    document.getElementById("queueList").innerHTML = data.queue.slice(0,6).map(q =>
+      '<div class="miniListRow">' +
+      (q.photoUrl ? '<img class="miniAvatar" src="'+q.photoUrl+'">' : '<div class="miniAvatarFallback">'+(q.name[0]||"?")+'</div>') +
+      '<div><b>#'+q.position+'</b> '+q.name+ (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹'+q.tipAmount+'</span>' : '') + '</div></div>'
+    ).join("");
+  } else {
+    document.getElementById("queueList").innerHTML = '<div style="font-size:11px;color:#5a6a8a;">No one in queue right now</div>';
+  }
+
   document.getElementById("moveCount").textContent=data.moves?(data.moves.length+" moves played"):"";
   document.getElementById("commentary").textContent=data.lastCommentaryBn||"";
 
@@ -1506,6 +1588,29 @@ function launchConfetti(){
   }
 }
 
+// ---------- queue ↔ recent-supporters অল্টারনেটিং প্যানেল (Nadia কার্ডের নিচে, আগের মতোই) ----------
+let altShowingQueue = true;
+function toggleAltPanel(){
+  altShowingQueue = !altShowingQueue;
+  document.getElementById("queueView").classList.toggle("show", altShowingQueue);
+  document.getElementById("donorView").classList.toggle("show", !altShowingQueue);
+}
+async function refreshRecentDonors(){
+  try {
+    const res = await fetch("/recent-donors/chessbattle?limit=6");
+    const data = await res.json();
+    const list = data.recent || [];
+    document.getElementById("recentDonorList").innerHTML = list.length ? list.map(d =>
+      '<div class="miniListRow">' +
+      (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
+      '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
+    ).join("") : '<div style="font-size:11px;color:#5a6a8a;">No tips yet</div>';
+  } catch(e){}
+}
+refreshRecentDonors();
+setInterval(refreshRecentDonors, 20000);
+setInterval(toggleAltPanel, 9000); // প্রতি ৯ সেকেন্ডে queue list ↔ recent supporters পালাক্রমে দেখাবে
+
 // ---------- সরাসরি টিপস QR ----------
 fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
   if (d.tipUrl) {
@@ -1546,18 +1651,14 @@ async function pollChessTips(){
     const res = await fetch("/events/chessbattle");
     const data = await res.json();
     const photos = data.photos || {};
-    (data.events || []).forEach(async ev => {
+    (data.events || []).forEach(ev => {
       const name = ev.name || "Anonymous";
       const amount = Math.round(ev.amount || 0);
       const photo = photos[name] || null;
       showDonorCelebration(name, amount, photo);
       playEndGameSound(true);
-      // নাম + কত টাকা দিয়েছে — দুটোই আসল ভয়েসে অ্যানাউন্স হবে (Fan Battle Live-এর মতোই)
-      try {
-        const ttsRes = await fetch("/gaming/tts?text=" + encodeURIComponent("Thank you " + name + " for the " + amount + " rupee tip!"));
-        const ttsData = await ttsRes.json();
-        if (ttsData.url) { queue.push(ttsData.url); if (audioEl.paused) playQueue(); }
-      } catch(e){}
+      // Fan Battle Live-এর মতোই Web Speech API দিয়ে — নাম + কত টাকা দিয়েছে দুটোই বলা হয়
+      speakCeleb("Thank you " + name + " for the " + amount + " rupee tip!");
     });
   } catch(e){}
 }
@@ -2336,14 +2437,14 @@ module.exports = function mountGaming(app) {
   });
 
   // ---------- ব্যাকগ্রাউন্ড মিউজিক + কাস্টম লুপিং কমেন্ট্রি (অ্যাডমিন কনফিগ) ----------
-  // Fan Battle Live-এর মতোই — এটা স্ক্রিনের কোথাও দেখানো নয়, শুধু একটা সেটআপ পেজ,
-  // যেখান থেকে আপনি ব্যাকগ্রাউন্ড মিউজিকের লিংক আর নিজের কমেন্ট্রি লাইন বসাতে পারবেন
+  // Fan Battle Live-এর মতোই — এটা স্ক্রিনের কোথাও দেখানো নয়, ওভারলে পেজেরই নিচে (স্ক্রল করলে দেখা যায়)
+  // একটা সেটআপ ফর্ম, যেখান থেকে ব্যাকগ্রাউন্ড মিউজিক, নিজের রেকর্ড করা কমেন্ট্রি অডিও, আর সেলিব্রেশন ভয়েস সেট করা যায়
   const CHESS_CONFIG_FILE = path.join(STATE_DIR, "chess-config.json");
   function readChessConfig() {
     try {
       return JSON.parse(fs.readFileSync(CHESS_CONFIG_FILE, "utf-8"));
     } catch (e) {
-      return { bgMusicUrl: "", bgMusicVolume: 0.15, customLines: [], loopIntervalSec: 90 };
+      return { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90, celebVoiceURI: "" };
     }
   }
   function writeChessConfig(cfg) {
@@ -2352,68 +2453,16 @@ module.exports = function mountGaming(app) {
 
   app.get("/gaming/chess-config", (req, res) => res.json(readChessConfig()));
 
-  app.get("/gaming/chess-admin", (req, res) => {
-    const cfg = readChessConfig();
-    res.type("html").send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Chess Overlay Settings</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:560px;margin:0 auto;}
-h1{color:#FFD866;font-size:22px;}
-label{display:block;margin-top:18px;font-size:13px;color:#7C8AAD;font-weight:700;}
-input[type=text],input[type=number],textarea{width:100%;padding:12px;border-radius:8px;border:1px solid #26314f;
-background:#131a2c;color:#fff;font-size:14px;margin-top:6px;font-family:inherit;box-sizing:border-box;}
-textarea{min-height:140px;resize:vertical;}
-.hint{font-size:11px;color:#5a6a8a;margin-top:4px;line-height:1.4;}
-button{width:100%;padding:14px;border-radius:10px;border:none;background:#FFD866;color:#0a0e1f;font-weight:800;
-font-size:16px;margin-top:24px;cursor:pointer;}
-#status{margin-top:12px;font-size:13px;color:#8BE28B;min-height:18px;}
-</style></head><body>
-<h1>♟️ Chess Overlay — Background Settings</h1>
-<p style="color:#7C8AAD;font-size:13px;">এগুলো স্ক্রিনে দেখা যাবে না — শুধু ব্যাকগ্রাউন্ডে চলবে (মিউজিক ও আপনার নিজের কণ্ঠে কমেন্ট্রি loop)।</p>
-<form id="cfgForm">
-  <label>ব্যাকগ্রাউন্ড মিউজিক — MP3/অডিও লিংক (কপিরাইট-ফ্রি হতে হবে)</label>
-  <input type="text" name="bgMusicUrl" value="${(cfg.bgMusicUrl || "").replace(/"/g, "&quot;")}" placeholder="https://...mp3">
-  <div class="hint">চাইলে খালি রাখতে পারেন — তাহলে কোনো ব্যাকগ্রাউন্ড মিউজিক বাজবে না। লিংক থেকে সরাসরি stream/download হওয়া দরকার (Google Drive হলে সরাসরি ডাউনলোড লিংক ব্যবহার করুন)।</div>
-
-  <label>মিউজিকের ভলিউম (০ থেকে ১, কম রাখাই ভালো যাতে চাল/কমেন্ট্রি ঢাকা না পড়ে)</label>
-  <input type="number" name="bgMusicVolume" min="0" max="1" step="0.05" value="${cfg.bgMusicVolume ?? 0.15}">
-
-  <label>আপনার নিজের কমেন্ট্রি লাইনগুলো (একটা লাইনে একটা করে) — এগুলো ঘুরেফিরে (loop) বলা হবে</label>
-  <textarea name="customLines" placeholder="যেমন:
-স্বাগতম আমার লাইভ চেস চ্যানেলে!
-নিচের QR স্ক্যান করে সাপোর্ট করতে পারেন।
-চ্যালেঞ্জ করতে description-এর লিংকে ক্লিক করুন।">${(cfg.customLines || []).join("\n")}</textarea>
-  <div class="hint">খালি রাখলে কোনো কাস্টম কমেন্ট্রি বাজবে না।</div>
-
-  <label>কত সেকেন্ড/মিনিট পরপর একটা করে লাইন বলা হবে (সেকেন্ডে লিখুন, যেমন ৯০ সেকেন্ড = দেড় মিনিট)</label>
-  <input type="number" name="loopIntervalSec" min="20" value="${cfg.loopIntervalSec || 90}">
-
-  <button type="submit">সেভ করুন</button>
-  <div id="status"></div>
-</form>
-<script>
-document.getElementById("cfgForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const body = {
-    bgMusicUrl: fd.get("bgMusicUrl").trim(),
-    bgMusicVolume: parseFloat(fd.get("bgMusicVolume")) || 0.15,
-    customLines: fd.get("customLines").split("\\n").map(s=>s.trim()).filter(Boolean),
-    loopIntervalSec: parseInt(fd.get("loopIntervalSec"), 10) || 90,
-  };
-  const res = await fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
-  document.getElementById("status").textContent = res.ok ? "✅ সেভ হয়েছে — লাইভ overlay-তে কয়েক সেকেন্ডের মধ্যেই কার্যকর হবে।" : "❌ সেভ করা যায়নি।";
-});
-</script></body></html>`);
-  });
-
+  // সেটিংস ফর্মটা এখন /gaming/overlay/chess পেজের নিচেই এমবেড করা (স্ক্রল করলে দেখা যায়) —
+  // এই রুটটা শুধু সেভ করার জন্য (POST), আলাদা কোনো admin পেজ সার্ভ করে না
   app.post("/gaming/chess-admin", express.json(), (req, res) => {
     const body = req.body || {};
     writeChessConfig({
       bgMusicUrl: (body.bgMusicUrl || "").toString().slice(0, 500),
       bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.15)),
-      customLines: Array.isArray(body.customLines) ? body.customLines.slice(0, 30).map(s => (s || "").toString().slice(0, 300)) : [],
+      commentaryUrls: Array.isArray(body.commentaryUrls) ? body.commentaryUrls.slice(0, 20).map(s => (s || "").toString().slice(0, 500)) : [],
       loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
+      celebVoiceURI: (body.celebVoiceURI || "").toString().slice(0, 300),
     });
     res.json({ ok: true });
   });
