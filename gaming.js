@@ -790,20 +790,7 @@ const CHESS_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 <style>
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;font-family:'Segoe UI',sans-serif;
-padding:16px 20px;min-height:100vh;}
-#bgSettingsPanel{max-width:640px;margin:40px auto 20px;padding:24px;background:#12172a;border:1px solid #2a3352;
-border-radius:16px;}
-#bgSettingsPanel h2{color:#FFD866;font-size:16px;margin:0 0 6px;}
-#bgSettingsPanel .hint2{color:#7C8AAD;font-size:12px;margin-bottom:16px;}
-#bgSettingsPanel label{display:block;margin-top:14px;font-size:12px;color:#7C8AAD;font-weight:700;}
-#bgSettingsPanel input[type=text],#bgSettingsPanel textarea,#bgSettingsPanel input[type=number]{
-width:100%;padding:10px;border-radius:8px;border:1px solid #26314f;background:#0f1526;color:#fff;
-font-size:13px;margin-top:5px;box-sizing:border-box;font-family:inherit;}
-#bgSettingsPanel textarea{min-height:110px;resize:vertical;}
-#bgSettingsPanel input[type=range]{width:100%;margin-top:8px;}
-#bgSettingsPanel button{margin-top:18px;padding:12px 20px;border-radius:8px;border:none;background:#FFD866;
-color:#0a0e1f;font-weight:800;cursor:pointer;font-size:14px;}
-#bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
+padding:16px 20px;height:100vh;overflow:hidden;}
 h1{text-align:center;margin:0 0 12px;font-size:24px;letter-spacing:0.5px;font-weight:800;
 color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
 .layout{display:grid;grid-template-columns:1.5fr 3fr 0.95fr 1.05fr;gap:12px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
@@ -1039,36 +1026,6 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
   </div>
 </div>
 
-<!-- ব্যাকগ্রাউন্ড মিউজিক ও কাস্টম কমেন্ট্রি সেটিংস — এটা দর্শক/স্ট্রিম কখনো দেখবে না, স্বাভাবিক ফ্রেম-উচ্চতার
-     নিচে থাকে, শুধু আপনি নিজের মনিটরে স্ক্রল করলেই দেখা যাবে। এখান থেকে সেভ করা সাথে সাথেই লাইভে কার্যকর হয়ে যায়। -->
-<div id="bgSettingsPanel">
-  <h2>🎵 Background Music, Commentary & Voice Settings</h2>
-  <div class="hint2">এটা স্ক্রিনে/স্ট্রিমে দেখা যাবে না — শুধু আপনার নিজের মনিটরে, স্ক্রল করে নামলে দেখা যাবে।</div>
-  <form id="bgSettingsForm">
-    <label>ব্যাকগ্রাউন্ড মিউজিক লিংক (কপিরাইট-ফ্রি MP3/অডিও URL — খালি রাখলে মিউজিক বাজবে না)</label>
-    <input type="text" id="bgMusicUrlInput" placeholder="https://...mp3">
-
-    <label>মিউজিকের ভলিউম — <span id="volLabel">15%</span></label>
-    <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
-
-    <label>আপনার নিজের রেকর্ড করা কমেন্ট্রি অডিও লিংক (একটা লাইনে একটা করে URL — একাধিক দিলে ঘুরেফিরে বাজবে)</label>
-    <textarea id="commentaryUrlsInput" placeholder="https://...commentary1.mp3
-https://...commentary2.mp3"></textarea>
-    <div class="hint2" style="margin-top:4px;">এখানে টেক্সট না, সরাসরি আপনার আপলোড করা অডিও ফাইলের লিংক দিন — এটা TTS-এ কনভার্ট হবে না, সরাসরি বাজবে।</div>
-
-    <label>কত সেকেন্ড পরপর একটা করে কমেন্ট্রি ক্লিপ বাজবে (যেমন ৯০ সেকেন্ড = দেড় মিনিট)</label>
-    <input type="number" id="loopIntervalInput" min="20" value="90">
-
-    <label>ডোনার সেলিব্রেশন ঘোষণার ভয়েস (Fan Battle Live-এর মতোই — আপনার ব্রাউজারে যেসব ভয়েস আছে)</label>
-    <select id="celebVoiceSelect"></select>
-    <button type="button" id="testVoiceBtn" style="margin-top:8px;background:#26314f;color:#fff;padding:8px 14px;
-    border-radius:8px;border:none;cursor:pointer;font-size:12px;">🔊 Test voice</button>
-
-    <button type="submit">সেভ করুন</button>
-    <div id="bgSettingsStatus"></div>
-  </form>
-</div>
-
 <div class="flash" id="flash"></div>
 
 <!-- Fan Battle Live-স্টাইল ডোনার সেলিব্রেশন কার্ড — ছবি (থাকলে) বড় করে, নাম + অ্যামাউন্ট -->
@@ -1160,7 +1117,9 @@ function playNextCommentaryClip(){
 }
 safeInit("loadChessConfig", () => { loadChessConfig(); setInterval(loadChessConfig, 15000); }); // সেভ করলে ১৫ সেকেন্ডের মধ্যেই লাইভে প্রতিফলিত হবে
 
-// ---------- ডোনার সেলিব্রেশনের ভয়েস — Fan Battle Live-এর মতোই ব্রাউজারের Web Speech API + ভয়েস বাছাই ----------
+// ---------- ডোনার সেলিব্রেশনের ভয়েস — Fan Battle Live-এর মতো Web Speech API ব্যবহার হয়,
+// কিন্তু ভয়েস বাছাইয়ের UI এখন আর এই পাবলিক পেজে নেই (নিরাপত্তার জন্য /gaming/chess-admin-এ সরানো হয়েছে) —
+// এখানে শুধু সেভ করা celebVoiceURI অনুযায়ী সঠিক ভয়েসটা প্রোগ্রাম্যাটিকভাবে বেছে নেওয়া হয় ----------
 let availableVoices = [];
 let selectedCelebVoice = null;
 function scoreVoiceForBn(v){
@@ -1170,28 +1129,19 @@ function scoreVoiceForBn(v){
   if (/Google|Natural|Neural|Premium/i.test(v.name)) score += 3;
   return score;
 }
-function populateVoices(){
+function resolveCelebVoice(){
   availableVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
-  const sel = document.getElementById("celebVoiceSelect");
-  if (!availableVoices.length) { sel.innerHTML = '<option value="">(কোনো ভয়েস পাওয়া যায়নি)</option>'; return; }
+  if (!availableVoices.length) return;
   const sorted = [...availableVoices].sort((a,b) => scoreVoiceForBn(b) - scoreVoiceForBn(a));
-  sel.innerHTML = sorted.map(v => '<option value="'+v.voiceURI+'">'+v.name+' ('+v.lang+')</option>').join("");
   const savedURI = chessConfigCache && chessConfigCache.celebVoiceURI;
   const match = savedURI ? sorted.find(v => v.voiceURI === savedURI) : null;
   selectedCelebVoice = match || sorted[0];
-  if (selectedCelebVoice) sel.value = selectedCelebVoice.voiceURI;
 }
 safeInit("voicePicker", () => {
   if (window.speechSynthesis) {
-    window.speechSynthesis.onvoiceschanged = populateVoices;
-    populateVoices();
+    window.speechSynthesis.onvoiceschanged = resolveCelebVoice;
+    resolveCelebVoice();
   }
-  document.getElementById("celebVoiceSelect").addEventListener("change", (e) => {
-    selectedCelebVoice = availableVoices.find(v => v.voiceURI === e.target.value) || null;
-  });
-  document.getElementById("testVoiceBtn").addEventListener("click", () => {
-    speakCeleb("Thank you Rahim for the 50 rupee tip!");
-  });
 });
 function speakCeleb(text){
   if (!window.speechSynthesis) return;
@@ -1203,48 +1153,6 @@ function speakCeleb(text){
     window.speechSynthesis.speak(utter);
   } catch(e){}
 }
-
-// ---------- নিচে-স্ক্রল-করা সেটিংস ফর্ম — লোড করা ও সেভ করা ----------
-let bgFormPrefilled = false;
-async function prefillBgForm(){
-  if (bgFormPrefilled) return; // শুধু প্রথমবার প্রি-ফিল করবে, তারপর ইউজার টাইপ করলে বারবার ওভাররাইট করবে না
-  try {
-    const res = await fetch("/gaming/chess-config");
-    const cfg = await res.json();
-    document.getElementById("bgMusicUrlInput").value = cfg.bgMusicUrl || "";
-    document.getElementById("bgMusicVolumeInput").value = cfg.bgMusicVolume ?? 0.15;
-    document.getElementById("volLabel").textContent = Math.round((cfg.bgMusicVolume ?? 0.15) * 100) + "%";
-    document.getElementById("commentaryUrlsInput").value = (cfg.commentaryUrls || []).join("\\n");
-    document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
-    bgFormPrefilled = true;
-  } catch(e){}
-}
-safeInit("bgSettingsForm", () => {
-  prefillBgForm();
-  document.getElementById("bgMusicVolumeInput").addEventListener("input", (e) => {
-    document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
-  });
-});
-safeInit("bgSettingsFormSubmit", () => {
-  document.getElementById("bgSettingsForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = {
-      bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
-      bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
-      commentaryUrls: document.getElementById("commentaryUrlsInput").value.split("\\n").map(s=>s.trim()).filter(Boolean),
-      loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
-      celebVoiceURI: selectedCelebVoice ? selectedCelebVoice.voiceURI : "",
-    };
-    const statusEl = document.getElementById("bgSettingsStatus");
-    try {
-      const res = await fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
-      statusEl.textContent = res.ok ? "✅ সেভ হয়েছে — কয়েক সেকেন্ডের মধ্যেই লাইভে কার্যকর হবে।" : "❌ সেভ করা যায়নি।";
-      chessConfigCache = null; // পরের loadChessConfig() call-এ জোর করে নতুন করে apply হবে
-    } catch(err) {
-      statusEl.textContent = "❌ সেভ করা যায়নি — নেটওয়ার্ক সমস্যা।";
-    }
-  });
-});
 
 // নরম, উষ্ণ "গুটি বসার" শব্দ — আগে square wave ব্যবহার করা হতো, যেটা কর্কশ/টোকা-মারার মতো
 // শোনাচ্ছিল বলে অভিযোগ এসেছিল; এখন triangle+sine দিয়ে মসৃণ attack, কাঠের মতো উষ্ণ অনুরণন
@@ -2237,6 +2145,112 @@ async function poll(){
 setInterval(poll, 3000); poll();
 </script></body></html>`;
 
+// ---------------------------------------------------------------------------
+// অ্যাডমিন-শুধু সেটিংস পেজ — ব্যাকগ্রাউন্ড মিউজিক, কাস্টম কমেন্ট্রি অডিও, সেলিব্রেশন ভয়েস।
+// ⚠️ এই পেজটা কোনো পাবলিক পেজ (overlay, join, status) থেকে link করা নেই এবং কোনো
+// iframe-এ embed হয় না — শুধু আপনি নিজে সরাসরি এই URL-এ গিয়ে ব্যবহার করবেন।
+// ---------------------------------------------------------------------------
+const CHESS_ADMIN_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Chess Overlay Admin Settings</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<style>
+body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:560px;margin:0 auto;}
+h1{color:#FFD866;font-size:20px;}
+.warn{background:#2a1a1a;border:1px solid #5c2a2a;border-radius:8px;padding:10px 14px;font-size:12px;color:#E8998F;margin-top:10px;}
+label{display:block;margin-top:16px;font-size:12px;color:#7C8AAD;font-weight:700;}
+input[type=text],input[type=number],textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #26314f;
+background:#131a2c;color:#fff;font-size:14px;margin-top:6px;font-family:inherit;box-sizing:border-box;}
+textarea{min-height:110px;resize:vertical;}
+input[type=range]{width:100%;margin-top:8px;}
+button{padding:12px 18px;border-radius:8px;border:none;background:#FFD866;color:#0a0e1f;font-weight:800;
+font-size:14px;cursor:pointer;margin-top:10px;}
+.secondary{background:#26314f;color:#fff;font-size:12px;padding:8px 14px;}
+#status{margin-top:12px;font-size:13px;color:#8BE28B;min-height:18px;}
+</style></head><body>
+<h1>Chess Overlay — Admin Settings</h1>
+<div class="warn">This link is private — do not share it in the YouTube description or with viewers. It is not linked from any public page.</div>
+<form id="cfgForm">
+  <label>Background music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+  <input type="text" id="bgMusicUrlInput" placeholder="https://...mp3">
+
+  <label>Music volume — <span id="volLabel">15%</span></label>
+  <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
+
+  <label>Your own recorded commentary audio links (one URL per line — cycles through them if more than one)</label>
+  <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
+
+  <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
+  <input type="number" id="loopIntervalInput" min="20" value="90">
+
+  <label>Donor celebration voice (Web Speech API — voices available in this browser)</label>
+  <select id="celebVoiceSelect"></select>
+  <button type="button" id="testVoiceBtn" class="secondary">Test voice</button>
+
+  <button type="submit">Save</button>
+  <div id="status"></div>
+</form>
+<script>
+let availableVoices = [];
+let selectedVoice = null;
+function scoreVoice(v){
+  let score = 0;
+  if (/bn|beng|india|hindi/i.test(v.lang) || /bn|beng|india/i.test(v.name)) score += 5;
+  if (/en-IN|en-GB|en-US/i.test(v.lang)) score += 2;
+  if (/Google|Natural|Neural|Premium/i.test(v.name)) score += 3;
+  return score;
+}
+function populateVoices(savedURI){
+  availableVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  const sel = document.getElementById("celebVoiceSelect");
+  if (!availableVoices.length) { sel.innerHTML = "<option value=" + JSON.stringify("") + ">No voices found yet, try again in a moment</option>"; return; }
+  const sorted = availableVoices.slice().sort((a,b) => scoreVoice(b) - scoreVoice(a));
+  sel.innerHTML = sorted.map(v => "<option value=" + JSON.stringify(v.voiceURI) + ">" + v.name + " (" + v.lang + ")</option>").join("");
+  const match = savedURI ? sorted.find(v => v.voiceURI === savedURI) : null;
+  selectedVoice = match || sorted[0];
+  if (selectedVoice) sel.value = selectedVoice.voiceURI;
+}
+document.getElementById("celebVoiceSelect").addEventListener("change", function(e){
+  selectedVoice = availableVoices.find(v => v.voiceURI === e.target.value) || null;
+});
+document.getElementById("testVoiceBtn").addEventListener("click", function(){
+  if (!window.speechSynthesis) return;
+  const utter = new SpeechSynthesisUtterance("Thank you Rahim for the fifty rupee tip!");
+  if (selectedVoice) utter.voice = selectedVoice;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+});
+let loadedURI = "";
+fetch("/gaming/chess-config").then(function(r){ return r.json(); }).then(function(cfg){
+  document.getElementById("bgMusicUrlInput").value = cfg.bgMusicUrl || "";
+  document.getElementById("bgMusicVolumeInput").value = cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15;
+  document.getElementById("volLabel").textContent = Math.round((cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15) * 100) + "%";
+  document.getElementById("commentaryUrlsInput").value = (cfg.commentaryUrls || []).join(String.fromCharCode(10));
+  document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
+  loadedURI = cfg.celebVoiceURI || "";
+  populateVoices(loadedURI);
+});
+if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = function(){ populateVoices(loadedURI); };
+document.getElementById("bgMusicVolumeInput").addEventListener("input", function(e){
+  document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
+});
+document.getElementById("cfgForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  const linesRaw = document.getElementById("commentaryUrlsInput").value;
+  const lines = linesRaw.split(String.fromCharCode(10)).map(function(s){ return s.trim(); }).filter(Boolean);
+  const body = {
+    bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
+    bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
+    commentaryUrls: lines,
+    loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+    celebVoiceURI: selectedVoice ? selectedVoice.voiceURI : "",
+  };
+  const statusEl = document.getElementById("status");
+  fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) })
+    .then(function(res){ statusEl.textContent = res.ok ? "Saved. Takes effect on the live overlay within about 15 seconds." : "Could not save."; })
+    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
+});
+</script></body></html>`;
+
 const CHALLENGE_PLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Your Move!</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
@@ -2506,8 +2520,9 @@ module.exports = function mountGaming(app) {
   });
 
   // ---------- ব্যাকগ্রাউন্ড মিউজিক + কাস্টম লুপিং কমেন্ট্রি (অ্যাডমিন কনফিগ) ----------
-  // Fan Battle Live-এর মতোই — এটা স্ক্রিনের কোথাও দেখানো নয়, ওভারলে পেজেরই নিচে (স্ক্রল করলে দেখা যায়)
-  // একটা সেটআপ ফর্ম, যেখান থেকে ব্যাকগ্রাউন্ড মিউজিক, নিজের রেকর্ড করা কমেন্ট্রি অডিও, আর সেলিব্রেশন ভয়েস সেট করা যায়
+  // ⚠️ এটা এখন একদম আলাদা, non-public পেজ — /gaming/overlay/chess-এর ভেতরে বা status পেজের
+  // iframe-এ এটা কখনো embed হয় না। এই লিংকটা শুধু আপনার নিজের কাছে থাকবে, কোনো দর্শক/challenger
+  // কখনো এখানে পৌঁছাতে পারবে না (কোনো পাবলিক পেজ থেকে এই URL-এর লিংকও দেওয়া নেই)।
   const CHESS_CONFIG_FILE = path.join(STATE_DIR, "chess-config.json");
   function readChessConfig() {
     try {
@@ -2522,8 +2537,10 @@ module.exports = function mountGaming(app) {
 
   app.get("/gaming/chess-config", (req, res) => res.json(readChessConfig()));
 
-  // সেটিংস ফর্মটা এখন /gaming/overlay/chess পেজের নিচেই এমবেড করা (স্ক্রল করলে দেখা যায়) —
-  // এই রুটটা শুধু সেভ করার জন্য (POST), আলাদা কোনো admin পেজ সার্ভ করে না
+  app.get("/gaming/chess-admin", (req, res) => {
+    res.type("html").send(CHESS_ADMIN_HTML);
+  });
+
   app.post("/gaming/chess-admin", express.json(), (req, res) => {
     const body = req.body || {};
     writeChessConfig({
