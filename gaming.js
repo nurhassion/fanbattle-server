@@ -126,7 +126,20 @@ function textToSpeech(text) {
 // ---------------------------------------------------------------------------
 // ৪. চেস — Stockfish + chess.js
 // ---------------------------------------------------------------------------
+// প্রতিটা নতুন ম্যাচে বোর্ডের রঙ থিম বদলাতে — ক্লাসিক লুক (কাঠের বোর্ড, গোলাকার গুটির আকৃতি) ঠিক রেখেই
+// শুধু রঙ কম্বিনেশন পাল্টায়, যাতে ওভারঅল টেমপ্লেটটা একঘেয়ে না লাগে
+const BOARD_THEMES = [
+  { light: "#EFE0BF", dark: "#5C3A21", pcW1: "#ffffff", pcW2: "#d4cbb8", pcB1: "#3a3a3a", pcB2: "#000000", border: "linear-gradient(135deg,#B8874A,#3E2712)" }, // ক্লাসিক কাঠ
+  { light: "#DDEBF7", dark: "#3B5F82", pcW1: "#ffffff", pcW2: "#c9d9e8", pcB1: "#1a2c3d", pcB2: "#0a1420", border: "linear-gradient(135deg,#5A87B0,#1E3A54)" }, // নীল সমুদ্র
+  { light: "#E9F0DF", dark: "#4A6741", pcW1: "#ffffff", pcW2: "#d2e0c4", pcB1: "#2b3a26", pcB2: "#111a0d", border: "linear-gradient(135deg,#7A9E6B,#2E4527)" }, // সবুজ বন
+  { light: "#F3E3EC", dark: "#6B3F5C", pcW1: "#ffffff", pcW2: "#e3cbdb", pcB1: "#3a2333", pcB2: "#180d15", border: "linear-gradient(135deg,#A5628F,#4A2740)" }, // বেগুনি-গোলাপি
+  { light: "#EDEDED", dark: "#3F4448", pcW1: "#ffffff", pcW2: "#d8d8d8", pcB1: "#26292b", pcB2: "#0a0b0c", border: "linear-gradient(135deg,#8A9196,#2A2E31)" }, // মনোক্রোম গ্রে
+  { light: "#F5E9D3", dark: "#7A2E2E", pcW1: "#fff8ec", pcW2: "#e3c9a1", pcB1: "#3a1414", pcB2: "#180606", border: "linear-gradient(135deg,#B0524A,#5A1E1E)" }, // পোড়া লাল-কমলা
+];
+function randomBoardTheme() { return BOARD_THEMES[Math.floor(Math.random() * BOARD_THEMES.length)]; }
+
 const OPENING_BOOK = [
+
   { name: "Ruy Lopez", moves: ["e4", "e5", "Nf3", "Nc6", "Bb5"] },
   { name: "Sicilian Defence", moves: ["e4", "c5", "Nf3", "d6", "d4"] },
   { name: "Queen's Gambit", moves: ["d4", "d5", "c4"] },
@@ -264,6 +277,7 @@ async function playChallengeGame(Chess) {
   const engine = spawnStockfish(14); // মাঝারি strength, যাতে মানুষের সাথে fair fight হয়
   const capturedByWhite = [];
   const capturedByBlack = [];
+  const boardTheme = randomBoardTheme(); // প্রতি ম্যাচে র‍্যান্ডম থিম
   const state = {
     mode: "challenge",
     openingName: "🔴 LIVE CHALLENGE",
@@ -281,6 +295,7 @@ async function playChallengeGame(Chess) {
     lastMove: null,
     capturedByWhite,
     capturedByBlack,
+    boardTheme,
   };
   writeState("chess", state);
 
@@ -451,6 +466,7 @@ async function playOneChessGame(Chess) {
   const chess = new Chess();
   const opening = OPENING_BOOK[Math.floor(Math.random() * OPENING_BOOK.length)];
   opening.moves.forEach((m) => chess.move(m));
+  const boardTheme = randomBoardTheme(); // প্রতি ম্যাচে র‍্যান্ডম থিম
 
   const skillOptions = [12, 15, 18, 20];
   // আগে দুটো আলাদা Stockfish process (সাদা+কালোর জন্য) একসাথে চলতো — 512MB RAM-এর
@@ -483,6 +499,7 @@ async function playOneChessGame(Chess) {
     lastMove: null,
     capturedByWhite,
     capturedByBlack,
+    boardTheme,
   };
   writeState("chess", state);
 
@@ -776,7 +793,7 @@ body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 1
 padding:16px 20px;height:100vh;overflow:hidden;}
 h1{text-align:center;margin:0 0 12px;font-size:24px;letter-spacing:0.5px;font-weight:800;
 color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-.layout{display:grid;grid-template-columns:1fr 4.6fr 1fr;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
+.layout{display:grid;grid-template-columns:1fr 4fr 1.35fr;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
 .sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 16px;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1;min-height:0;}
@@ -805,7 +822,7 @@ font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid
 .pLabel{font-size:10px;color:#7C8AAD;margin-top:2px;text-transform:uppercase;letter-spacing:1px;}
 .captured{margin-top:10px;min-height:26px;font-size:18px;letter-spacing:2px;color:#FFD866;opacity:0.9;}
 /* প্রতিপক্ষ/challenger-এর বড় কার্ড — ছবিটাই এখানে মূল ফোকাস, নিচে অল্প জায়গায় নাম+টিপস */
-.playerCard.big{padding:0;overflow:hidden;flex:3;display:flex;flex-direction:column;min-height:0;}
+.playerCard.big{padding:0;overflow:hidden;flex:2.6;display:flex;flex-direction:column;min-height:0;}
 .bigPhotoWrap{flex:8.5;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;}
 .bigPhotoWrap img{width:100%;height:100%;object-fit:contain;}
 .bigPhotoWrap .avatarFallbackBig{width:70%;height:70%;border-radius:50%;background:#B0BEC5;color:#0a0e1f;
@@ -816,7 +833,7 @@ background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
 .bigInfoFooter .pLabel{font-size:9px;}
 .bigInfoFooter .tipLine{color:#FFD866;font-size:12px;font-weight:700;margin-top:2px;min-height:15px;}
 /* queue/recent-tippers অল্টারনেটিং প্যানেল */
-#altPanel{flex:2;display:flex;flex-direction:column;min-height:0;}
+#altPanel{flex:1.7;display:flex;flex-direction:column;min-height:0;}
 #altPanel .rulesBox{flex:1;position:relative;}
 #altPanel .altView{display:none;}
 #altPanel .altView.show{display:block;}
@@ -827,19 +844,21 @@ background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
    বোর্ডটা অস্বাভাবিক বড় হয়ে যাওয়া আটকাতে */
 #boardWrap{position:relative;width:min(94%, calc((100vh - 260px) * 1));max-width:900px;aspect-ratio:1;flex-shrink:1;}
 #board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
-width:100%;height:100%;border:10px solid;border-image:linear-gradient(135deg,#B8874A,#3E2712) 1;border-radius:8px;
+width:100%;height:100%;border:10px solid;border-image:var(--board-border) 1;border-radius:8px;
 box-shadow:0 20px 46px rgba(0,0,0,0.75), inset 0 0 0 2px rgba(0,0,0,0.5);}
 #arrowLayer{position:absolute;top:10px;left:10px;width:calc(100% - 20px);height:calc(100% - 20px);pointer-events:none;}
 .sq{display:flex;align-items:center;justify-content:center;font-size:clamp(28px,5.2vw,64px);user-select:none;position:relative;}
-.light{background:#EFE0BF;}
-.dark{background:#5C3A21;}
+/* বোর্ডের রঙ CSS variable দিয়ে — প্রতি নতুন ম্যাচে server থেকে আলাদা থিম আসবে, ক্লাসিক লুক ঠিক রেখেই রঙ বদলাবে */
+:root{--sq-light:#EFE0BF;--sq-dark:#5C3A21;--pc-w1:#ffffff;--pc-w2:#d4cbb8;--pc-b1:#3a3a3a;--pc-b2:#000000;--board-border:linear-gradient(135deg,#B8874A,#3E2712);}
+.light{background:var(--sq-light);}
+.dark{background:var(--sq-dark);}
 .sq.lastFrom{box-shadow:inset 0 0 0 4px rgba(76,217,100,0.85);}
 .sq.lastTo{box-shadow:inset 0 0 0 4px #FFD866;}
 .piece{display:inline-block;position:relative;transform:translateY(-2px);}
-.piece-w{background:linear-gradient(160deg,#ffffff 0%,#f0ede4 40%,#d4cbb8 100%);
+.piece-w{background:linear-gradient(160deg,var(--pc-w1) 0%,#f0ede4 40%,var(--pc-w2) 100%);
 -webkit-background-clip:text;background-clip:text;color:transparent;
 filter:drop-shadow(0 2px 0 #6b6252) drop-shadow(0 6px 5px rgba(0,0,0,0.6));}
-.piece-b{background:linear-gradient(160deg,#3a3a3a 0%,#181818 45%,#000000 100%);
+.piece-b{background:linear-gradient(160deg,var(--pc-b1) 0%,#181818 45%,var(--pc-b2) 100%);
 -webkit-background-clip:text;background-clip:text;color:transparent;
 filter:drop-shadow(0 2px 0 #000) drop-shadow(0 6px 5px rgba(0,0,0,0.7));}
 #thinking{color:#7C8AAD;font-size:13px;margin-top:10px;min-height:16px;}
@@ -849,15 +868,16 @@ filter:drop-shadow(0 2px 0 #000) drop-shadow(0 6px 5px rgba(0,0,0,0.7));}
 #moveCount{color:#7C8AAD;font-size:12px;margin-top:6px;}
 #commentary{margin-top:10px;font-size:16px;color:#FFD866;max-width:90%;text-align:center;min-height:20px;font-weight:600;}
 /* "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — দুই পক্ষের জন্য দুটো আলাদা, স্পষ্ট বৈসাদৃশ্যপূর্ণ রঙ,
-   মাঝখানে স্থির একটা ছোট গোল ব্যাজে win% লেখা, আর দুই প্রান্তে যে খেলছে তার নাম (প্রতি ম্যাচে বদলায়) */
-#evalBarWrap{width:min(94%,700px);margin-top:14px;display:none;}
-#evalNames{display:flex;justify-content:space-between;font-size:11px;color:#B8C4D9;font-weight:700;margin-bottom:4px;padding:0 2px;}
-#evalBarTrack{position:relative;display:flex;height:18px;border-radius:9px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
-#evalBarWhite{background:linear-gradient(90deg,#c99a3f,#FFD866);transition:flex-basis 1s ease;}
-#evalBarBlack{background:linear-gradient(90deg,#7C4DFF,#5A32D6);transition:flex-basis 1s ease;}
-#evalBarBadge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;
-border-radius:50%;background:#0a0e1f;border:2px solid #fff;display:flex;align-items:center;justify-content:center;
-font-size:8.5px;font-weight:900;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.6);z-index:2;text-align:center;line-height:1.05;}
+   ঠিক দুই রঙের জোড়া লাগার জায়গাতেই (fixed মাঝখানে না) একটা উজ্জ্বল ব্যাজে win% লেখা,
+   আর দুই প্রান্তে যে খেলছে তার নাম (প্রতি ম্যাচে বদলায়) — আগে অনেক পাতলা ও ছোট ছিল, এখন চওড়া+মোটা */
+#evalBarWrap{width:min(97%,900px);margin-top:16px;display:none;}
+#evalNames{display:flex;justify-content:space-between;font-size:13px;color:#B8C4D9;font-weight:700;margin-bottom:6px;padding:0 4px;}
+#evalBarTrack{position:relative;display:flex;height:30px;border-radius:15px;overflow:visible;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
+#evalBarWhite{background:linear-gradient(90deg,#c99a3f,#FFD866);transition:flex-basis 1s ease;border-radius:15px 0 0 15px;}
+#evalBarBlack{background:linear-gradient(90deg,#7C4DFF,#5A32D6);transition:flex-basis 1s ease;border-radius:0 15px 15px 0;}
+#evalBarBadge{position:absolute;top:50%;transform:translate(-50%,-50%);transition:left 1s ease;width:44px;height:44px;
+border-radius:50%;background:#fff;border:3px solid #0a0e1f;display:flex;align-items:center;justify-content:center;
+font-size:11px;font-weight:900;color:#0a0e1f;box-shadow:0 3px 12px rgba(0,0,0,0.7),0 0 0 3px rgba(255,255,255,0.25);z-index:2;text-align:center;line-height:1;}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;
 font-size:76px;font-weight:900;opacity:0;pointer-events:none;text-align:center;padding:20px;background:rgba(0,0,0,0.45);z-index:60;}
 .flash.show{animation:pop 3.2s ease-out forwards;}
@@ -876,17 +896,19 @@ box-shadow:0 10px 24px rgba(0,0,0,0.5);height:100%;display:flex;flex-direction:c
 #tipQrImg{width:150px;height:150px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
 .tipLabel{color:#FFD866;font-weight:800;font-size:18px;margin-top:10px;}
 .tipSub{color:#5a6a8a;font-size:10.5px;margin-top:4px;line-height:1.4;max-width:200px;}
-#donorPopup{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-background:#0f1526;border:2px solid #FFD866;border-radius:14px;padding:10px;text-align:center;opacity:0;
-pointer-events:none;transition:opacity 0.5s;box-shadow:0 0 30px rgba(255,216,102,0.4);}
-#donorPopup.show{opacity:1;}
-#donorPopup .rankTag{font-size:10px;font-weight:800;color:#0a0e1f;background:#FFD866;border-radius:20px;
-padding:2px 10px;margin-bottom:6px;letter-spacing:0.5px;}
-#donorPopup .dAvatar{width:56px;height:56px;border-radius:50%;object-fit:cover;border:3px solid #FFD866;margin-bottom:6px;}
-#donorPopup .dAvatarFallback{width:56px;height:56px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
-font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:center;margin-bottom:6px;}
-#donorPopup .dName{color:#fff;font-weight:800;font-size:13px;}
-#donorPopup .dAmount{color:#FFD866;font-size:12px;font-weight:700;margin-top:2px;}
+/* টপ ৩ ডোনার — এখন স্থায়ী র‍্যাংক করা লিস্ট, উপরে #১, নিচে #৩ — আর পপ-আপ করে ভেসে ওঠে না */
+#topDonorsBox{flex:1.1;}
+.topDonorRow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #202a44;}
+.topDonorRow:last-child{border-bottom:none;}
+.topDonorRow .rankNum{width:22px;height:22px;border-radius:50%;background:#FFD866;color:#0a0e1f;font-weight:900;
+font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.topDonorRow:nth-child(2) .rankNum{background:#C9D3E0;}
+.topDonorRow:nth-child(3) .rankNum{background:#D8A46B;}
+.topDonorRow .tdAvatar{width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;}
+.topDonorRow .tdAvatarFallback{width:30px;height:30px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
+font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.topDonorRow .tdName{font-size:12.5px;color:#fff;font-weight:700;}
+.topDonorRow .tdAmount{font-size:11px;color:#FFD866;font-weight:700;}
 .miniListRow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #202a44;font-size:12px;}
 .miniListRow:last-child{border-bottom:none;}
 .miniListRow .miniAvatar{width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;}
@@ -909,14 +931,13 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
     </div>
     <!-- সরাসরি টিপস — মূল layout-এর ভেতরেই (fixed viewport-position না) যাতে OBS-এ
          zoom/crop করলেও এটা ফ্রেমের বাইরে হারিয়ে না যায়, বাকি সবকিছুর সাথেই থাকে।
-         স্ক্যানারটা স্থায়ীভাবে এখানেই থাকবে, তার উপরে মাঝেমধ্যে টপ ৩ ডোনার/হেল্পারের নাম পপ-আপ হয়ে ভেসে উঠবে -->
-    <div id="tipBoxOverlay" style="display:none;position:relative;">
+         স্ক্যানারটা স্থায়ীভাবে এখানেই থাকবে — টপ ৩ ডোনার এখন আলাদা একটা static বক্সে (ডান কলামে), এখানে পপ-আপ হয়ে আর আসবে না -->
+    <div id="tipBoxOverlay" style="display:none;">
       <div id="tipQrWrap">
         <img id="tipQrImg" src="" alt="Scan to help">
         <div class="tipLabel">🙏 Help Me</div>
         <div class="tipSub">Voluntary support — not tied to the game, never required</div>
       </div>
-      <div id="donorPopup"></div>
     </div>
   </div>
 
@@ -954,11 +975,12 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
         <div class="tipLine" id="blackTipLine"></div>
       </div>
     </div>
-    <!-- queue list ও recent tippers list — একই জায়গায় পালাক্রমে (alternate) দেখানো হয় -->
+    <!-- queue list ও recent tippers list — একই জায়গায় পালাক্রমে (alternate) দেখানো হয়, উপরে বর্তমানে কে খেলছে সেটাও দেখাবে -->
     <div id="altPanel">
       <div class="rulesBox">
         <div class="altView show" id="queueView">
-          <h3>🔴 Up Next — Challenge Queue</h3>
+          <h3>🔴 Now Playing / Up Next</h3>
+          <div id="currentPlayerLine" style="color:#FFD866;font-weight:800;font-size:13px;margin-bottom:8px;"></div>
           <div id="queueList"></div>
         </div>
         <div class="altView" id="donorView">
@@ -966,6 +988,11 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
           <div id="recentDonorList"></div>
         </div>
       </div>
+    </div>
+    <!-- টপ ৩ ডোনার — এখন এখানেই স্থায়ীভাবে থাকবে (আগের মতো পপ-আপ করে ভেসে ওঠা-মিলিয়ে যাওয়া না) -->
+    <div class="rulesBox" id="topDonorsBox" style="display:none;">
+      <h3>🏆 Top Supporters</h3>
+      <div id="topDonorList"></div>
     </div>
   </div>
 </div>
@@ -997,14 +1024,55 @@ setInterval(() => { ruleIdx = (ruleIdx + 1) % PIECE_RULES.length; renderRules();
 
 let lastKey="";const audioEl=document.getElementById("narrator");let queue=[];
 let audioCtx = null;
+const bgMusicEl = document.createElement("audio");
+bgMusicEl.loop = true; bgMusicEl.id = "bgMusic";
+document.body.appendChild(bgMusicEl);
 document.getElementById("soundBtn").addEventListener("click", () => {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   audioCtx.resume();
   audioEl.play().catch(()=>{});
+  bgMusicEl.play().catch(()=>{}); // ব্রাউজার autoplay policy-র কারণে ব্যাকগ্রাউন্ড মিউজিকও এই একই user-tap-এর সাথে শুরু হচ্ছে
   document.getElementById("soundBtn").style.display = "none";
 });
 function playQueue(){if(queue.length===0)return;audioEl.src=queue.shift();audioEl.play().catch(()=>{});}
 audioEl.addEventListener("ended",playQueue);
+
+// ---------- ব্যাকগ্রাউন্ড মিউজিক + কাস্টম লুপিং কমেন্ট্রি (/gaming/chess-admin থেকে সেট করা) ----------
+let chessConfigCache = null;
+let customLineIdx = 0;
+let customLoopTimer = null;
+async function loadChessConfig(){
+  try {
+    const res = await fetch("/gaming/chess-config");
+    const cfg = await res.json();
+    const changed = JSON.stringify(cfg) !== JSON.stringify(chessConfigCache);
+    if (!changed) return;
+    chessConfigCache = cfg;
+    if (cfg.bgMusicUrl && bgMusicEl.src !== cfg.bgMusicUrl) {
+      bgMusicEl.src = cfg.bgMusicUrl;
+      bgMusicEl.play().catch(()=>{}); // সাউন্ড আগে থেকেই চালু থাকলে সাথে সাথেই বাজবে, নাহলে "Turn on sound"-এর অপেক্ষা করবে
+    } else if (!cfg.bgMusicUrl) {
+      bgMusicEl.removeAttribute("src");
+    }
+    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    if (customLoopTimer) clearInterval(customLoopTimer);
+    if (cfg.customLines && cfg.customLines.length) {
+      customLoopTimer = setInterval(sayNextCustomLine, (cfg.loopIntervalSec || 90) * 1000);
+    }
+  } catch(e){}
+}
+async function sayNextCustomLine(){
+  if (!chessConfigCache || !chessConfigCache.customLines || !chessConfigCache.customLines.length) return;
+  const line = chessConfigCache.customLines[customLineIdx % chessConfigCache.customLines.length];
+  customLineIdx++;
+  try {
+    const res = await fetch("/gaming/tts?text=" + encodeURIComponent(line));
+    const data = await res.json();
+    if (data.url) { queue.push(data.url); if (audioEl.paused) playQueue(); }
+  } catch(e){}
+}
+loadChessConfig();
+setInterval(loadChessConfig, 15000); // অ্যাডমিন পেজ থেকে সেভ করলে ১৫ সেকেন্ডের মধ্যেই লাইভে প্রতিফলিত হবে
 
 // প্রফেশনাল, তীক্ষ্ণ "wood tap" শব্দ — দুটো স্তর (আঘাত + হালকা অনুরণন), খুব সংক্ষিপ্ত, বিরক্তিকর না
 function playMoveSound(isCapture) {
@@ -1021,6 +1089,24 @@ function playMoveSound(isCapture) {
     g2.gain.setValueAtTime(0.12, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
     osc2.connect(g2).connect(audioCtx.destination); osc2.start(t); osc2.stop(t + 0.1);
   } catch (e) {}
+}
+
+// প্রতি ম্যাচের theme অনুযায়ী বোর্ডের রঙ CSS variable দিয়ে বদলে দেওয়া — একই থিমে বারবার
+// DOM লেখা এড়াতে lastAppliedTheme দিয়ে compare করা হচ্ছে
+let lastAppliedTheme = "";
+function applyBoardTheme(theme){
+  if (!theme) return;
+  const key = JSON.stringify(theme);
+  if (key === lastAppliedTheme) return;
+  lastAppliedTheme = key;
+  const root = document.documentElement.style;
+  root.setProperty("--sq-light", theme.light);
+  root.setProperty("--sq-dark", theme.dark);
+  root.setProperty("--pc-w1", theme.pcW1);
+  root.setProperty("--pc-w2", theme.pcW2);
+  root.setProperty("--pc-b1", theme.pcB1);
+  root.setProperty("--pc-b2", theme.pcB2);
+  root.setProperty("--board-border", theme.border);
 }
 
 const PIECE_GLYPH = { p:"♟",r:"♜",n:"♞",b:"♝",q:"♛",k:"♚", P:"♟",R:"♜",N:"♞",B:"♝",Q:"♛",K:"♚" };
@@ -1231,10 +1317,14 @@ function renderCaptured(el, pieces) {
 let lastStatus = "";
 async function poll(){try{
   const res=await fetch("/gaming/state/chess.json?t="+Date.now());const data=await res.json();
+  applyBoardTheme(data.boardTheme);
   renderBoard(data.fen, data.lastMove);
   renderArrows(data.candidates, data.chosenMove);
 
   document.getElementById("opening").textContent = data.mode === "challenge" ? "🔴 LIVE — " + data.blackName + " vs " + data.whiteName : (data.openingName?("Opening: "+data.openingName):"");
+
+  // এই মুহূর্তে কে খেলছে সেটা queue প্যানেলের উপরেও দেখানো হচ্ছে (blackCard-এর সাথে ডুপ্লিকেট হলেও, দর্শক এখানেও এক নজরে দেখুক)
+  document.getElementById("currentPlayerLine").textContent = data.blackName ? ("Now playing: " + data.blackName) : "";
 
   if (data.queue && data.queue.length) {
     document.getElementById("queueList").innerHTML = data.queue.slice(0,6).map(q =>
@@ -1281,7 +1371,8 @@ async function poll(){try{
     document.getElementById("evalBarBlack").style.flexBasis = (100 - wp) + "%";
     const badge = document.getElementById("evalBarBadge");
     const leadingIsWhite = wp >= 50;
-    badge.textContent = (leadingIsWhite ? wp : (100 - wp)) + "%"; // যে পক্ষ এগিয়ে, মাঝের ব্যাজে তার শতাংশটাই দেখাবে
+    badge.textContent = (leadingIsWhite ? wp : (100 - wp)) + "%"; // যে পক্ষ এগিয়ে, ব্যাজে তার শতাংশটাই দেখাবে
+    badge.style.left = wp + "%"; // ঠিক যেখানে দুই রঙ জোড়া লাগছে, সেই বিন্দুতেই ব্যাজ থাকবে (fixed মাঝখানে না)
     badge.style.borderColor = leadingIsWhite ? "#FFD866" : "#7C4DFF"; // এগিয়ে থাকা পক্ষের রঙে বর্ডার — এক নজরেই বোঝা যায়
   } else {
     evalWrap.style.display = "none";
@@ -1354,41 +1445,40 @@ fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
   }
 });
 
-let topDonors = [];
-let donorCycleIdx = 0;
+// টপ ৩ ডোনার — এখন স্থায়ী র‍্যাংক করা লিস্ট, পপ-আপ করে আর ভেসে ওঠে না
 async function refreshTopDonors(){
   try {
     const res = await fetch("/top-donors/chessbattle");
     const data = await res.json();
-    topDonors = data.top || [];
+    const top = data.top || [];
+    const box = document.getElementById("topDonorsBox");
+    if (!top.length) { box.style.display = "none"; return; }
+    box.style.display = "block";
+    document.getElementById("topDonorList").innerHTML = top.map((d, i) => (
+      '<div class="topDonorRow"><div class="rankNum">' + (i+1) + '</div>' +
+      (d.photo ? '<img class="tdAvatar" src="'+d.photo+'">' : '<div class="tdAvatarFallback">'+((d.name&&d.name[0])||"?")+'</div>') +
+      '<div><div class="tdName">' + d.name + '</div><div class="tdAmount">₹' + Math.round(d.amount) + '</div></div></div>'
+    )).join("");
   } catch(e){}
-}
-function showDonorPopup(){
-  if (!topDonors.length) return;
-  const d = topDonors[donorCycleIdx % topDonors.length];
-  donorCycleIdx++;
-  const rankLabel = ["🥇 NUMBER ONE HELPER","🥈 NUMBER TWO HELPER","🥉 NUMBER THREE HELPER"][topDonors.indexOf(d)] || "🏅 TOP HELPER";
-  const popup = document.getElementById("donorPopup");
-  popup.innerHTML =
-    '<div class="rankTag">' + rankLabel + '</div>' +
-    (d.photo ? '<img class="dAvatar" src="'+d.photo+'">' : '<div class="dAvatarFallback">'+((d.name&&d.name[0])||"?")+'</div>') +
-    '<div class="dName">' + d.name + '</div>' +
-    '<div class="dAmount">₹' + Math.round(d.amount) + '</div>';
-  popup.classList.add("show");
-  setTimeout(() => { popup.classList.remove("show"); }, 4500); // এই সময়টায় কেউ চাইলে স্ক্রিনশট নিতে পারবে
 }
 refreshTopDonors();
 setInterval(refreshTopDonors, 20000); // প্রতি ২০ সেকেন্ডে সবশেষ টপ ৩ রিফ্রেশ
-setInterval(showDonorPopup, 7000); // পপ-আপ আসবে, কিছুক্ষণ থেকে আবার মিলিয়ে যাবে, ঘুরেফিরে ১→২→৩→১...
 
 // নতুন কোনো real payment এলে (verified, চেস চ্যানেলের) নাম নিয়ে সেলিব্রেশন
 async function pollChessTips(){
   try {
     const res = await fetch("/events/chessbattle");
     const data = await res.json();
-    (data.events || []).forEach(ev => {
-      showFlash("🙏 Thank you " + (ev.name || "Anonymous") + "!", "#FFD866", true);
+    (data.events || []).forEach(async ev => {
+      const name = ev.name || "Anonymous";
+      showFlash("🙏 Thank you " + name + "!", "#FFD866", true);
       playEndGameSound(true);
+      // নাম নিয়ে আসল ভয়েস অ্যানাউন্সমেন্ট — TTS জেনারেট করে narrator-এর queue-তে যোগ হয়
+      try {
+        const ttsRes = await fetch("/gaming/tts?text=" + encodeURIComponent("Thank you " + name + " for the support!"));
+        const ttsData = await ttsRes.json();
+        if (ttsData.url) { queue.push(ttsData.url); if (audioEl.paused) playQueue(); }
+      } catch(e){}
     });
   } catch(e){}
 }
@@ -2136,6 +2226,102 @@ module.exports = function mountGaming(app) {
   app.get("/gaming/challenge/status", (req, res) => res.type("html").send(CHALLENGE_STATUS_HTML));
   app.get("/gaming/challenge/play", (req, res) => res.type("html").send(CHALLENGE_PLAY_HTML));
   app.get("/gaming/challenge/tip-info", (req, res) => res.json({ tipUrl: TIP_URL }));
+
+  // চেস overlay-তে নতুন টিপস এলে তার নাম নিয়ে real voice announcement বাজানোর জন্য —
+  // আগে থেকে থাকা edge-tts টেক্সট-টু-স্পিচ সিস্টেমটাই পুনরায় ব্যবহার হচ্ছে (chess commentary-তে যেটা ব্যবহৃত)
+  app.get("/gaming/tts", async (req, res) => {
+    const text = (req.query.text || "").toString().slice(0, 200);
+    if (!text) return res.status(400).json({ error: "text প্রয়োজন" });
+    try {
+      const url = await textToSpeech(text);
+      res.json({ url });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ---------- ব্যাকগ্রাউন্ড মিউজিক + কাস্টম লুপিং কমেন্ট্রি (অ্যাডমিন কনফিগ) ----------
+  // Fan Battle Live-এর মতোই — এটা স্ক্রিনের কোথাও দেখানো নয়, শুধু একটা সেটআপ পেজ,
+  // যেখান থেকে আপনি ব্যাকগ্রাউন্ড মিউজিকের লিংক আর নিজের কমেন্ট্রি লাইন বসাতে পারবেন
+  const CHESS_CONFIG_FILE = path.join(STATE_DIR, "chess-config.json");
+  function readChessConfig() {
+    try {
+      return JSON.parse(fs.readFileSync(CHESS_CONFIG_FILE, "utf-8"));
+    } catch (e) {
+      return { bgMusicUrl: "", bgMusicVolume: 0.15, customLines: [], loopIntervalSec: 90 };
+    }
+  }
+  function writeChessConfig(cfg) {
+    fs.writeFileSync(CHESS_CONFIG_FILE, JSON.stringify(cfg, null, 2));
+  }
+
+  app.get("/gaming/chess-config", (req, res) => res.json(readChessConfig()));
+
+  app.get("/gaming/chess-admin", (req, res) => {
+    const cfg = readChessConfig();
+    res.type("html").send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Chess Overlay Settings</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:560px;margin:0 auto;}
+h1{color:#FFD866;font-size:22px;}
+label{display:block;margin-top:18px;font-size:13px;color:#7C8AAD;font-weight:700;}
+input[type=text],input[type=number],textarea{width:100%;padding:12px;border-radius:8px;border:1px solid #26314f;
+background:#131a2c;color:#fff;font-size:14px;margin-top:6px;font-family:inherit;box-sizing:border-box;}
+textarea{min-height:140px;resize:vertical;}
+.hint{font-size:11px;color:#5a6a8a;margin-top:4px;line-height:1.4;}
+button{width:100%;padding:14px;border-radius:10px;border:none;background:#FFD866;color:#0a0e1f;font-weight:800;
+font-size:16px;margin-top:24px;cursor:pointer;}
+#status{margin-top:12px;font-size:13px;color:#8BE28B;min-height:18px;}
+</style></head><body>
+<h1>♟️ Chess Overlay — Background Settings</h1>
+<p style="color:#7C8AAD;font-size:13px;">এগুলো স্ক্রিনে দেখা যাবে না — শুধু ব্যাকগ্রাউন্ডে চলবে (মিউজিক ও আপনার নিজের কণ্ঠে কমেন্ট্রি loop)।</p>
+<form id="cfgForm">
+  <label>ব্যাকগ্রাউন্ড মিউজিক — MP3/অডিও লিংক (কপিরাইট-ফ্রি হতে হবে)</label>
+  <input type="text" name="bgMusicUrl" value="${(cfg.bgMusicUrl || "").replace(/"/g, "&quot;")}" placeholder="https://...mp3">
+  <div class="hint">চাইলে খালি রাখতে পারেন — তাহলে কোনো ব্যাকগ্রাউন্ড মিউজিক বাজবে না। লিংক থেকে সরাসরি stream/download হওয়া দরকার (Google Drive হলে সরাসরি ডাউনলোড লিংক ব্যবহার করুন)।</div>
+
+  <label>মিউজিকের ভলিউম (০ থেকে ১, কম রাখাই ভালো যাতে চাল/কমেন্ট্রি ঢাকা না পড়ে)</label>
+  <input type="number" name="bgMusicVolume" min="0" max="1" step="0.05" value="${cfg.bgMusicVolume ?? 0.15}">
+
+  <label>আপনার নিজের কমেন্ট্রি লাইনগুলো (একটা লাইনে একটা করে) — এগুলো ঘুরেফিরে (loop) বলা হবে</label>
+  <textarea name="customLines" placeholder="যেমন:
+স্বাগতম আমার লাইভ চেস চ্যানেলে!
+নিচের QR স্ক্যান করে সাপোর্ট করতে পারেন।
+চ্যালেঞ্জ করতে description-এর লিংকে ক্লিক করুন।">${(cfg.customLines || []).join("\n")}</textarea>
+  <div class="hint">খালি রাখলে কোনো কাস্টম কমেন্ট্রি বাজবে না।</div>
+
+  <label>কত সেকেন্ড/মিনিট পরপর একটা করে লাইন বলা হবে (সেকেন্ডে লিখুন, যেমন ৯০ সেকেন্ড = দেড় মিনিট)</label>
+  <input type="number" name="loopIntervalSec" min="20" value="${cfg.loopIntervalSec || 90}">
+
+  <button type="submit">সেভ করুন</button>
+  <div id="status"></div>
+</form>
+<script>
+document.getElementById("cfgForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const body = {
+    bgMusicUrl: fd.get("bgMusicUrl").trim(),
+    bgMusicVolume: parseFloat(fd.get("bgMusicVolume")) || 0.15,
+    customLines: fd.get("customLines").split("\\n").map(s=>s.trim()).filter(Boolean),
+    loopIntervalSec: parseInt(fd.get("loopIntervalSec"), 10) || 90,
+  };
+  const res = await fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+  document.getElementById("status").textContent = res.ok ? "✅ সেভ হয়েছে — লাইভ overlay-তে কয়েক সেকেন্ডের মধ্যেই কার্যকর হবে।" : "❌ সেভ করা যায়নি।";
+});
+</script></body></html>`);
+  });
+
+  app.post("/gaming/chess-admin", express.json(), (req, res) => {
+    const body = req.body || {};
+    writeChessConfig({
+      bgMusicUrl: (body.bgMusicUrl || "").toString().slice(0, 500),
+      bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.15)),
+      customLines: Array.isArray(body.customLines) ? body.customLines.slice(0, 30).map(s => (s || "").toString().slice(0, 300)) : [],
+      loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
+    });
+    res.json({ ok: true });
+  });
 
   app.post("/gaming/challenge/join", (req, res, next) => {
     if (upload) return upload.single("photo")(req, res, next);
