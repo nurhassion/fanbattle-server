@@ -274,6 +274,7 @@ async function playChallengeGame(Chess) {
     whiteAvatarUrl: YOUR_AVATAR_URL,
     blackName: challenger.name,
     blackAvatarUrl: challenger.photoUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(challenger.name)}`,
+    blackTipAmount: challenger.tipAmount || 0,
     queue: getQueuePublicState(),
     candidates: [],
     chosenMove: null,
@@ -288,12 +289,14 @@ async function playChallengeGame(Chess) {
   while (!chess.isGameOver() && moveCount < 150 && chessLoopActive) {
     if (chess.turn() === "w") {
       const thinkTimeMs = 1200 + Math.floor(Math.random() * 1200);
-      const { bestmove } = await getCandidateMoves(engine, chess.fen(), thinkTimeMs);
+      const { bestmove, candidates } = await getCandidateMoves(engine, chess.fen(), thinkTimeMs);
       if (!bestmove) break;
       const mv = chess.move(bestmove, { sloppy: true });
       if (!mv) break;
       state.lastMove = { from: mv.from, to: mv.to };
       if (mv.captured) capturedByWhite.push(mv.captured);
+      const bestCp = candidates && candidates[0] ? candidates[0].cp : 0; // সাদার turn ছিল, তাই sign উল্টানোর দরকার নেই
+      state.whiteWinPct = Math.round(100 / (1 + Math.pow(10, -Math.max(-1000, Math.min(1000, bestCp)) / 400)));
     } else {
       const beforeFen = chess.fen();
       const deadline = Date.now() + TURN_TIMEOUT_MS;
@@ -497,6 +500,14 @@ async function playOneChessGame(Chess) {
     // ধাপ ১ — সম্ভাব্য candidate move গুলো বোর্ডে হালকা করে দেখানো, দর্শককে "প্রেডিক্ট" করার সময় দেওয়া
     state.candidates = candidates.map((c) => uciToSquares(c.uci)).filter(Boolean);
     state.chosenMove = null;
+    // এই মুহূর্তে খেলাটা বন্ধ করে দিলে technically কে কতটা এগিয়ে — এভাবে হিসাব করা:
+    // Stockfish-এর cp score সবসময় "যার চাল, তার দৃষ্টিকোণ" থেকে আসে, তাই সাদার
+    // দৃষ্টিকোণে আনতে কালোর turn হলে sign উল্টে দেওয়া হচ্ছে, তারপর একটা standard
+    // sigmoid formula দিয়ে win-probability % বের করা হচ্ছে (±১০০০ সেন্টিপন-এর বেশি
+    // হলে ক্ল্যাম্প করা, নাহলে মেট স্কোরে বার একদম ০%/১০০% এ আটকে যেত)
+    const bestCp = candidates[0] ? candidates[0].cp : 0;
+    const whiteCp = Math.max(-1000, Math.min(1000, isWhiteTurn ? bestCp : -bestCp));
+    state.whiteWinPct = Math.round(100 / (1 + Math.pow(10, -whiteCp / 400)));
     writeState("chess", state);
     if (!chessLoopActive) break;
     await new Promise((r) => setTimeout(r, 3200)); // দর্শকের ভাবার সময়
@@ -765,21 +776,27 @@ body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 1
 padding:16px 20px;height:100vh;overflow:hidden;}
 h1{text-align:center;margin:0 0 12px;font-size:24px;letter-spacing:0.5px;font-weight:800;
 color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-.layout{display:grid;grid-template-columns:260px 520px 260px;gap:22px;align-items:start;justify-content:center;max-width:1200px;margin:0 auto;}
-.sideCol{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 90px);}
-.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:12px 14px;
-box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;}
-.rulesBox h3{margin:0 0 8px;font-size:11px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;}
-.ruleRow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #202a44;}
+.layout{display:grid;grid-template-columns:280px 1fr 400px;gap:22px;align-items:stretch;width:100%;max-width:100%;margin:0 auto;height:calc(100vh - 66px);}
+.sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
+.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 16px;
+box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1;min-height:0;}
+.rulesBox h3{margin:0 0 10px;font-size:12px;color:#FFD866;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;}
+.ruleRow{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #202a44;}
 .ruleRow:last-child{border-bottom:none;}
-.ruleGlyph{font-size:20px;width:26px;text-align:center;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
+.ruleGlyph{font-size:26px;width:32px;text-align:center;filter:drop-shadow(0 0 6px rgba(255,216,102,0.5));}
 .ruleGlyph.hi{animation:glow 1.4s ease-in-out infinite;}
 @keyframes glow{0%,100%{filter:drop-shadow(0 0 6px rgba(255,216,102,0.4));}50%{filter:drop-shadow(0 0 14px rgba(255,216,102,1));}}
-.ruleText{font-size:10px;color:#B8C4D9;line-height:1.35;}
+.ruleText{font-size:12px;color:#B8C4D9;line-height:1.4;}
 .ruleText b{color:#fff;}
 .playerCard{background:#161b2e;border:1px solid #2a3352;border-radius:16px;padding:14px;
 box-shadow:0 10px 24px rgba(0,0,0,0.55);text-align:center;}
 .playerCard.active{border-color:#FFD866;box-shadow:0 0 0 2px #FFD866, 0 10px 30px rgba(255,216,102,0.3);}
+/* সাদা/Nur-এর কার্ড — কোনো ছবি দেখানো হবে না তাই ছোট রাখা, বাঁচানো জায়গা নিয়ম+স্ক্যানার বক্সে যাচ্ছে */
+.playerCard.compact{padding:8px;flex:0 0 auto;}
+.playerCard.compact .avatar{width:38px;height:38px;font-size:16px;margin-bottom:4px;}
+.playerCard.compact .pName{font-size:13px;}
+.playerCard.compact .pLabel{font-size:8px;}
+.playerCard.compact .captured{margin-top:4px;min-height:16px;font-size:13px;}
 .avatar{width:88px;height:88px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;
 font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid #2a3352;overflow:hidden;}
 .avatar.black{background:#B0BEC5;}
@@ -787,9 +804,25 @@ font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid
 .pName{font-size:16px;font-weight:700;color:#fff;}
 .pLabel{font-size:10px;color:#7C8AAD;margin-top:2px;text-transform:uppercase;letter-spacing:1px;}
 .captured{margin-top:10px;min-height:26px;font-size:18px;letter-spacing:2px;color:#FFD866;opacity:0.9;}
-.centerCol{display:flex;flex-direction:column;align-items:center;}
+/* প্রতিপক্ষ/challenger-এর বড় কার্ড — ছবিটাই এখানে মূল ফোকাস, নিচে অল্প জায়গায় নাম+টিপস */
+.playerCard.big{padding:0;overflow:hidden;flex:3;display:flex;flex-direction:column;min-height:0;}
+.bigPhotoWrap{flex:8.5;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;}
+.bigPhotoWrap img{width:100%;height:100%;object-fit:contain;}
+.bigPhotoWrap .avatarFallbackBig{width:70%;height:70%;border-radius:50%;background:#B0BEC5;color:#0a0e1f;
+display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:800;}
+.bigInfoFooter{flex:1.5;display:flex;flex-direction:column;align-items:center;justify-content:center;
+background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
+.bigInfoFooter .pName{font-size:17px;}
+.bigInfoFooter .pLabel{font-size:9px;}
+.bigInfoFooter .tipLine{color:#FFD866;font-size:12px;font-weight:700;margin-top:2px;min-height:15px;}
+/* queue/recent-tippers অল্টারনেটিং প্যানেল */
+#altPanel{flex:2;display:flex;flex-direction:column;min-height:0;}
+#altPanel .rulesBox{flex:1;position:relative;}
+#altPanel .altView{display:none;}
+#altPanel .altView.show{display:block;}
+.centerCol{display:flex;flex-direction:column;align-items:center;height:100%;min-height:0;}
 #opening{color:#7C8AAD;font-size:13px;margin-bottom:8px;font-weight:600;}
-#boardWrap{position:relative;width:496px;}
+#boardWrap{position:relative;width:496px;flex-shrink:0;}
 #board{display:grid;grid-template-columns:repeat(8,62px);grid-template-rows:repeat(8,62px);
 width:496px;border:10px solid;border-image:linear-gradient(135deg,#B8874A,#3E2712) 1;border-radius:8px;
 box-shadow:0 20px 46px rgba(0,0,0,0.75), inset 0 0 0 2px rgba(0,0,0,0.5);}
@@ -812,23 +845,30 @@ filter:drop-shadow(0 2px 0 #000) drop-shadow(0 6px 5px rgba(0,0,0,0.7));}
 #predictLabel{color:#FFD866;font-size:15px;min-height:20px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;}
 #moveCount{color:#7C8AAD;font-size:11px;margin-top:6px;}
 #commentary{margin-top:10px;font-size:15px;color:#FFD866;max-width:480px;text-align:center;min-height:20px;font-weight:600;}
+/* "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — win-probability বার */
+#evalBarWrap{width:496px;margin-top:12px;display:none;}
+#evalBarTrack{display:flex;height:16px;border-radius:8px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
+#evalBarWhite{background:linear-gradient(90deg,#e8e2d4,#fff);transition:flex-basis 1s ease;}
+#evalBarBlack{background:linear-gradient(90deg,#111,#333);transition:flex-basis 1s ease;}
+#evalLabel{display:flex;justify-content:space-between;font-size:10px;color:#7C8AAD;margin-top:4px;font-weight:700;}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;
-font-size:76px;font-weight:900;opacity:0;pointer-events:none;text-align:center;padding:20px;background:rgba(0,0,0,0.45);}
+font-size:76px;font-weight:900;opacity:0;pointer-events:none;text-align:center;padding:20px;background:rgba(0,0,0,0.45);z-index:60;}
 .flash.show{animation:pop 3.2s ease-out forwards;}
 .flash .confetti{font-size:36px;}
 @keyframes pop{0%{opacity:0;transform:scale(0.5) rotate(-5deg);}12%{opacity:1;transform:scale(1.1) rotate(1deg);}
 25%{transform:scale(1) rotate(0);}85%{opacity:1;}100%{opacity:0;}}
+/* আসল উড়ন্ত কনফেটি — জয়ের সময় flash-এর সাথে একসাথে চলবে */
+.confettiPiece{position:fixed;top:-20px;width:10px;height:16px;z-index:59;pointer-events:none;
+animation:confettiFall linear forwards;}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1;}100%{transform:translateY(108vh) rotate(720deg);opacity:0.9;}}
 
-/* সরাসরি টিপস QR — বাম পাশের নিয়মের বক্সের ঠিক নিচে, স্থায়ীভাবে বসানো একটা ছোট কার্ড */
-/* সরাসরি টিপস QR — এখন আর position:fixed viewport-কোণায় না, বরং মূল layout-এর
-   বাম কলামেই (নিয়মের বক্সের ঠিক নিচে) normal flow-তে বসানো, যাতে OBS-এ zoom/crop
-   করলেও এটা বাকি সবকিছুর সাথেই থেকে যায়, ফ্রেমের বাইরে হারিয়ে না যায় */
-#tipBoxOverlay{width:100%;}
-#tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;text-align:center;
-box-shadow:0 10px 24px rgba(0,0,0,0.5);}
-#tipQrImg{width:96px;height:96px;border-radius:8px;background:#fff;padding:4px;display:block;margin:0 auto;}
-.tipLabel{color:#FFD866;font-weight:800;font-size:13px;margin-top:6px;}
-.tipSub{color:#5a6a8a;font-size:8.5px;margin-top:3px;line-height:1.3;}
+/* সরাসরি টিপস QR — মূল layout-এর ভেতরেই, বাম কলামে নিয়মের বক্সের নিচে */
+#tipBoxOverlay{flex:1;min-height:0;}
+#tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px;text-align:center;
+box-shadow:0 10px 24px rgba(0,0,0,0.5);height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+#tipQrImg{width:150px;height:150px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
+.tipLabel{color:#FFD866;font-weight:800;font-size:18px;margin-top:10px;}
+.tipSub{color:#5a6a8a;font-size:10.5px;margin-top:4px;line-height:1.4;max-width:200px;}
 #donorPopup{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
 background:#0f1526;border:2px solid #FFD866;border-radius:14px;padding:10px;text-align:center;opacity:0;
 pointer-events:none;transition:opacity 0.5s;box-shadow:0 0 30px rgba(255,216,102,0.4);}
@@ -840,11 +880,16 @@ padding:2px 10px;margin-bottom:6px;letter-spacing:0.5px;}
 font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:center;margin-bottom:6px;}
 #donorPopup .dName{color:#fff;font-weight:800;font-size:13px;}
 #donorPopup .dAmount{color:#FFD866;font-size:12px;font-weight:700;margin-top:2px;}
+.miniListRow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #202a44;font-size:12px;}
+.miniListRow:last-child{border-bottom:none;}
+.miniListRow .miniAvatar{width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;}
+.miniListRow .miniAvatarFallback{width:24px;height:24px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
+font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 </style></head><body>
 <h1>♟️ Chess Battle — Live</h1>
 <div class="layout">
   <div class="sideCol">
-    <div class="playerCard" id="whiteCard">
+    <div class="playerCard compact" id="whiteCard">
       <div class="avatar" id="whiteAvatar">N</div>
       <div class="pName" id="whiteName">—</div>
       <div class="pLabel">WHITE</div>
@@ -858,7 +903,7 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
     <!-- সরাসরি টিপস — মূল layout-এর ভেতরেই (fixed viewport-position না) যাতে OBS-এ
          zoom/crop করলেও এটা ফ্রেমের বাইরে হারিয়ে না যায়, বাকি সবকিছুর সাথেই থাকে।
          স্ক্যানারটা স্থায়ীভাবে এখানেই থাকবে, তার উপরে মাঝেমধ্যে টপ ৩ ডোনার/হেল্পারের নাম পপ-আপ হয়ে ভেসে উঠবে -->
-    <div id="tipBoxOverlay" style="display:none;">
+    <div id="tipBoxOverlay" style="display:none;position:relative;">
       <div id="tipQrWrap">
         <img id="tipQrImg" src="" alt="Scan to help">
         <div class="tipLabel">🙏 Help Me</div>
@@ -881,20 +926,35 @@ font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:c
     <div id="predictLabel"></div>
     <div id="moveCount"></div>
     <div id="commentary"></div>
+    <!-- "এই মুহূর্তে থামলে কে কতটা এগিয়ে" win-probability বার -->
+    <div id="evalBarWrap">
+      <div id="evalBarTrack"><div id="evalBarWhite"></div><div id="evalBarBlack"></div></div>
+      <div id="evalLabel"><span id="evalLabelWhite">White 50%</span><span id="evalLabelBlack">Black 50%</span></div>
+    </div>
   </div>
 
   <div class="sideCol">
-    <div class="playerCard" id="blackCard">
-      <div class="avatar black" id="blackAvatar">?</div>
-      <div class="pName" id="blackName">—</div>
-      <div class="pLabel">BLACK</div>
-      <div class="captured" id="capturedByBlack"></div>
+    <!-- প্রতিপক্ষ/challenger-এর বড় ছবির কার্ড — সম্পূর্ণ ছবিটাই দেখা যাবে, নিচে অল্প জায়গায় নাম+টিপস -->
+    <div class="playerCard big" id="blackCard">
+      <div class="bigPhotoWrap" id="blackPhotoWrap"><div class="avatarFallbackBig" id="blackAvatarFallback">?</div></div>
+      <div class="bigInfoFooter">
+        <div class="pName" id="blackName">—</div>
+        <div class="pLabel">BLACK</div>
+        <div class="tipLine" id="blackTipLine"></div>
+      </div>
     </div>
-    <!-- লাইভ চ্যালেঞ্জ queue-তে কারা অপেক্ষা করছে, তাদের ছবি/নাম/টিপস এখানে দেখাবে (queue না থাকলে খালি থাকবে) -->
-    <div class="rulesBox" id="queuePanel" style="display:none;">
-      <h3>🔴 Up Next — Challenge Queue</h3>
-      <div id="queueList"></div>
-      <div style="font-size:9px;color:#5a6a8a;margin-top:6px;">Want to play? Click the link in the description</div>
+    <!-- queue list ও recent tippers list — একই জায়গায় পালাক্রমে (alternate) দেখানো হয় -->
+    <div id="altPanel">
+      <div class="rulesBox">
+        <div class="altView show" id="queueView">
+          <h3>🔴 Up Next — Challenge Queue</h3>
+          <div id="queueList"></div>
+        </div>
+        <div class="altView" id="donorView">
+          <h3>💛 Recent Supporters</h3>
+          <div id="recentDonorList"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -989,6 +1049,8 @@ function renderBoard(fen, lastMove) {
     const fromEl = boardEl.querySelector('[data-square="' + lastMove.from + '"]');
     const toEl = boardEl.querySelector('[data-square="' + lastMove.to + '"]');
     const movingPiece = grid.find(g => rcToSquare(g.r, g.c) === lastMove.to);
+    // এই ঘরে আগে (আগের FEN-এ) অন্য কোনো গুটি ছিল কিনা — থাকলে এটা একটা capture, আলাদা (নিচু পিচের) শব্দ হবে
+    const wasOccupiedBefore = prevFenBoard && isSquareOccupiedInFen(prevFenBoard, lastToRC);
     if (fromEl && toEl && movingPiece && movingPiece.piece) {
       const wrap = document.getElementById("boardWrap");
       const wrapRect = wrap.getBoundingClientRect();
@@ -1005,6 +1067,16 @@ function renderBoard(fen, lastMove) {
       ghost.style.width = fromRect.width + "px";
       ghost.style.height = fromRect.height + "px";
       wrap.appendChild(ghost);
+      // শব্দটা যেন blind timer-এর বদলে ব্রাউজারের নিজস্ব transitionend event-এ ফায়ার হয় —
+      // এতে গুটি ঠিক যে ফ্রেমে থেমেছে, শব্দও ঠিক সেই ফ্রেমেই বাজবে, কোনো timing drift থাকবে না
+      let landed = false;
+      const onLanded = () => {
+        if (landed) return;
+        landed = true;
+        ghost.remove();
+        drawGrid(boardEl, grid, lastFromRC, lastToRC, null);
+        playMoveSound(wasOccupiedBefore);
+      };
       const isKnight = movingPiece.piece.toLowerCase() === "n";
       if (isKnight) {
         // ঘোড়ার আসল "L" আকৃতির পথ ধরে চলা দেখানো — আগে লম্বা লেগ (২ ঘর), তারপর ছোট লেগ (১ ঘর) —
@@ -1018,30 +1090,46 @@ function renderBoard(fen, lastMove) {
         requestAnimationFrame(() => {
           if (midRect) { ghost.style.left = (midRect.left - wrapRect.left) + "px"; ghost.style.top = (midRect.top - wrapRect.top) + "px"; }
         });
-        setTimeout(() => {
+        // দ্বিতীয় ধাপ শুরু হবে প্রথম transition শেষ হওয়ার transitionend-এ, timer-এর উপর ভরসা না করে
+        ghost.addEventListener("transitionend", function phase2(e) {
+          if (e.propertyName !== "left") return;
+          ghost.removeEventListener("transitionend", phase2);
           ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out";
-          ghost.style.left = (toRect.left - wrapRect.left) + "px";
-          ghost.style.top = (toRect.top - wrapRect.top) + "px";
-        }, ANIM_MS * 0.55);
+          requestAnimationFrame(() => {
+            ghost.style.left = (toRect.left - wrapRect.left) + "px";
+            ghost.style.top = (toRect.top - wrapRect.top) + "px";
+          });
+          ghost.addEventListener("transitionend", onLanded, { once: true });
+        }, { once: true });
       } else {
         requestAnimationFrame(() => {
           ghost.style.left = (toRect.left - wrapRect.left) + "px";
           ghost.style.top = (toRect.top - wrapRect.top) + "px";
         });
+        ghost.addEventListener("transitionend", onLanded, { once: true });
       }
-      setTimeout(() => {
-        ghost.remove();
-        drawGrid(boardEl, grid, lastFromRC, lastToRC, null);
-        playMoveSound(false);
-      }, ANIM_MS);
+      setTimeout(onLanded, ANIM_MS + 400); // নিরাপত্তার জন্য — কোনো কারণে transitionend না ফায়ার করলেও (যেমন ট্যাব ব্যাকগ্রাউন্ডে থাকলে) যাতে চিরকাল আটকে না থাকে
       prevFenBoard = boardPart;
       return;
     }
   }
   drawGrid(boardEl, grid, lastFromRC, lastToRC, null);
   const changed = prevFenBoard && prevFenBoard !== boardPart;
-  if (changed) playMoveSound(false);
+  if (changed) playMoveSound(prevFenBoard && isSquareOccupiedInFen(prevFenBoard, lastToRC));
   prevFenBoard = boardPart;
+}
+// আগের FEN-এ (চাল দেওয়ার আগে) কোনো নির্দিষ্ট ঘরে গুটি ছিল কিনা — capture সাউন্ড ঠিকভাবে বাজানোর জন্য দরকার
+function isSquareOccupiedInFen(fenBoardPart, rc) {
+  if (!rc) return false;
+  const rows = fenBoardPart.split("/");
+  const row = rows[rc.r];
+  if (!row) return false;
+  let col = 0;
+  for (const ch of row) {
+    if (/[0-9]/.test(ch)) { col += parseInt(ch, 10); }
+    else { if (col === rc.c) return true; col++; }
+  }
+  return false;
 }
 function drawGrid(boardEl, grid, lastFromRC, lastToRC, hideRC) {
   boardEl.innerHTML = "";
@@ -1137,16 +1225,14 @@ async function poll(){try{
 
   document.getElementById("opening").textContent = data.mode === "challenge" ? "🔴 LIVE — " + data.blackName + " vs " + data.whiteName : (data.openingName?("Opening: "+data.openingName):"");
 
-  const qp = document.getElementById("queuePanel");
   if (data.queue && data.queue.length) {
-    qp.style.display = "block";
-    document.getElementById("queueList").innerHTML = data.queue.slice(0,5).map(q =>
-      '<div class="ruleRow"><div class="ruleGlyph" style="font-size:0;">' +
-      (q.photoUrl ? '<img src="'+q.photoUrl+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">' : '<div style="width:26px;height:26px;border-radius:50%;background:#4FC3F7;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0a0e1f;font-weight:800;">'+(q.name[0]||"?")+'</div>') +
-      '</div><div class="ruleText"><b>#'+q.position+'</b> '+q.name+ (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹'+q.tipAmount+'</span>' : '') + '</div></div>'
+    document.getElementById("queueList").innerHTML = data.queue.slice(0,6).map(q =>
+      '<div class="miniListRow">' +
+      (q.photoUrl ? '<img class="miniAvatar" src="'+q.photoUrl+'">' : '<div class="miniAvatarFallback">'+(q.name[0]||"?")+'</div>') +
+      '<div><b>#'+q.position+'</b> '+q.name+ (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹'+q.tipAmount+'</span>' : '') + '</div></div>'
     ).join("");
   } else {
-    qp.style.display = "none";
+    document.getElementById("queueList").innerHTML = '<div style="font-size:11px;color:#5a6a8a;">No one in queue right now</div>';
   }
   document.getElementById("moveCount").textContent=data.moves?(data.moves.length+" moves played"):"";
   document.getElementById("commentary").textContent=data.lastCommentaryBn||"";
@@ -1156,14 +1242,35 @@ async function poll(){try{
   const wAv = document.getElementById("whiteAvatar");
   if (data.whiteAvatarUrl) wAv.innerHTML = '<img src="'+data.whiteAvatarUrl+'">';
   else wAv.textContent = (data.whiteName || "N")[0].toUpperCase();
-  const bAv = document.getElementById("blackAvatar");
-  if (data.blackAvatarUrl) bAv.innerHTML = '<img src="'+data.blackAvatarUrl+'">';
-  else bAv.textContent = (data.blackName || "?")[0].toUpperCase();
+  // প্রতিপক্ষের সম্পূর্ণ ছবি (ছোট গোল avatar না) — বড় ফটো বক্সে দেখানো হচ্ছে
+  const bPhotoWrap = document.getElementById("blackPhotoWrap");
+  if (data.blackAvatarUrl) {
+    if (bPhotoWrap.dataset.url !== data.blackAvatarUrl) {
+      bPhotoWrap.dataset.url = data.blackAvatarUrl;
+      bPhotoWrap.innerHTML = '<img src="'+data.blackAvatarUrl+'">';
+    }
+  } else if (bPhotoWrap.dataset.url) {
+    bPhotoWrap.dataset.url = "";
+    bPhotoWrap.innerHTML = '<div class="avatarFallbackBig">'+((data.blackName||"?")[0]||"?").toUpperCase()+'</div>';
+  }
+  document.getElementById("blackTipLine").textContent = data.blackTipAmount ? ("₹"+data.blackTipAmount+" tipped") : "";
   renderCaptured(document.getElementById("capturedByWhite"), data.capturedByWhite);
-  renderCaptured(document.getElementById("capturedByBlack"), data.capturedByBlack);
 
   document.getElementById("whiteCard").classList.toggle("active", data.fen && data.fen.includes(" w "));
   document.getElementById("blackCard").classList.toggle("active", data.fen && data.fen.includes(" b "));
+
+  // "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — win-probability বার
+  const evalWrap = document.getElementById("evalBarWrap");
+  if (typeof data.whiteWinPct === "number" && data.status === "playing") {
+    evalWrap.style.display = "block";
+    const wp = Math.max(2, Math.min(98, data.whiteWinPct));
+    document.getElementById("evalBarWhite").style.flexBasis = wp + "%";
+    document.getElementById("evalBarBlack").style.flexBasis = (100 - wp) + "%";
+    document.getElementById("evalLabelWhite").textContent = "White " + wp + "%";
+    document.getElementById("evalLabelBlack").textContent = "Black " + (100 - wp) + "%";
+  } else {
+    evalWrap.style.display = "none";
+  }
 
   document.getElementById("thinking").style.display = data.status === "playing" ? "block" : "none";
   document.getElementById("thinking").classList.toggle("active", data.status === "playing");
@@ -1175,6 +1282,7 @@ async function poll(){try{
     lastStatus = "finished-" + data.result;
     const isWin = data.result && data.result.includes("Checkmate");
     showFlash(isWin ? "🎉 " + data.result : "🤝 " + (data.result || "Draw"), isWin ? "#FFD866" : "#8FA3C0", isWin);
+    if (isWin) launchConfetti(); // জেতার মুহূর্তে কাগজের কুচির মতো উড়ন্ত কনফেটি
     playEndGameSound(isWin);
   }
   if (data.status === "playing") lastStatus = "";
@@ -1183,6 +1291,45 @@ async function poll(){try{
   if(data.audioPlaylist&&key!==lastKey){lastKey=key;queue=[...data.audioPlaylist];playQueue();}
 }catch(e){}}
 setInterval(poll,1200);poll();
+
+// জেতার সময় সত্যিকারের উড়ন্ত কনফেটি — CSS keyframe দিয়ে অনেকগুলো ছোট রঙিন ফালি উপর থেকে পড়ে
+function launchConfetti(){
+  const colors = ["#FFD866","#4FC3F7","#E8443D","#8BE28B","#FF8FCF","#B39DDB"];
+  for (let i = 0; i < 70; i++) {
+    const piece = document.createElement("div");
+    piece.className = "confettiPiece";
+    piece.style.left = Math.random()*100 + "vw";
+    piece.style.background = colors[Math.floor(Math.random()*colors.length)];
+    piece.style.animationDuration = (2.2 + Math.random()*1.8) + "s";
+    piece.style.animationDelay = (Math.random()*0.6) + "s";
+    piece.style.transform = "rotate(" + Math.floor(Math.random()*360) + "deg)";
+    document.body.appendChild(piece);
+    setTimeout(() => piece.remove(), 5000);
+  }
+}
+
+// ---------- queue ↔ recent-supporters অল্টারনেটিং প্যানেল ----------
+let altShowingQueue = true;
+function toggleAltPanel(){
+  altShowingQueue = !altShowingQueue;
+  document.getElementById("queueView").classList.toggle("show", altShowingQueue);
+  document.getElementById("donorView").classList.toggle("show", !altShowingQueue);
+}
+async function refreshRecentDonors(){
+  try {
+    const res = await fetch("/recent-donors/chessbattle?limit=6");
+    const data = await res.json();
+    const list = data.recent || [];
+    document.getElementById("recentDonorList").innerHTML = list.length ? list.map(d =>
+      '<div class="miniListRow">' +
+      (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
+      '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
+    ).join("") : '<div style="font-size:11px;color:#5a6a8a;">No tips yet</div>';
+  } catch(e){}
+}
+refreshRecentDonors();
+setInterval(refreshRecentDonors, 20000);
+setInterval(toggleAltPanel, 9000); // প্রতি ৯ সেকেন্ডে queue list ↔ recent supporters পালাক্রমে দেখাবে
 
 // ---------- সরাসরি টিপস QR + টপ ৩ ডোনার সাইকেল ----------
 fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
