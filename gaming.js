@@ -810,7 +810,7 @@ color:#FFD866;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
 .topSupCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .sideCol{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;}
 .rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:14px 18px;
-box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1.1;min-height:0;}
+box-shadow:0 10px 24px rgba(0,0,0,0.5);font-family:'Segoe UI',sans-serif;overflow-y:auto;flex:1.4;min-height:0;}
 /* "How Pieces Move" বক্সে যেন কখনোই স্ক্রলবার না লাগে (দর্শক শুধু দেখবে, স্ক্রল করতে পারবে না) —
    তাই এখানে overflow বন্ধ করে, সবগুলো (৬টা) নিয়ম একসাথে বক্সের ভেতরেই এঁটে যাওয়ার মতো ছোট করে রাখা */
 #rulesBox{overflow:hidden;display:flex;flex-direction:column;}
@@ -938,7 +938,7 @@ border:3px solid #FFD866;box-shadow:0 0 24px rgba(255,216,102,0.6);}
 .donorCelebAmount{font-size:26px;font-weight:800;color:#FFD866;margin-top:6px;}
 
 /* সরাসরি টিপস QR — মূল layout-এর ভেতরেই, বাম কলামে নিয়মের বক্সের নিচে */
-#tipBoxOverlay{flex:1.3;min-height:0;}
+#tipBoxOverlay{flex:0.75;min-height:0;}
 #tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:16px;text-align:center;
 box-shadow:0 10px 24px rgba(0,0,0,0.5);height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
 #tipQrWrap::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 20%,rgba(255,216,102,0.12),transparent 60%);pointer-events:none;}
@@ -1310,15 +1310,18 @@ function renderBoard(fen, lastMove) {
   lastAnimatedMoveKey = moveKey;
 
   if (shouldAnimate) {
-    // চাল দেওয়ার মুহূর্তে গুটিটা এক ঘর থেকে পরের ঘরে চোখের সামনে দিয়ে "হেঁটে" যাবে,
-    // আচমকা টেলিপোর্ট করবে না — এই জন্যই আগে destination square-এ গুটি লুকিয়ে,
-    // একটা ghost piece আসল from→to বরাবর slide করানো হচ্ছে
-    drawGrid(boardEl, grid, lastFromRC, lastToRC, lastToRC); // destination আপাতত খালি দেখানো হচ্ছে
-    const fromEl = boardEl.querySelector('[data-square="' + lastMove.from + '"]');
-    const toEl = boardEl.querySelector('[data-square="' + lastMove.to + '"]');
+    // চাল দেওয়ার মুহূর্তে গুটিটা এক ঘর থেকে পরের ঘরে চোখের সামনে দিয়ে "হেঁটে" যাবে, আচমকা টেলিপোর্ট করবে না।
+    // capture হলে — যে গুটিটা মারা পড়বে সে জায়গাতেই থাকবে, attacker আসলেই "পৌঁছানোর পর" সে উধাও হবে
+    // (আগে সে destination hide করার সাথে সাথেই সরাসরি অদৃশ্য হয়ে যেত, যেটা এলোমেলো/আচমকা লাগতো)
+    const fromEl0 = boardEl.querySelector('[data-square="' + lastMove.from + '"]');
+    const toEl0 = boardEl.querySelector('[data-square="' + lastMove.to + '"]');
     const movingPiece = grid.find(g => rcToSquare(g.r, g.c) === lastMove.to);
-    // এই ঘরে আগে (আগের FEN-এ) অন্য কোনো গুটি ছিল কিনা — থাকলে এটা একটা capture, আলাদা (নিচু পিচের) শব্দ হবে
     const wasOccupiedBefore = prevFenBoard && isSquareOccupiedInFen(prevFenBoard, lastToRC);
+    const capturedPieceChar = wasOccupiedBefore ? getPieceAtRC(prevFenBoard, lastToRC) : "";
+    // transitional grid — destination square-এ attacker না, বরং মৃত্যুর অপেক্ষায় থাকা গুটিটা দেখানো হচ্ছে
+    const transGrid = grid.map(g => (g.r === lastToRC.r && g.c === lastToRC.c) ? { r: g.r, c: g.c, piece: capturedPieceChar } : g);
+    drawGrid(boardEl, transGrid, lastFromRC, lastToRC, null);
+    const fromEl = fromEl0, toEl = toEl0;
     if (fromEl && toEl && movingPiece && movingPiece.piece) {
       const wrap = document.getElementById("boardWrap");
       const wrapRect = wrap.getBoundingClientRect();
@@ -1329,20 +1332,23 @@ function renderBoard(fen, lastMove) {
       ghost.className = "ghostPieceMain piece " + (isWhite ? "piece-w" : "piece-b");
       ghost.textContent = PIECE_GLYPH[movingPiece.piece] || "";
       const ANIM_MS = 1300;
-      ghost.style.cssText = "position:absolute;z-index:30;display:flex;align-items:center;justify-content:center;font-size:44px;pointer-events:none;transition:left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out;";
+      ghost.style.cssText = "position:absolute;z-index:30;display:flex;align-items:center;justify-content:center;font-size:44px;pointer-events:none;"+
+        "transition:left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out,transform "+(ANIM_MS/1000)+"s ease-in-out;"+
+        "filter:drop-shadow(0 8px 10px rgba(0,0,0,0.6));"; // চলার সময় হালকা ছায়া — যেন একটু "উঠে" ভেসে চলছে, পরিষ্কার/সুন্দর লাগে
       ghost.style.left = (fromRect.left - wrapRect.left) + "px";
       ghost.style.top = (fromRect.top - wrapRect.top) + "px";
       ghost.style.width = fromRect.width + "px";
       ghost.style.height = fromRect.height + "px";
+      ghost.style.transform = "scale(1)";
       wrap.appendChild(ghost);
-      // শব্দটা যেন blind timer-এর বদলে ব্রাউজারের নিজস্ব transitionend event-এ ফায়ার হয় —
-      // এতে গুটি ঠিক যে ফ্রেমে থেমেছে, শব্দও ঠিক সেই ফ্রেমেই বাজবে, কোনো timing drift থাকবে না
+      // শব্দ এবং capture — দুটোই blind timer-এর বদলে ব্রাউজারের transitionend event-এ ফায়ার হয়,
+      // মানে গুটি ঠিক যে মুহূর্তে থামছে, সেই মুহূর্তেই মৃত গুটিটা সরবে আর শব্দ বাজবে — কোনো drift নেই
       let landed = false;
       const onLanded = () => {
         if (landed) return;
         landed = true;
         ghost.remove();
-        drawGrid(boardEl, grid, lastFromRC, lastToRC, null);
+        drawGrid(boardEl, grid, lastFromRC, lastToRC, null); // এখন আসল পোস্ট-মুভ অবস্থায় ফিরে আসা — captured গুটি এখন সত্যিই সরে গেছে
         playMoveSound(wasOccupiedBefore);
       };
       const isKnight = movingPiece.piece.toLowerCase() === "n";
@@ -1354,16 +1360,18 @@ function renderBoard(fen, lastMove) {
         const midRC = longAxisIsRow ? { r: lastFromRC.r + dr, c: lastFromRC.c } : { r: lastFromRC.r, c: lastFromRC.c + dc };
         const midEl = boardEl.querySelector('[data-square="' + rcToSquare(midRC.r, midRC.c) + '"]');
         const midRect = midEl ? midEl.getBoundingClientRect() : null;
-        ghost.style.transition = "left "+(ANIM_MS*0.55/1000)+"s ease-in,top "+(ANIM_MS*0.55/1000)+"s ease-in";
+        ghost.style.transition = "left "+(ANIM_MS*0.55/1000)+"s ease-in,top "+(ANIM_MS*0.55/1000)+"s ease-in,transform "+(ANIM_MS*0.55/1000)+"s ease-in-out";
         requestAnimationFrame(() => {
+          ghost.style.transform = "scale(1.15)"; // মাঝপথে সামান্য বড়/উঁচু — গতির অনুভূতি
           if (midRect) { ghost.style.left = (midRect.left - wrapRect.left) + "px"; ghost.style.top = (midRect.top - wrapRect.top) + "px"; }
         });
         // দ্বিতীয় ধাপ শুরু হবে প্রথম transition শেষ হওয়ার transitionend-এ, timer-এর উপর ভরসা না করে
         ghost.addEventListener("transitionend", function phase2(e) {
           if (e.propertyName !== "left") return;
           ghost.removeEventListener("transitionend", phase2);
-          ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out";
+          ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out,transform "+(ANIM_MS*0.45/1000)+"s ease-in-out";
           requestAnimationFrame(() => {
+            ghost.style.transform = "scale(1)";
             ghost.style.left = (toRect.left - wrapRect.left) + "px";
             ghost.style.top = (toRect.top - wrapRect.top) + "px";
           });
@@ -1371,10 +1379,11 @@ function renderBoard(fen, lastMove) {
         }, { once: true });
       } else {
         requestAnimationFrame(() => {
+          ghost.style.transform = "scale(1.1)";
           ghost.style.left = (toRect.left - wrapRect.left) + "px";
           ghost.style.top = (toRect.top - wrapRect.top) + "px";
         });
-        ghost.addEventListener("transitionend", onLanded, { once: true });
+        ghost.addEventListener("transitionend", (e) => { if (e.propertyName === "left") { ghost.style.transform = "scale(1)"; onLanded(); } }, { once: true });
       }
       setTimeout(onLanded, ANIM_MS + 400); // নিরাপত্তার জন্য — কোনো কারণে transitionend না ফায়ার করলেও (যেমন ট্যাব ব্যাকগ্রাউন্ডে থাকলে) যাতে চিরকাল আটকে না থাকে
       prevFenBoard = boardPart;
@@ -1398,6 +1407,20 @@ function isSquareOccupiedInFen(fenBoardPart, rc) {
     else { if (col === rc.c) return true; col++; }
   }
   return false;
+}
+// ওই ঘরে ঠিক কোন গুটিটা ছিল (capture হওয়ার আগে) — এটা জানা দরকার, যাতে attacker গিয়ে
+// পৌঁছানোর আগ পর্যন্ত মৃত গুটিটাকে জায়গায় দেখানো যায়, হুট করে "উধাও" না হয়ে যায়
+function getPieceAtRC(fenBoardPart, rc) {
+  if (!rc) return "";
+  const rows = fenBoardPart.split("/");
+  const row = rows[rc.r];
+  if (!row) return "";
+  let col = 0;
+  for (const ch of row) {
+    if (/[0-9]/.test(ch)) { col += parseInt(ch, 10); }
+    else { if (col === rc.c) return ch; col++; }
+  }
+  return "";
 }
 function drawGrid(boardEl, grid, lastFromRC, lastToRC, hideRC) {
   boardEl.innerHTML = "";
@@ -2285,11 +2308,25 @@ function runCelebration(name, photoUrl){
 }
 function squareName(r,c){ return "abcdefgh"[c] + (8-r); }
 function squareToRC(sq){ return { r: 8 - parseInt(sq[1],10), c: sq.charCodeAt(0) - 97 }; }
+function getPieceAtRC(fenBoardPart, rc) {
+  if (!rc) return "";
+  const rows = fenBoardPart.split("/");
+  const row = rows[rc.r];
+  if (!row) return "";
+  let col = 0;
+  for (const ch of row) {
+    if (/[0-9]/.test(ch)) { col += parseInt(ch, 10); }
+    else { if (col === rc.c) return ch; col++; }
+  }
+  return "";
+}
 let lastRenderedMoveKey = "";
+let prevFenBoardPlay = "";
 function renderBoard(fen, lastMove, animate){
   const boardEl = document.getElementById("board");
   boardEl.classList.add("flipped"); // আপনি সবসময় কালো ঘুঁটি খেলছেন — নিজের গুটি সবসময় নিচে দেখানোই স্বাভাবিক
-  const rows = fen.split(" ")[0].split("/");
+  const boardPart = fen.split(" ")[0];
+  const rows = boardPart.split("/");
   const grid = [];
   for (let r=0;r<8;r++){
     let col=0;
@@ -2303,11 +2340,13 @@ function renderBoard(fen, lastMove, animate){
   lastRenderedMoveKey = moveKey;
 
   if (shouldAnimate) {
-    // চাল দেওয়ার সময় গুটিটা যেন এক ঘর থেকে আরেক ঘরে চোখের সামনে দিয়ে সরে যায় (হুট করে "টেলিপোর্ট" না করে) —
-    // destination square-এর গুটিটা প্রথমে লুকিয়ে, তার জায়গায় from→to বরাবর একটা ghost piece slide করানো হচ্ছে
+    // চাল দেওয়ার সময় গুটিটা যেন এক ঘর থেকে আরেক ঘরে চোখের সামনে দিয়ে সরে যায় (হুট করে "টেলিপোর্ট" না করে)।
+    // capture হলে — মৃত গুটিটা attacker সত্যিই পৌঁছানোর আগ পর্যন্ত জায়গায়ই থাকবে, আচমকা উধাও হবে না।
     const fromEl = boardEl.querySelector('[data-square="'+lastMove.from+'"]');
     const toEl = boardEl.querySelector('[data-square="'+lastMove.to+'"]');
+    const toRC = squareToRC(lastMove.to);
     const movingPiece = grid.find(g => squareName(g.r,g.c) === lastMove.to);
+    const capturedPieceChar = prevFenBoardPlay ? getPieceAtRC(prevFenBoardPlay, toRC) : "";
     if (fromEl && toEl && movingPiece && movingPiece.piece) {
       const wrap = document.getElementById("boardWrap");
       const wrapRect = wrap.getBoundingClientRect();
@@ -2323,37 +2362,45 @@ function renderBoard(fen, lastMove, animate){
       ghost.style.width = fromRect.width + "px";
       ghost.style.height = fromRect.height + "px";
       ghost.style.display = "flex"; ghost.style.alignItems = "center"; ghost.style.justifyContent = "center";
-      ghost.style.transition = "left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out";
+      ghost.style.transition = "left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out,transform "+(ANIM_MS/1000)+"s ease-in-out";
+      ghost.style.filter = "drop-shadow(0 8px 10px rgba(0,0,0,0.6))";
       wrap.appendChild(ghost);
-      drawGrid(grid, lastMove, true); // destination square-এ আপাতত গুটি লুকানো থাকবে animation শেষ না হওয়া পর্যন্ত
+      // destination square-এ এখন attacker না, বরং মৃত্যুর অপেক্ষায় থাকা গুটিটা (থাকলে) দেখানো হচ্ছে
+      const transGrid = grid.map(g => (g.r===toRC.r && g.c===toRC.c) ? {r:g.r,c:g.c,piece:capturedPieceChar} : g);
+      drawGrid(transGrid, lastMove, false);
       const isKnight = movingPiece.piece.toLowerCase() === "n";
       if (isKnight) {
         // ঘোড়ার আসল "L" আকৃতির পথ ধরে চলা দেখানো — সরাসরি কোনাকুনি "শর্টকাট" না নিয়ে
-        const fromRC = squareToRC(lastMove.from), toRC = squareToRC(lastMove.to);
+        const fromRC = squareToRC(lastMove.from);
         const dr = toRC.r - fromRC.r, dc = toRC.c - fromRC.c;
         const longAxisIsRow = Math.abs(dr) === 2;
         const midRC = longAxisIsRow ? { r: fromRC.r + dr, c: fromRC.c } : { r: fromRC.r, c: fromRC.c + dc };
         const midEl = document.getElementById("board").querySelector('[data-square="' + squareName(midRC.r, midRC.c) + '"]');
         const midRect = midEl ? midEl.getBoundingClientRect() : null;
-        ghost.style.transition = "left "+(ANIM_MS*0.55/1000)+"s ease-in,top "+(ANIM_MS*0.55/1000)+"s ease-in";
+        ghost.style.transition = "left "+(ANIM_MS*0.55/1000)+"s ease-in,top "+(ANIM_MS*0.55/1000)+"s ease-in,transform "+(ANIM_MS*0.55/1000)+"s ease-in-out";
         requestAnimationFrame(() => {
+          ghost.style.transform = "scale(1.15)";
           if (midRect) { ghost.style.left = (midRect.left - wrapRect.left) + "px"; ghost.style.top = (midRect.top - wrapRect.top) + "px"; }
         });
         setTimeout(() => {
-          ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out";
+          ghost.style.transition = "left "+(ANIM_MS*0.45/1000)+"s ease-out,top "+(ANIM_MS*0.45/1000)+"s ease-out,transform "+(ANIM_MS*0.45/1000)+"s ease-in-out";
+          ghost.style.transform = "scale(1)";
           ghost.style.left = (toRect.left - wrapRect.left) + "px";
           ghost.style.top = (toRect.top - wrapRect.top) + "px";
         }, ANIM_MS * 0.55);
       } else {
         requestAnimationFrame(() => {
+          ghost.style.transform = "scale(1.1)";
           ghost.style.left = (toRect.left - wrapRect.left) + "px";
           ghost.style.top = (toRect.top - wrapRect.top) + "px";
         });
+        setTimeout(() => { ghost.style.transform = "scale(1)"; }, ANIM_MS - 150);
       }
-      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); }, ANIM_MS);
+      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); prevFenBoardPlay = boardPart; }, ANIM_MS);
       return;
     }
   }
+  prevFenBoardPlay = boardPart;
   drawGrid(grid, lastMove, false);
 }
 function drawGrid(grid, lastMove, hideDestination){
