@@ -2252,15 +2252,17 @@ document.getElementById("cfgForm").addEventListener("submit", function(e){
 </script></body></html>`;
 
 const CHALLENGE_PLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Your Move!</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
-body{margin:0;background:#0a0e1f;color:#fff;font-family:sans-serif;padding:16px;text-align:center;}
-h1{color:#FFD866;font-size:20px;}
-#boardWrap{position:relative;width:320px;margin:16px auto;}
-#board{display:grid;grid-template-columns:repeat(8,40px);grid-template-rows:repeat(8,40px);width:320px;border:4px solid #8a5a2a;
-transition:transform 0.3s;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;background:#0a0e1f;color:#fff;font-family:sans-serif;text-align:center;
+touch-action:manipulation;overscroll-behavior:none;height:100%;overflow:hidden;} /* touch-action:manipulation — ব্রাউজারের ডিফল্ট ~৩০০ms ট্যাপ-ডিলে বাদ, টাচ সাথে সাথে কার্যকর হবে */
+h1{color:#FFD866;font-size:15px;margin:6px 0;}
+#boardWrap{position:relative;width:min(96vw,88vh);margin:4px auto;}
+#board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+width:100%;aspect-ratio:1;border:4px solid #8a5a2a;transition:transform 0.3s;touch-action:manipulation;}
 #board.flipped{transform:rotate(180deg);}
-.sq{display:flex;align-items:center;justify-content:center;font-size:26px;cursor:pointer;position:relative;}
+.sq{display:flex;align-items:center;justify-content:center;font-size:clamp(22px,7.5vw,44px);cursor:pointer;position:relative;touch-action:manipulation;}
 .light{background:#EFE0BF;} .dark{background:#5C3A21;}
 .sq.sel{box-shadow:inset 0 0 0 3px #FFD866;}
 .sq.lastFrom{box-shadow:inset 0 0 0 3px rgba(76,217,100,0.85);}
@@ -2273,9 +2275,10 @@ filter:drop-shadow(0 1px 0 #6b6252) drop-shadow(0 3px 3px rgba(0,0,0,0.6));}
 .piece-b{background:linear-gradient(160deg,#3a3a3a 0%,#181818 45%,#000000 100%);
 -webkit-background-clip:text;background-clip:text;color:transparent;
 filter:drop-shadow(0 1px 0 #000) drop-shadow(0 3px 3px rgba(0,0,0,0.7));}
-.ghostPiece{position:absolute;font-size:26px;pointer-events:none;z-index:20;transition:left 1.1s ease-in-out,top 1.1s ease-in-out;}
-#status{color:#7C8AAD;font-size:14px;margin-top:10px;}
-#ytWrap{margin-top:20px;}
+.ghostPiece{position:absolute;font-size:clamp(22px,7.5vw,44px);pointer-events:none;z-index:20;transition:left 1.1s ease-in-out,top 1.1s ease-in-out;}
+#status{color:#7C8AAD;font-size:12px;margin-top:6px;padding:0 10px;}
+/* মোবাইলে শুধু বোর্ডটাই যেন সম্পূর্ণ স্ক্রিন জুড়ে দেখা যায় — YouTube লাইভ আর অন্য সব বাদ (নিচে স্ক্রল করলে পাওয়া যাবে, কিন্তু ডিফল্টে দেখা যাবে না) */
+#ytWrap{margin-top:10px;}
 #ytFrame{width:100%;max-width:400px;aspect-ratio:16/9;border-radius:10px;}
 .ytNote{color:#5a6a8a;font-size:10px;margin-top:6px;}
 #celebrate{position:fixed;inset:0;background:#0a0e1f;display:flex;flex-direction:column;align-items:center;
@@ -2294,7 +2297,7 @@ filter:drop-shadow(0 1px 0 #000) drop-shadow(0 3px 3px rgba(0,0,0,0.7));}
   <div class="cSub">Your turn has started!</div>
   <div class="confetti">🎉 ♟️ 🎊 ✨</div>
 </div>
-<h1>Your move! You're playing Black</h1>
+<h1>Your move! You are playing Black</h1>
 <div id="boardWrap"><div id="board"></div></div>
 <div id="status">Loading...</div>
 <div id="ytWrap">
@@ -2352,10 +2355,18 @@ function getPieceAtRC(fenBoardPart, rc) {
 }
 let lastRenderedMoveKey = "";
 let prevFenBoardPlay = "";
+let lastRenderedFenPlay = "";
 function renderBoard(fen, lastMove, animate){
   const boardEl = document.getElementById("board");
   boardEl.classList.add("flipped"); // আপনি সবসময় কালো ঘুঁটি খেলছেন — নিজের গুটি সবসময় নিচে দেখানোই স্বাভাবিক
   const boardPart = fen.split(" ")[0];
+  const moveKey = lastMove ? (lastMove.from+lastMove.to+fen.length) : "";
+  const shouldAnimate = animate && lastMove && moveKey !== lastRenderedMoveKey;
+  // ⚡ টাচ রেসপন্স দ্রুত রাখতে — নতুন কোনো চাল না থাকলে আর বোর্ড state অপরিবর্তিত থাকলে DOM পুনরায়
+  // তৈরি করা হয় না। আগে প্রতি ১.৫ সেকেন্ডের poll-এ বোর্ডের সবকটা (৬৪টা) square DOM থেকে মুছে আবার
+  // তৈরি হতো, এমনকি কিছুই না বদলালেও — কেউ ঠিক তখন ট্যাপ করলে সেই ট্যাপটা হারিয়ে যেত, "স্লো" মনে হতো
+  if (!shouldAnimate && boardPart === lastRenderedFenPlay) { lastRenderedMoveKey = moveKey; return; }
+  lastRenderedMoveKey = moveKey;
   const rows = boardPart.split("/");
   const grid = [];
   for (let r=0;r<8;r++){
@@ -2365,9 +2376,6 @@ function renderBoard(fen, lastMove, animate){
       else { grid.push({r,c:col,piece:ch}); col++; }
     }
   }
-  const moveKey = lastMove ? (lastMove.from+lastMove.to+fen.length) : "";
-  const shouldAnimate = animate && lastMove && moveKey !== lastRenderedMoveKey;
-  lastRenderedMoveKey = moveKey;
 
   if (shouldAnimate) {
     // চাল দেওয়ার সময় গুটিটা যেন এক ঘর থেকে আরেক ঘরে চোখের সামনে দিয়ে সরে যায় (হুট করে "টেলিপোর্ট" না করে)।
@@ -2426,11 +2434,12 @@ function renderBoard(fen, lastMove, animate){
         });
         setTimeout(() => { ghost.style.transform = "scale(1)"; }, ANIM_MS - 150);
       }
-      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); prevFenBoardPlay = boardPart; }, ANIM_MS);
+      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); prevFenBoardPlay = boardPart; lastRenderedFenPlay = boardPart; }, ANIM_MS);
       return;
     }
   }
   prevFenBoardPlay = boardPart;
+  lastRenderedFenPlay = boardPart;
   drawGrid(grid, lastMove, false);
 }
 function drawGrid(grid, lastMove, hideDestination){
