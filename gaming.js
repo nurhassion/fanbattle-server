@@ -278,6 +278,12 @@ async function playChallengeGame(Chess) {
   const capturedByWhite = [];
   const capturedByBlack = [];
   const boardTheme = randomBoardTheme(); // প্রতি ম্যাচে র‍্যান্ডম থিম
+  // ⏱️ দাবার real clock — ১০ মিনিট করে দুই পক্ষের জন্য, বিশ্বব্যাপী chess.com/lichess-এ প্রচলিত
+  // স্ট্যান্ডার্ড format (একটা নির্দিষ্ট চাল-সংখ্যার সীমার চেয়ে সময়-ভিত্তিক ক্লকই বেশি প্রফেশনাল/গ্রহণযোগ্য) —
+  // যার ক্লক শূন্য হয়ে যাবে, সে টাইম-আউটে হেরে যাবে, খেলা শেষ, লাইন এগিয়ে যাবে
+  const CLOCK_MS = 10 * 60 * 1000;
+  let whiteMs = CLOCK_MS, blackMs = CLOCK_MS;
+  let timedOutSide = null; // 'w' | 'b' | null
   const state = {
     mode: "challenge",
     openingName: "🔴 LIVE CHALLENGE",
@@ -296,16 +302,19 @@ async function playChallengeGame(Chess) {
     capturedByWhite,
     capturedByBlack,
     boardTheme,
+    whiteMs, blackMs, clockMax: CLOCK_MS,
   };
   writeState("chess", state);
 
-  const TURN_TIMEOUT_MS = 90000; // মানুষ ৯০ সেকেন্ডের মধ্যে চাল না দিলে random বৈধ চাল অটো খেলে দেওয়া হয়, স্ট্রিম আটকে থাকে না
   let moveCount = 0;
-  while (!chess.isGameOver() && moveCount < 150 && chessLoopActive) {
+  while (!chess.isGameOver() && moveCount < 300 && chessLoopActive && whiteMs > 0 && blackMs > 0) {
+    const turnStart = Date.now();
     if (chess.turn() === "w") {
       const thinkTimeMs = 1200 + Math.floor(Math.random() * 1200);
       const { bestmove, candidates } = await getCandidateMoves(engine, chess.fen(), thinkTimeMs);
+      whiteMs = Math.max(0, whiteMs - (Date.now() - turnStart));
       if (!bestmove) break;
+      if (whiteMs <= 0) { timedOutSide = "w"; break; } // সাদার ক্লক এই চালেই শেষ হয়ে গেল
       const mv = chess.move(bestmove, { sloppy: true });
       if (!mv) break;
       state.lastMove = { from: mv.from, to: mv.to };
@@ -314,19 +323,23 @@ async function playChallengeGame(Chess) {
       state.whiteWinPct = Math.round(100 / (1 + Math.pow(10, -Math.max(-1000, Math.min(1000, bestCp)) / 400)));
     } else {
       const beforeFen = chess.fen();
-      const deadline = Date.now() + TURN_TIMEOUT_MS;
-      while (Date.now() < deadline && chess.fen() === beforeFen && chessLoopActive) {
-        await sleep(500);
+      const turnDeadline = turnStart + blackMs; // মানুষের নিজের বাকি ক্লক-টাইমই এখানে deadline
+      let lastTickWrite = 0;
+      while (Date.now() < turnDeadline && chess.fen() === beforeFen && chessLoopActive) {
+        await sleep(400);
+        const elapsed = Date.now() - turnStart;
+        state.blackMs = Math.max(0, blackMs - elapsed);
+        // প্রতি ~সেকেন্ডে একবার state লেখা যথেষ্ট — প্রতি 400ms-এ লিখলে অপ্রয়োজনীয় I/O বাড়বে
+        if (Date.now() - lastTickWrite > 900) { writeState("chess", state); if (activeChallenge) activeChallenge.blackMs = state.blackMs; lastTickWrite = Date.now(); }
       }
       if (chess.fen() === beforeFen) {
-        // টাইমআউট — random বৈধ চাল অটো খেলে দেওয়া, যাতে স্ট্রিম আটকে না থাকে
-        const legal = chess.moves();
-        if (legal.length) {
-          const mv = chess.move(legal[Math.floor(Math.random() * legal.length)]);
-          if (mv && mv.captured) capturedByBlack.push(mv.captured);
-          state.lastMove = mv ? { from: mv.from, to: mv.to } : state.lastMove;
-        }
+        // ⏱️ ক্লক শেষ — এখন আর random চাল অটো-খেলে দেওয়া হয় না, বরং টাইম-আউটে সরাসরি হার,
+        // খেলা শেষ, লাইনে পরের জনের পালা আসবে
+        blackMs = 0;
+        timedOutSide = "b";
+        break;
       } else {
+        blackMs = Math.max(0, blackMs - (Date.now() - turnStart));
         const lastHist = chess.history({ verbose: true }).slice(-1)[0];
         if (lastHist) {
           state.lastMove = { from: lastHist.from, to: lastHist.to };
@@ -340,17 +353,25 @@ async function playChallengeGame(Chess) {
     state.capturedByWhite = capturedByWhite;
     state.capturedByBlack = capturedByBlack;
     state.queue = getQueuePublicState();
-    if (activeChallenge) activeChallenge.lastMove = state.lastMove; // play পেজে move animation-এর জন্য দরকার
+    state.whiteMs = whiteMs; state.blackMs = blackMs;
+    if (activeChallenge) { activeChallenge.lastMove = state.lastMove; activeChallenge.whiteMs = whiteMs; activeChallenge.blackMs = blackMs; } // play পেজে move animation + ক্লক দেখানোর জন্য দরকার
     writeState("chess", state);
     await sleep(1700); // অ্যানিমেশন (~1.1s) সম্পূর্ণ শেষ হওয়া পর্যন্ত সময় দেওয়া, নাহলে পরের চাল মাঝপথে এসে animation কেটে দিতে পারে
   }
 
   engine.proc.kill();
-  const winnerName = chess.isCheckmate() ? (chess.turn() === "w" ? challenger.name : YOUR_DISPLAY_NAME) : null;
+  let winnerName;
+  if (timedOutSide === "w") winnerName = challenger.name; // সাদার (Nur) ক্লক শেষ — challenger জিতল
+  else if (timedOutSide === "b") winnerName = YOUR_DISPLAY_NAME; // challenger-এর ক্লক শেষ — Nur জিতল
+  else winnerName = chess.isCheckmate() ? (chess.turn() === "w" ? challenger.name : YOUR_DISPLAY_NAME) : null;
   state.status = "finished";
-  state.result = winnerName ? `Checkmate — ${winnerName} wins` : "Draw";
+  state.result = winnerName
+    ? (timedOutSide ? `Time out — ${winnerName} wins` : `Checkmate — ${winnerName} wins`)
+    : "Draw";
   state.lastCommentaryBn = winnerName
-    ? `🎉 ${winnerName} এই চ্যালেঞ্জ ম্যাচে ${YOUR_DISPLAY_NAME}-কে হারিয়ে দিল! দারুণ খেলা।`
+    ? (timedOutSide
+        ? `⏱️ সময় শেষ! ${winnerName} এই চ্যালেঞ্জ ম্যাচে জিতে গেল — প্রতিপক্ষের ক্লক ফুরিয়ে গিয়েছিল।`
+        : `🎉 ${winnerName} এই চ্যালেঞ্জ ম্যাচে ${YOUR_DISPLAY_NAME}-কে হারিয়ে দিল! দারুণ খেলা।`)
     : `চ্যালেঞ্জ ম্যাচ ড্র হলো — ${challenger.name} বনাম ${YOUR_DISPLAY_NAME}। ভালো লড়াই হয়েছে।`;
   writeState("chess", state);
 
@@ -827,6 +848,11 @@ font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid
 .pName{font-size:16px;font-weight:700;color:#fff;}
 .pLabel{font-size:10px;color:#7C8AAD;margin-top:2px;text-transform:uppercase;letter-spacing:1px;}
 .captured{margin-top:10px;min-height:26px;font-size:18px;letter-spacing:2px;color:#FFD866;opacity:0.9;}
+/* দাবার ক্লক — ১০ মিনিট, চলমান turn-এর পক্ষটার ক্লক হাইলাইট থাকে, ১ মিনিটের নিচে লাল হয়ে সতর্ক করে */
+.clockDisplay{margin-top:6px;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;
+color:#7C8AAD;background:#0f1526;border-radius:8px;padding:4px 10px;display:inline-block;}
+.clockDisplay.active{color:#0a0e1f;background:#FFD866;}
+.clockDisplay.low{color:#fff;background:#E8443D;animation:pulse 1s ease-in-out infinite;}
 /* প্রতিপক্ষ/challenger-এর বড় কার্ড — ছবিটাই এখানে মূল ফোকাস, নিচে অল্প জায়গায় নাম+টিপস */
 .playerCard.big{padding:0;overflow:hidden;flex:0 0 40%;display:flex;flex-direction:column;min-height:0;}
 .playerCard.big.small{flex:0 0 32%;} /* এবার একটু ছোট — নিচের queue বক্সকে বেশি জায়গা দিতে */
@@ -951,6 +977,7 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
       <div class="avatar" id="whiteAvatar">N</div>
       <div class="pName" id="whiteName">—</div>
       <div class="pLabel">WHITE</div>
+      <div class="clockDisplay" id="whiteClock" style="display:none;">10:00</div>
       <div class="captured" id="capturedByWhite"></div>
     </div>
     <!-- সরাসরি টিপস — এখন উপরে, ফিক্সড উচ্চতা যাতে QR সবসময় পুরোপুরি দেখা যায় -->
@@ -1015,6 +1042,7 @@ font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:c
       <div class="bigPhotoWrap" id="blackPhotoWrap"><div class="avatarFallbackBig" id="blackAvatarFallback">?</div></div>
       <div class="bigInfoFooter">
         <div class="pName" id="blackName">—</div>
+        <div class="clockDisplay" id="blackClock" style="display:none;">10:00</div>
       </div>
     </div>
     <!-- চ্যালেঞ্জ queue — এখন প্লেইন, ফিক্সড, অল্টারনেট করে না, আকার সবসময় স্থির -->
@@ -1490,6 +1518,19 @@ async function poll(){try{
   document.getElementById("whiteCard").classList.toggle("active", data.fen && data.fen.includes(" w "));
   document.getElementById("blackCard").classList.toggle("active", data.fen && data.fen.includes(" b "));
 
+  // দাবার ক্লক — শুধু challenge মোডে (মানুষের বিরুদ্ধে খেলা) থাকে, সাধারণ auto-game-এ দেখায় না
+  const wClockEl = document.getElementById("whiteClock"), bClockEl = document.getElementById("blackClock");
+  if (typeof data.whiteMs === "number" && typeof data.blackMs === "number") {
+    const fmt = (ms) => { const s = Math.max(0, Math.round(ms/1000)); return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0"); };
+    wClockEl.style.display = "inline-block"; bClockEl.style.display = "inline-block";
+    wClockEl.textContent = fmt(data.whiteMs); bClockEl.textContent = fmt(data.blackMs);
+    const isWhiteTurn = data.fen && data.fen.includes(" w ");
+    wClockEl.classList.toggle("active", isWhiteTurn); bClockEl.classList.toggle("active", !isWhiteTurn);
+    wClockEl.classList.toggle("low", data.whiteMs < 60000); bClockEl.classList.toggle("low", data.blackMs < 60000);
+  } else {
+    wClockEl.style.display = "none"; bClockEl.style.display = "none";
+  }
+
   // "এই মুহূর্তে থামলে কে কতটা এগিয়ে" — win-probability বার, প্রতি ম্যাচে নাম বদলায়
   const evalWrap = document.getElementById("evalBarWrap");
   document.getElementById("evalNameWhite").textContent = data.whiteName || "White";
@@ -1516,7 +1557,7 @@ async function poll(){try{
 
   if (data.status === "finished" && lastStatus !== "finished-" + data.result) {
     lastStatus = "finished-" + data.result;
-    const isWin = data.result && data.result.includes("Checkmate");
+    const isWin = data.result && (data.result.includes("Checkmate") || data.result.includes("Time out"));
     showFlash(isWin ? "🎉 " + data.result : "🤝 " + (data.result || "Draw"), isWin ? "#FFD866" : "#8FA3C0", isWin);
     if (isWin) launchConfetti(); // জেতার মুহূর্তে কাগজের কুচির মতো উড়ন্ত কনফেটি
     playEndGameSound(isWin);
@@ -2298,6 +2339,11 @@ filter:drop-shadow(0 1px 0 #000) drop-shadow(0 3px 3px rgba(0,0,0,0.7));}
   <div class="confetti">🎉 ♟️ 🎊 ✨</div>
 </div>
 <h1>Your move! You are playing Black</h1>
+<div id="clockRow" style="display:none;font-weight:800;font-size:16px;font-variant-numeric:tabular-nums;margin:2px 0;">
+  <span id="clockYou" style="color:#FFD866;">10:00</span> <span style="color:#5a6a8a;font-size:11px;">you</span>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <span id="clockOpp" style="color:#7C8AAD;">10:00</span> <span style="color:#5a6a8a;font-size:11px;">Nur</span>
+</div>
 <div id="boardWrap"><div id="board"></div></div>
 <div id="status">Loading...</div>
 <div id="ytWrap">
@@ -2493,6 +2539,13 @@ async function poll(){
     if (!hasCelebrated) runCelebration(data.name, data.photoUrl);
     renderBoard(data.fen, data.lastMove, hasCelebrated);
     document.getElementById("status").textContent = data.turn === "b" ? "✅ Your turn — click a piece, then click where you want to move it" : "⏳ Nur is thinking...";
+    if (typeof data.blackMs === "number" && typeof data.whiteMs === "number") {
+      const fmt = (ms) => { const s = Math.max(0, Math.round(ms/1000)); return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0"); };
+      document.getElementById("clockRow").style.display = "block";
+      document.getElementById("clockYou").textContent = fmt(data.blackMs);
+      document.getElementById("clockOpp").textContent = fmt(data.whiteMs);
+      document.getElementById("clockYou").style.color = data.blackMs < 60000 ? "#E8443D" : "#FFD866";
+    }
   }catch(e){}
 }
 setInterval(poll, 1500); poll();
@@ -2562,10 +2615,31 @@ module.exports = function mountGaming(app) {
     res.json({ ok: true });
   });
 
+  // কুকি পড়া/লেখার জন্য হালকা helper — নতুন কোনো npm প্যাকেজ ছাড়াই
+  function readCookie(req, name) {
+    const header = req.headers.cookie || "";
+    const match = header.split(";").map(s => s.trim()).find(s => s.startsWith(name + "="));
+    return match ? decodeURIComponent(match.split("=")[1]) : null;
+  }
+  function setCookie(res, name, value, maxAgeSec) {
+    res.setHeader("Set-Cookie", `${name}=${encodeURIComponent(value)}; Max-Age=${maxAgeSec}; Path=/; SameSite=Lax`);
+  }
+
   app.post("/gaming/challenge/join", (req, res, next) => {
     if (upload) return upload.single("photo")(req, res, next);
     next();
   }, express.urlencoded({ extended: true }), (req, res) => {
+    // একই ব্রাউজার/ডিভাইস থেকে আগের একটা queue-entry এখনো সক্রিয় (লাইনে আছে অথবা এখনই খেলছে) থাকলে
+    // দ্বিতীয়বার নতুন করে লাইনে ঢুকতে দেওয়া হচ্ছে না — বরং তার আগের entry-টাই ফিরিয়ে দেওয়া হচ্ছে,
+    // যাতে একজনই লাইন "স্প্যাম" করে বারবার নিজের সুযোগ বাড়িয়ে নিতে না পারে
+    const existingId = readCookie(req, "chessQueueId");
+    if (existingId) {
+      const stillInQueue = challengeQueue.some(q => q.id === existingId);
+      const isCurrentlyPlaying = activeChallenge && activeChallenge.id === existingId;
+      if (stillInQueue || isCurrentlyPlaying) {
+        return res.json({ id: existingId, alreadyInQueue: true });
+      }
+    }
     const id = nextQueueId();
     const name = ((req.body && req.body.name) || "Guest").toString().slice(0, 30);
     const photoUrl = req.file ? `/gaming/uploads/${path.basename(req.file.path)}` : "";
@@ -2575,6 +2649,7 @@ module.exports = function mountGaming(app) {
     if (!Number.isFinite(tipAmount) || tipAmount < 0) tipAmount = 0;
     if (tipAmount > 1000000) tipAmount = 1000000; // অস্বাভাবিক বড় সংখ্যা আটকানো
     challengeQueue.push({ id, name, photoUrl, tipAmount, joinedAt: Date.now() });
+    setCookie(res, "chessQueueId", id, 3600); // ১ ঘণ্টা — এর মধ্যে আবার join চাপলে পুরনো entry-ই ফেরত পাবে
     res.json({ id });
   });
 
@@ -2595,6 +2670,8 @@ module.exports = function mountGaming(app) {
       name: activeChallenge.name,
       photoUrl: activeChallenge.photoUrl,
       lastMove: activeChallenge.lastMove || null,
+      whiteMs: typeof activeChallenge.whiteMs === "number" ? activeChallenge.whiteMs : null,
+      blackMs: typeof activeChallenge.blackMs === "number" ? activeChallenge.blackMs : null,
     });
   });
 
