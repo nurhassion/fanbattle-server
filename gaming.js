@@ -2103,30 +2103,60 @@ document.getElementById("joinForm").addEventListener("submit", async (e) => {
 </script></body></html>`;
 
 const CHALLENGE_STATUS_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Queue Status</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
-* { box-sizing: border-box; }
-html,body{margin:0;height:100%;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;overflow:hidden;}
-#liveFrame{position:fixed;inset:0;width:100%;height:100%;border:0;}
-#hud{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(0deg,rgba(10,14,31,0.97) 60%,rgba(10,14,31,0.0));
-  padding:16px 16px 20px;text-align:center;}
-#posRow{display:flex;align-items:center;justify-content:center;gap:10px;}
-#pos{font-size:40px;font-weight:900;color:#FFD866;}
-#msg{color:#B8C4D9;font-size:13px;margin-top:2px;}
-.btnRow{display:flex;gap:10px;margin-top:12px;}
-button{flex:1;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:14px;cursor:pointer;}
+* { box-sizing: border-box; -webkit-tap-highlight-color:transparent; }
+html,body{margin:0;height:100%;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;overflow:hidden;
+touch-action:manipulation;}
+#topBar{padding:8px 12px;text-align:center;}
+#queueBadge{display:inline-flex;align-items:center;gap:8px;background:#161b2e;border:1px solid #2a3352;
+border-radius:20px;padding:6px 16px;font-weight:800;}
+#pos{color:#FFD866;font-size:18px;}
+#msg{color:#7C8AAD;font-size:11px;margin-top:4px;}
+/* স্পেকটেটর কার্ড — উপরে প্রতিপক্ষ, নিচে Nur, মাঝে বোর্ড (মোবাইল গেমিং অ্যাপের মতো লেআউট) */
+.pCard{display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 10px;}
+.pCard .av{width:30px;height:30px;border-radius:50%;object-fit:cover;background:#4FC3F7;flex-shrink:0;}
+.pCard .avFallback{width:30px;height:30px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:900;
+display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.pCard .nm{font-weight:800;font-size:14px;}
+.pCard .clk{font-variant-numeric:tabular-nums;font-weight:800;font-size:13px;color:#7C8AAD;
+background:#0f1526;border-radius:6px;padding:2px 8px;margin-left:6px;}
+.pCard .clk.active{color:#0a0e1f;background:#FFD866;}
+#boardWrap{position:relative;width:min(94vw,66vh);margin:2px auto;}
+#board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+width:100%;aspect-ratio:1;border:4px solid #8a5a2a;}
+.sq{display:flex;align-items:center;justify-content:center;font-size:clamp(20px,6.6vw,38px);position:relative;}
+.light{background:#EFE0BF;} .dark{background:#5C3A21;}
+.sq.lastFrom{box-shadow:inset 0 0 0 3px rgba(76,217,100,0.85);}
+.sq.lastTo{box-shadow:inset 0 0 0 3px #FFD866;}
+.piece{display:inline-block;}
+.piece-w{background:linear-gradient(160deg,#ffffff 0%,#f0ede4 40%,#d4cbb8 100%);
+-webkit-background-clip:text;background-clip:text;color:transparent;
+filter:drop-shadow(0 1px 0 #6b6252) drop-shadow(0 3px 3px rgba(0,0,0,0.6));}
+.piece-b{background:linear-gradient(160deg,#3a3a3a 0%,#181818 45%,#000000 100%);
+-webkit-background-clip:text;background-clip:text;color:transparent;
+filter:drop-shadow(0 1px 0 #000) drop-shadow(0 3px 3px rgba(0,0,0,0.7));}
+.ghostPiece{position:absolute;pointer-events:none;z-index:20;transition:left 1.1s ease-in-out,top 1.1s ease-in-out;
+font-size:clamp(20px,6.6vw,38px);}
+#hud{padding:6px 12px 14px;text-align:center;}
+.btnRow{display:flex;gap:8px;margin-top:8px;}
+button{flex:1;padding:11px;border-radius:10px;border:none;font-weight:700;font-size:13px;cursor:pointer;}
 #notifyBtn{background:#4FC3F7;color:#0a0e1f;}
 #leaveBtn{background:#26314f;color:#F5F7FA;border:1px solid #3a4a70;}
-#pushStatus{color:#5a6a8a;font-size:11px;margin-top:8px;min-height:14px;}
-#alertBanner{position:fixed;top:0;left:0;right:0;background:#E8443D;color:#fff;font-weight:800;font-size:15px;
-  text-align:center;padding:12px;display:none;animation:pulse 1s infinite;}
+#pushStatus{color:#5a6a8a;font-size:10px;margin-top:6px;min-height:12px;}
+#alertBanner{position:fixed;top:0;left:0;right:0;background:#E8443D;color:#fff;font-weight:800;font-size:14px;
+  text-align:center;padding:10px;display:none;animation:pulse 1s infinite;z-index:30;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.55;}}
 </style></head><body>
 <div id="alertBanner">🔔 Your turn is almost here — only 2 people left, get ready!</div>
-<iframe id="liveFrame" src="/gaming/overlay/chess"></iframe>
-<div id="hud">
-  <div id="posRow"><div id="pos">...</div></div>
+<div id="topBar">
+  <div id="queueBadge"><span id="pos">...</span></div>
   <div id="msg">Loading...</div>
+</div>
+<div class="pCard" id="oppCard"><div class="avFallback" id="oppAv">?</div><div class="nm" id="oppName">—</div><div class="clk" id="oppClock" style="display:none;">10:00</div></div>
+<div id="boardWrap"><div id="board"></div></div>
+<div class="pCard" id="whiteCard"><div class="avFallback" id="whiteAv">N</div><div class="nm" id="whiteName">Nur</div><div class="clk" id="whiteClock" style="display:none;">10:00</div></div>
+<div id="hud">
   <div class="btnRow">
     <button id="notifyBtn">🔔 Turn on notifications</button>
     <button id="leaveBtn">✖ Leave the queue</button>
@@ -2159,11 +2189,11 @@ document.getElementById("notifyBtn").addEventListener("click", async () => {
 document.getElementById("leaveBtn").addEventListener("click", async () => {
   if (!confirm("Are you sure you want to leave the queue?")) return;
   await fetch("/gaming/challenge/leave", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ id }) });
-  document.getElementById("msg").textContent = "You've left the queue. Thank you!";
+  document.getElementById("msg").textContent = "You have left the queue. Thank you!";
   document.getElementById("pos").textContent = "—";
 });
 let lastPosition = null;
-async function poll(){
+async function pollQueue(){
   try{
     const res = await fetch("/gaming/challenge/queue-state?id="+id);
     const data = await res.json();
@@ -2179,11 +2209,108 @@ async function poll(){
       lastPosition = data.position;
     } else {
       document.getElementById("pos").textContent = "—";
-      document.getElementById("msg").textContent = "Your turn may already be over, or the queue entry can't be found.";
+      document.getElementById("msg").textContent = "Your turn may already be over, or the queue entry cannot be found.";
     }
   }catch(e){}
 }
-setInterval(poll, 3000); poll();
+setInterval(pollQueue, 3000); pollQueue();
+
+// ---------- সরাসরি live board (native, iframe না — মোবাইলে বড়/স্পষ্ট দেখানোর জন্য) ----------
+const PIECE_GLYPH = { p:"♟",r:"♜",n:"♞",b:"♝",q:"♛",k:"♚", P:"♟",R:"♜",N:"♞",B:"♝",Q:"♛",K:"♚" };
+function squareName(r,c){ return "abcdefgh"[c] + (8-r); }
+function squareToRC(sq){ return { r: 8 - parseInt(sq[1],10), c: sq.charCodeAt(0) - 97 }; }
+let lastRenderedFenStatus = "";
+let lastRenderedMoveKeyStatus = "";
+function renderStatusBoard(fen, lastMove, animate){
+  const boardEl = document.getElementById("board");
+  const boardPart = fen.split(" ")[0];
+  const moveKey = lastMove ? (lastMove.from+lastMove.to+fen.length) : "";
+  const shouldAnimate = animate && lastMove && moveKey !== lastRenderedMoveKeyStatus;
+  if (!shouldAnimate && boardPart === lastRenderedFenStatus) { lastRenderedMoveKeyStatus = moveKey; return; }
+  lastRenderedMoveKeyStatus = moveKey;
+  const rows = boardPart.split("/");
+  const grid = [];
+  for (let r=0;r<8;r++){
+    let col=0;
+    for (const ch of rows[r]) {
+      if (/[0-9]/.test(ch)) { const n=parseInt(ch,10); for(let i=0;i<n;i++){grid.push({r,c:col,piece:""});col++;} }
+      else { grid.push({r,c:col,piece:ch}); col++; }
+    }
+  }
+  if (shouldAnimate) {
+    const fromEl = boardEl.querySelector('[data-square="'+lastMove.from+'"]');
+    const toEl = boardEl.querySelector('[data-square="'+lastMove.to+'"]');
+    const toRC = squareToRC(lastMove.to);
+    const movingPiece = grid.find(g => squareName(g.r,g.c) === lastMove.to);
+    if (fromEl && toEl && movingPiece && movingPiece.piece) {
+      const wrap = document.getElementById("boardWrap");
+      const wrapRect = wrap.getBoundingClientRect();
+      const fromRect = fromEl.getBoundingClientRect();
+      const toRect = toEl.getBoundingClientRect();
+      const ghost = document.createElement("div");
+      const isWhite = movingPiece.piece === movingPiece.piece.toUpperCase();
+      ghost.className = "ghostPiece piece " + (isWhite ? "piece-w" : "piece-b");
+      ghost.textContent = PIECE_GLYPH[movingPiece.piece] || "";
+      ghost.style.left = (fromRect.left - wrapRect.left) + "px";
+      ghost.style.top = (fromRect.top - wrapRect.top) + "px";
+      ghost.style.width = fromRect.width + "px";
+      ghost.style.height = fromRect.height + "px";
+      ghost.style.display = "flex"; ghost.style.alignItems = "center"; ghost.style.justifyContent = "center";
+      wrap.appendChild(ghost);
+      statusDrawGrid(grid, lastMove, true);
+      requestAnimationFrame(() => {
+        ghost.style.left = (toRect.left - wrapRect.left) + "px";
+        ghost.style.top = (toRect.top - wrapRect.top) + "px";
+      });
+      setTimeout(() => { ghost.remove(); statusDrawGrid(grid, lastMove, false); lastRenderedFenStatus = boardPart; }, 1150);
+      return;
+    }
+  }
+  statusDrawGrid(grid, lastMove, false);
+  lastRenderedFenStatus = boardPart;
+}
+function statusDrawGrid(grid, lastMove, hideDestination){
+  const boardEl = document.getElementById("board");
+  boardEl.innerHTML = "";
+  grid.forEach(g => {
+    const sq = document.createElement("div");
+    const sqName = squareName(g.r,g.c);
+    let cls = "sq " + ((g.r+g.c)%2===0?"light":"dark");
+    if (lastMove && sqName === lastMove.from) cls += " lastFrom";
+    if (lastMove && sqName === lastMove.to) cls += " lastTo";
+    sq.className = cls;
+    sq.dataset.square = sqName;
+    const piece = (hideDestination && lastMove && sqName===lastMove.to) ? "" : g.piece;
+    if (piece) {
+      const isWhite = piece === piece.toUpperCase();
+      sq.innerHTML = '<span class="piece ' + (isWhite ? "piece-w" : "piece-b") + '">' + (PIECE_GLYPH[piece]||"") + '</span>';
+    }
+    boardEl.appendChild(sq);
+  });
+}
+function fmtClock(ms){ const s = Math.max(0, Math.round(ms/1000)); return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0"); }
+async function pollBoard(){
+  try{
+    const res = await fetch("/gaming/state/chess.json?t="+Date.now());
+    const data = await res.json();
+    renderStatusBoard(data.fen, data.lastMove, true);
+    document.getElementById("whiteName").textContent = data.whiteName || "Nur";
+    document.getElementById("oppName").textContent = data.blackName || "—";
+    const wAv = document.getElementById("whiteAv");
+    if (data.whiteAvatarUrl) wAv.outerHTML = '<img class="av" id="whiteAv" src="'+data.whiteAvatarUrl+'">';
+    const oAv = document.getElementById("oppAv");
+    if (data.blackAvatarUrl && oAv.tagName !== "IMG") oAv.outerHTML = '<img class="av" id="oppAv" src="'+data.blackAvatarUrl+'">';
+    else if (!data.blackAvatarUrl) document.getElementById("oppAv").textContent = (data.blackName||"?")[0] || "?";
+    if (typeof data.whiteMs === "number" && typeof data.blackMs === "number") {
+      const isWhiteTurn = data.fen && data.fen.includes(" w ");
+      const wc = document.getElementById("whiteClock"), oc = document.getElementById("oppClock");
+      wc.style.display = "inline-block"; oc.style.display = "inline-block";
+      wc.textContent = fmtClock(data.whiteMs); oc.textContent = fmtClock(data.blackMs);
+      wc.classList.toggle("active", isWhiteTurn); oc.classList.toggle("active", !isWhiteTurn);
+    }
+  }catch(e){}
+}
+setInterval(pollBoard, 1500); pollBoard();
 </script></body></html>`;
 
 // ---------------------------------------------------------------------------
