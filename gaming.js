@@ -213,7 +213,19 @@ function notifyQueuePositions() {
     const position = i + 1;
     if (q.lastNotifiedPosition === position) return;
     q.lastNotifiedPosition = position;
-    if (position === 3) {
+    if (position === 1) {
+      // "প্রায় ২ মিনিট আগে" এর সবচেয়ে কাছাকাছি বাস্তবসম্মত সংকেত — এখন লাইনে ঠিক পরেরজন,
+      // মানে চলতি ম্যাচ শেষ হলেই তার পালা শুরু হবে। এটা "রিং"-স্টাইল — দীর্ঘ vibration pattern,
+      // notification নিজে থেকে বন্ধ হবে না (requireInteraction), tab খোলা থাকলে সাথে আসল রিংটোনও বাজবে
+      sendPushToId(q.id, {
+        title: "📞 আপনার পালা প্রায় এসে গেছে!",
+        body: `${q.name}, এখন আপনিই লাইনে সবার আগে — এখনই তৈরি হয়ে যান, চলতি ম্যাচ শেষ হলেই আপনার সুযোগ!`,
+        tag: "queue-ring",
+        requireInteraction: true,
+        ring: true,
+        url: "/gaming/challenge/status?id=" + q.id,
+      });
+    } else if (position === 3) {
       // মানে তার আগে মাত্র ২ জন বাকি — বড় এলার্ম-স্টাইল নোটিফিকেশন
       sendPushToId(q.id, {
         title: "🔔 প্রায় আপনার পালা!",
@@ -2013,12 +2025,19 @@ self.addEventListener('push', function (event) {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) {}
   const title = data.title || 'Chess Battle Live';
+  // "ring"-স্টাইল নোটিফিকেশনে অনেক লম্বা, বারবার কম্পনের প্যাটার্ন — ফোনের রিং-এর কাছাকাছি অনুভূতি
+  // দেওয়ার জন্য এটাই সবচেয়ে বাস্তবসম্মত (Web Push API-তে সত্যিকারের অসীম-লুপ ringtone চালানো যায় না,
+  // ব্রাউজার/OS নিজেই এটা নিরাপত্তার কারণে আটকে রাখে — তবে দীর্ঘ vibrate pattern + requireInteraction
+  // মিলিয়ে এটাই সবচেয়ে কাছাকাছি যেটা দেওয়া সম্ভব)
+  const vibratePattern = data.ring
+    ? [400,150,400,150,400,150,400,150,400,150,400,150,400]
+    : (data.requireInteraction ? [300, 100, 300, 100, 300] : [150, 60, 150]);
   const options = {
     body: data.body || '',
     tag: data.tag || 'general',
     renotify: true,
     requireInteraction: !!data.requireInteraction,
-    vibrate: data.requireInteraction ? [300, 100, 300, 100, 300] : [150, 60, 150],
+    vibrate: vibratePattern,
     data: { url: data.url || '/gaming/challenge/status' },
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -2237,21 +2256,40 @@ document.getElementById("leaveBtn").addEventListener("click", async () => {
   document.getElementById("pos").textContent = "—";
 });
 let lastPosition = null;
+let ringTimer = null;
+function startRinging(){
+  if (ringTimer) return; // আগে থেকেই বাজতে থাকলে আবার শুরু করার দরকার নেই
+  beep([600,900], true);
+  ringTimer = setInterval(() => beep([600,900], true), 2500); // ফোনের রিং-এর মতো বারবার বাজতে থাকবে
+  if (navigator.vibrate) navigator.vibrate([400,150,400,150,400]);
+}
+function stopRinging(){
+  if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
+}
 async function pollQueue(){
   try{
     const res = await fetch("/gaming/challenge/queue-state?id="+id);
     const data = await res.json();
-    if (data.isYourTurn) { location.href = "/gaming/challenge/play?id="+id; return; }
+    if (data.isYourTurn) { stopRinging(); location.href = "/gaming/challenge/play?id="+id; return; }
     if (data.position) {
       document.getElementById("pos").textContent = "#"+data.position;
       document.getElementById("msg").textContent = data.total+" people total in the queue, please wait...";
       const banner = document.getElementById("alertBanner");
-      if (data.position <= 3 && lastPosition !== data.position) {
-        if (data.position === 3) { banner.style.display = "block"; beep([880,660,880,660],true); setTimeout(()=>banner.style.display="none", 6000); }
-        else beep([520,700], false);
+      if (data.position === 1) {
+        // ঠিক আপনার আগের ম্যাচটাই এখন চলছে — এখন থেকেই "রিং" বাজতে থাকবে, ট্যাব খোলা/ফোন আনলক থাকলে
+        banner.textContent = "📞 Your turn is coming up next — get ready!";
+        banner.style.display = "block";
+        startRinging();
+      } else {
+        stopRinging();
+        if (data.position <= 3 && lastPosition !== data.position) {
+          if (data.position === 3) { banner.textContent = "🔔 Your turn is almost here — only 2 people left, get ready!"; banner.style.display = "block"; beep([880,660,880,660],true); setTimeout(()=>banner.style.display="none", 6000); }
+          else beep([520,700], false);
+        }
       }
       lastPosition = data.position;
     } else {
+      stopRinging();
       document.getElementById("pos").textContent = "—";
       document.getElementById("msg").textContent = "Your turn may already be over, or the queue entry cannot be found.";
     }
