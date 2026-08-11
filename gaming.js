@@ -2093,11 +2093,27 @@ document.getElementById("joinForm").addEventListener("submit", async (e) => {
   const btn = e.target.querySelector("button");
   btn.disabled = true; btn.textContent = "Joining queue...";
   const fd = new FormData(e.target);
-  const res = await fetch("/gaming/challenge/join", { method: "POST", body: fd });
-  const data = await res.json();
-  if (data.id) {
-    setupPush(data.id, null).catch(()=>{}); // ব্যাকগ্রাউন্ডে চেষ্টা করবে, আটকাবে না
-    location.href = "/gaming/challenge/status?id=" + data.id;
+  // Render-এর ফ্রি সার্ভার কিছুক্ষণ নিষ্ক্রিয় থাকলে "ঘুমিয়ে" যায়, প্রথম রিকোয়েস্টে জাগতে
+  // ৫০+ সেকেন্ড লাগতে পারে — তাই দীর্ঘ সময় লাগলে স্পষ্ট বার্তা দেখানো, আর কোনো error হলে
+  // বাটনটা যেন চিরকাল "Joining queue..." লেখা আটকে না থেকে যায়
+  const slowNoticeTimer = setTimeout(() => {
+    btn.textContent = "Still working — the server may be waking up, please wait...";
+  }, 6000);
+  try {
+    const res = await fetch("/gaming/challenge/join", { method: "POST", body: fd });
+    clearTimeout(slowNoticeTimer);
+    if (!res.ok) throw new Error("Server returned an error (" + res.status + ")");
+    const data = await res.json();
+    if (data.id) {
+      setupPush(data.id, null).catch(()=>{}); // ব্যাকগ্রাউন্ডে চেষ্টা করবে, আটকাবে না
+      location.href = "/gaming/challenge/status?id=" + data.id;
+    } else {
+      throw new Error("No queue id returned");
+    }
+  } catch (err) {
+    clearTimeout(slowNoticeTimer);
+    btn.disabled = false;
+    btn.textContent = "Could not join — tap to try again";
   }
 });
 </script></body></html>`;
@@ -2756,28 +2772,37 @@ module.exports = function mountGaming(app) {
     if (upload) return upload.single("photo")(req, res, next);
     next();
   }, express.urlencoded({ extended: true }), (req, res) => {
-    // একই ব্রাউজার/ডিভাইস থেকে আগের একটা queue-entry এখনো সক্রিয় (লাইনে আছে অথবা এখনই খেলছে) থাকলে
-    // দ্বিতীয়বার নতুন করে লাইনে ঢুকতে দেওয়া হচ্ছে না — বরং তার আগের entry-টাই ফিরিয়ে দেওয়া হচ্ছে,
-    // যাতে একজনই লাইন "স্প্যাম" করে বারবার নিজের সুযোগ বাড়িয়ে নিতে না পারে
-    const existingId = readCookie(req, "chessQueueId");
-    if (existingId) {
-      const stillInQueue = challengeQueue.some(q => q.id === existingId);
-      const isCurrentlyPlaying = activeChallenge && activeChallenge.id === existingId;
-      if (stillInQueue || isCurrentlyPlaying) {
-        return res.json({ id: existingId, alreadyInQueue: true });
+    // ⚠️ পুরো হ্যান্ডলারটা try/catch দিয়ে মোড়ানো — কোনো কারণে ভেতরে error হলেও যেন সার্ভার
+    // নীরবে ক্র্যাশ/হ্যাং না করে, বরং client-কে একটা স্পষ্ট JSON error ফেরত দেয় (আগে এরকম ঘটলে
+    // ব্রাউজারে "Joining queue..." বাটন চিরকাল আটকে থাকতো, কোনো error দেখা যেত না)
+    try {
+      // একই ব্রাউজার/ডিভাইস থেকে আগের একটা queue-entry এখনো সক্রিয় (লাইনে আছে অথবা এখনই খেলছে) থাকলে
+      // দ্বিতীয়বার নতুন করে লাইনে ঢুকতে দেওয়া হচ্ছে না — বরং তার আগের entry-টাই ফিরিয়ে দেওয়া হচ্ছে
+      const existingId = readCookie(req, "chessQueueId");
+      if (existingId) {
+        const stillInQueue = challengeQueue.some(q => q.id === existingId);
+        const isCurrentlyPlaying = activeChallenge && activeChallenge.id === existingId;
+        if (stillInQueue || isCurrentlyPlaying) {
+          console.log(`[chess-join] ${existingId} আগে থেকেই সক্রিয় — পুরনো entry ফেরত দেওয়া হলো`);
+          return res.json({ id: existingId, alreadyInQueue: true });
+        }
       }
+      const id = nextQueueId();
+      const name = ((req.body && req.body.name) || "Chess Legend").toString().slice(0, 30);
+      const photoUrl = req.file ? `/gaming/uploads/${path.basename(req.file.path)}` : "";
+      // "কত টাকা টিপস দিলেন" — দর্শক নিজে QR স্ক্যান করে পাঠানোর পর এখানে (ঐচ্ছিক) লিখে দেয়,
+      // এটা payment gateway থেকে auto-verify হয় না, শুধু queue-তে তার নামের পাশে দেখানোর জন্য
+      let tipAmount = parseInt((req.body && req.body.tipAmount) || "0", 10);
+      if (!Number.isFinite(tipAmount) || tipAmount < 0) tipAmount = 0;
+      if (tipAmount > 1000000) tipAmount = 1000000; // অস্বাভাবিক বড় সংখ্যা আটকানো
+      challengeQueue.push({ id, name, photoUrl, tipAmount, joinedAt: Date.now() });
+      console.log(`[chess-join] নতুন queue entry: ${id} (${name}), মোট লাইনে এখন ${challengeQueue.length} জন`);
+      setCookie(res, "chessQueueId", id, 3600); // ১ ঘণ্টা — এর মধ্যে আবার join চাপলে পুরনো entry-ই ফেরত পাবে
+      res.json({ id });
+    } catch (e) {
+      console.error("❌ [chess-join] join route-এ error:", e.message, e.stack);
+      res.status(500).json({ error: "join_failed", message: e.message });
     }
-    const id = nextQueueId();
-    const name = ((req.body && req.body.name) || "Guest").toString().slice(0, 30);
-    const photoUrl = req.file ? `/gaming/uploads/${path.basename(req.file.path)}` : "";
-    // "কত টাকা টিপস দিলেন" — দর্শক নিজে QR স্ক্যান করে পাঠানোর পর এখানে (ঐচ্ছিক) লিখে দেয়,
-    // এটা payment gateway থেকে auto-verify হয় না, শুধু queue-তে তার নামের পাশে দেখানোর জন্য
-    let tipAmount = parseInt((req.body && req.body.tipAmount) || "0", 10);
-    if (!Number.isFinite(tipAmount) || tipAmount < 0) tipAmount = 0;
-    if (tipAmount > 1000000) tipAmount = 1000000; // অস্বাভাবিক বড় সংখ্যা আটকানো
-    challengeQueue.push({ id, name, photoUrl, tipAmount, joinedAt: Date.now() });
-    setCookie(res, "chessQueueId", id, 3600); // ১ ঘণ্টা — এর মধ্যে আবার join চাপলে পুরনো entry-ই ফেরত পাবে
-    res.json({ id });
   });
 
   app.get("/gaming/challenge/queue-state", (req, res) => {
