@@ -34,11 +34,10 @@
   }
   .wrap{ position:relative; z-index:1; height:100%; display:flex; flex-direction:column; }
 
-  /* ====== TOP BANNER — channel name + logo + subscribe note ====== */
-  .top-banner{
-    display:flex; align-items:center; gap:14px; padding:14px 16px;
-    background: linear-gradient(180deg, rgba(11,15,25,0.92), rgba(11,15,25,0.75));
-  }
+  /* ====== TOP BANNER — সরিয়ে দেওয়া হলো, YouTube নিজেই লাইভ চলাকালীন চ্যানেলের নাম/লোগো
+     দেখায়, তাই এটা এখানে দেখানোর দরকার নেই। display:none দিয়ে flow থেকেও বাদ, যাতে
+     এর জায়গাটা মূল ক্যামেরা-স্পেসের জন্য মুক্ত হয়ে যায় (কিন্তু কোনো JS আইডি ভাঙে না) ====== */
+  .top-banner{ display:none; }
   .channel-logo{ width:64px; height:64px; border-radius:14px; object-fit:cover; border:2px solid var(--accent); box-shadow:0 0 16px rgba(255,197,61,0.4); flex-shrink:0; background:var(--bg-soft); }
   .channel-logo-placeholder{ width:64px; height:64px; border-radius:14px; background:var(--bg-soft); border:2px dashed var(--line); display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0; }
   .channel-name-wrap{ flex:1; min-width:0; }
@@ -46,20 +45,32 @@
     background: linear-gradient(90deg, var(--accent-glow), var(--white) 70%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
   .subscribe-note{ font-size:11px; color:var(--accent); font-weight:700; margin-top:4px; }
 
-  /* ====== QR + running total row ====== */
-  .support-row{ display:flex; align-items:center; gap:12px; padding:0 16px 12px; background: rgba(11,15,25,0.75); }
-  .qr-box{ background:#fff; border-radius:10px; padding:5px; flex-shrink:0; }
-  .qr-box canvas{ display:block; width:112px !important; height:112px !important; }
-  .support-info{ flex:1; min-width:0; }
+  /* ====== QR + সাপোর্ট বক্স — এখন উপরের একটা কোণায়, ভাসমান (absolute), বড় করা ======
+     top-banner সরে যাওয়া + এটা normal flow থেকে বেরিয়ে আসায় মাঝের camera-space এখন
+     অনেক বেশি জায়গা পায়। বক্সের ভেতরে দুটো view পালাক্রমে (fade করে) দেখা যায় —
+     ১) সাপোর্ট-এর লেখা (label/amount/hint), ২) সাম্প্রতিক সাপোর্টারদের নাম */
+  .support-row{
+    position:absolute; top:18px; right:18px; z-index:6; width:184px;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    background: rgba(11,15,25,0.9); border:1px solid var(--line); border-radius:16px;
+    padding:14px 12px; box-shadow:0 10px 28px rgba(0,0,0,0.5);
+  }
+  .qr-box{ background:#fff; border-radius:10px; padding:6px; flex-shrink:0; }
+  .qr-box canvas{ display:block; width:140px !important; height:140px !important; }
+  .support-info{ width:100%; min-width:0; position:relative; min-height:64px; text-align:center; }
   .support-label{ font-size:10px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; }
   .support-amount{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:26px; color:var(--accent); letter-spacing:1px; line-height:1.15; }
   .support-amount small{ font-family:'Inter'; font-size:11px; color:var(--dim); font-weight:500; margin-left:4px; }
   .support-hint{ font-size:9.5px; color:var(--white); font-weight:600; }
+  /* সাপোর্ট-টেক্সট ↔ সাম্প্রতিক-সাপোর্টার — নরম fade দিয়ে পালাক্রমে (loop) বদলাতে থাকে */
+  .altView{ position:absolute; inset:0; opacity:0; transition:opacity 900ms ease; pointer-events:none; }
+  .altView.show{ opacity:1; pointer-events:auto; position:static; }
 
   /* ====== Middle — transparent, camera shows through ====== */
   .camera-space{ flex:1 1 auto; min-height:0; }
 
-  /* ====== Top 3 supporters strip ====== */
+  /* ====== Top 3 supporters strip — এখন আরেকটু নিচে (camera-space বড় হওয়ায় স্বাভাবিকভাবেই
+     নিচে সরে গেছে), সাইজ অপরিবর্তিত রাখা হয়েছে ====== */
   .leaderboard{ margin:0 12px 6px; border:1px solid var(--line); border-radius:12px; background: rgba(18,23,40,0.88); padding:6px 7px; flex-shrink:0; }
   .leaderboard-title{ font-size:9.5px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:4px; text-align:center; }
   .top3-rows{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; }
@@ -77,13 +88,15 @@
   .top3-row .top3-amt{ font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:13px; color:var(--accent); line-height:1; }
   .top3-row.highlight{ border-color:var(--accent); box-shadow:0 0 16px rgba(255,197,61,0.7); }
 
-  /* ====== Recent supporters ticker ====== */
-  .ticker-title{ font-size:10px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; margin:0 16px 4px; }
-  .ticker{ margin:0 12px 14px; border:1px solid var(--line); border-radius:12px; background: rgba(18,23,40,0.88); max-height:118px; overflow-y:auto; }
-  .ticker-item{ display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--line); font-size:11.5px; animation: slideIn 400ms ease; }
+  /* ====== Recent supporters ticker — এখন QR-বক্সের ভেতরেই ছোট আকারে, alternating view হিসেবে ====== */
+  .ticker-title{ font-size:9px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin:0 0 5px; text-align:center; }
+  .ticker{ max-height:150px; overflow-y:auto; }
+  .ticker-item{ display:flex; align-items:center; gap:6px; padding:5px 0; border-bottom:1px solid var(--line); font-size:10.5px;
+    animation: slideIn 400ms ease; transition: opacity 1.2s ease; }
+  .ticker-item.dim{ opacity:0.35; } /* মাঝে মাঝে আবছা হয় — কখনো একদম মুছে যায় না */
   .ticker-item:last-child{ border-bottom:none; }
   @keyframes slideIn{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);} }
-  .ticker-item .amt{ margin-left:auto; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:16px; color:var(--accent); flex-shrink:0; }
+  .ticker-item .amt{ margin-left:auto; font-family: var(--display-font, 'Bebas Neue'), sans-serif; font-size:14px; color:var(--accent); flex-shrink:0; }
   .donor-name{ position:relative; display:inline-block; font-weight:800; color:var(--accent); }
   @supports ((background-clip:text) or (-webkit-background-clip:text)){
     .donor-name{
@@ -182,9 +195,15 @@
     <div class="support-row">
       <div class="qr-box"><canvas id="qrCode"></canvas></div>
       <div class="support-info">
-        <div class="support-label" id="supportLabelText">Recovering my trading loss</div>
-        <div class="support-amount"><span id="lossRemainingWrap">₹<span id="amtRemaining">—</span></span> <small id="supporterCountWrap">from <span id="countTotal">0</span> supporters</small></div>
-        <div class="support-hint">📲 Scan to help — every bit brings it closer to zero!</div>
+        <div class="altView show" id="supportTextView">
+          <div class="support-label" id="supportLabelText">Recovering my trading loss</div>
+          <div class="support-amount"><span id="lossRemainingWrap">₹<span id="amtRemaining">—</span></span> <small id="supporterCountWrap">from <span id="countTotal">0</span> supporters</small></div>
+          <div class="support-hint">📲 Scan to help — every bit brings it closer to zero!</div>
+        </div>
+        <div class="altView" id="recentSupportersView">
+          <div class="ticker-title">💛 Recent supporters</div>
+          <div class="ticker" id="ticker"><div class="ticker-item" style="color:var(--dim)">Waiting for the first supporter…</div></div>
+        </div>
       </div>
     </div>
 
@@ -201,8 +220,6 @@
         <div class="top3-row" id="top3box-2"><span class="top3-placeholder">?</span></div>
       </div>
     </div>
-    <div class="ticker-title">Recent supporters</div>
-    <div class="ticker" id="ticker"><div class="ticker-item" style="color:var(--dim)">Waiting for the first supporter…</div></div>
   </div>
 </div>
 
@@ -400,8 +417,31 @@ function addTickerItem(name, amount, currency, country){
   el.innerHTML = `<span>${flag}<span class="donor-name">${name}</span> tipped — thank you! 📈</span>
     <span class="amt">${formatMoney(amount, currency)}</span>`;
   ticker.insertBefore(el, ticker.firstChild);
-  while(ticker.children.length > 3){ ticker.removeChild(ticker.lastChild); }
+  // অন্তত ৪টা নাম সবসময় দেখা যাবে — নতুন কেউ টিপ দিলে সবচেয়ে পুরনোটা সরে, কিন্তু ৫ মিনিট
+  // কোনো টিপস না এলেও বাকি নামগুলো মুছে যায় না, শুধু মাঝে মাঝে আবছা হয়ে ফিরে আসে (নিচে দেখুন)
+  while(ticker.children.length > 6){ ticker.removeChild(ticker.lastChild); }
 }
+
+// সাপোর্ট-টেক্সট ↔ সাম্প্রতিক-সাপোর্টার — একই বক্সে পালাক্রমে (loop করে) দেখানো
+let altShowingSupportText = true;
+function toggleSupportAlt(){
+  altShowingSupportText = !altShowingSupportText;
+  const textView = document.getElementById('supportTextView');
+  const donorsView = document.getElementById('recentSupportersView');
+  if (textView) textView.classList.toggle('show', altShowingSupportText);
+  if (donorsView) donorsView.classList.toggle('show', !altShowingSupportText);
+}
+setInterval(toggleSupportAlt, 8000);
+
+// নামগুলো ৫ মিনিট ধরে নতুন কোনো টিপ না এলেও মুছে যায় না — শুধু কিছুক্ষণ পরপর আবছা হয়ে
+// আবার ফিরে আসে (breathing effect), যাতে বক্সটা "মৃত" মনে না হয়
+setInterval(() => {
+  const items = document.querySelectorAll('#ticker .ticker-item');
+  items.forEach((el, i) => {
+    if (el.style.color === 'var(--dim)') return; // "waiting for first supporter" প্লেসহোল্ডার বাদ
+    setTimeout(() => { el.classList.add('dim'); setTimeout(() => el.classList.remove('dim'), 1400); }, i * 220);
+  });
+}, 6000);
 
 const confettiCanvas = document.getElementById('confettiCanvas');
 const ctx = confettiCanvas.getContext('2d');
