@@ -480,7 +480,7 @@ function uciToSquares(uci) {
 }
 
 const OPPONENT_NAME_POOL = ["Kabir", "Rakesh", "Meera", "Tanvir", "Alina", "Rafiq", "Sudip", "Priya", "Farhan", "Nadia"];
-const YOUR_DISPLAY_NAME = process.env.CHESS_YOUR_NAME || "Nur";
+const YOUR_DISPLAY_NAME = process.env.CHESS_YOUR_NAME || "Grandmaster"; // ডিফল্ট এখন সরাসরি কোডেই বদলে দেওয়া হলো (env var লাগবে না)
 const YOUR_AVATAR_URL = process.env.CHESS_YOUR_AVATAR_URL || ""; // চাইলে নিজের ছবির লিংক .env-এ CHESS_YOUR_AVATAR_URL হিসেবে বসান
 
 async function playOneChessGame(Chess) {
@@ -1182,34 +1182,61 @@ function speakCeleb(text){
   } catch(e){}
 }
 
-// নরম, উষ্ণ "গুটি বসার" শব্দ — আগে square wave ব্যবহার করা হতো, যেটা কর্কশ/টোকা-মারার মতো
-// শোনাচ্ছিল বলে অভিযোগ এসেছিল; এখন triangle+sine দিয়ে মসৃণ attack, কাঠের মতো উষ্ণ অনুরণন
+// "স্যাটিসফাইং" গুটি-বসার শব্দ — mobile game-এর মতো একটা তীক্ষ্ণ, পরিষ্কার সূচনা (crisp attack)
+// থাকা জরুরি, নাহলে সেটা "satisfying" লাগে না — filtered noise "tap" + কাঠের মতো উষ্ণ tone মিলিয়ে
 function playMoveSound(isCapture) {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const t = audioCtx.currentTime;
-    const baseFreq = isCapture ? 210 : 320;
+    const baseFreq = isCapture ? 260 : 380;
 
-    // মূল সুর — triangle wave, দ্রুত কিন্তু মসৃণ attack (হঠাৎ "ক্লিক"/টোকার অনুভূতি এড়াতে)
+    // ধাপ ১ — খুব সংক্ষিপ্ত noise "tap" (আসল চাল-দেওয়ার মতো তীক্ষ্ণ, স্পষ্ট সূচনা)
+    const bufSize = Math.floor(audioCtx.sampleRate * 0.03);
+    const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+    const noise = audioCtx.createBufferSource(); noise.buffer = noiseBuf;
+    const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type = "bandpass"; noiseFilter.frequency.value = baseFreq * 2.2; noiseFilter.Q.value = 1.2;
+    const noiseGain = audioCtx.createGain(); noiseGain.gain.setValueAtTime(0.22, t); noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination); noise.start(t);
+
+    // ধাপ ২ — কাঠের মতো উষ্ণ tone, noise-এর ঠিক পরপরই বাজবে, সব মিলিয়ে একটা পূর্ণাঙ্গ "ঠক" অনুভূতি দেয়
     const osc1 = audioCtx.createOscillator(); const g1 = audioCtx.createGain();
     osc1.type = "triangle";
     osc1.frequency.setValueAtTime(baseFreq, t);
-    osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.82, t + 0.11);
+    osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, t + 0.1);
     g1.gain.setValueAtTime(0.0001, t);
-    g1.gain.exponentialRampToValueAtTime(0.15, t + 0.008);
-    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    g1.gain.exponentialRampToValueAtTime(0.18, t + 0.004);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
     osc1.connect(g1).connect(audioCtx.destination);
-    osc1.start(t); osc1.stop(t + 0.17);
+    osc1.start(t); osc1.stop(t + 0.14);
 
-    // নিচু, উষ্ণ অনুরণন — একটা হালকা কাঠের গুটি বসার অনুভূতি, বাড়তি তীক্ষ্ণতা ছাড়াই
     const osc2 = audioCtx.createOscillator(); const g2 = audioCtx.createGain();
     osc2.type = "sine";
     osc2.frequency.setValueAtTime(baseFreq * 0.5, t);
     g2.gain.setValueAtTime(0.0001, t);
-    g2.gain.exponentialRampToValueAtTime(0.08, t + 0.012);
-    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    g2.gain.exponentialRampToValueAtTime(0.09, t + 0.008);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
     osc2.connect(g2).connect(audioCtx.destination);
-    osc2.start(t); osc2.stop(t + 0.24);
+    osc2.start(t); osc2.stop(t + 0.22);
+  } catch (e) {}
+}
+// কাঠের গুটি "পড়ে গিয়ে" এলিমিনেট হওয়ার শব্দ — capture-এর মুহূর্তে বাজে (attacker পৌঁছানোর ঠিক আগেই),
+// একটা হালকা "টাল খেয়ে পড়া" + বাক্সে গড়িয়ে পড়ার মতো শব্দ, যাতে বাস্তব দাবা বোর্ডের অনুভূতি হয়
+function playCaptureFallSound() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    // একটা "টুক" শব্দ দিয়ে টাল খাওয়া শুরু, তারপর ২-৩টা কমতে থাকা bounce — বাক্সে গড়িয়ে পড়ার মতো
+    [0, 0.09, 0.16, 0.21].forEach((delay, i) => {
+      const tt = t + delay;
+      const freq = 180 - i * 25;
+      const vol = 0.16 - i * 0.03;
+      const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+      osc.type = "triangle"; osc.frequency.setValueAtTime(freq, tt);
+      g.gain.setValueAtTime(Math.max(0.02, vol), tt); g.gain.exponentialRampToValueAtTime(0.001, tt + 0.08);
+      osc.connect(g).connect(audioCtx.destination); osc.start(tt); osc.stop(tt + 0.09);
+    });
   } catch (e) {}
 }
 
@@ -1293,6 +1320,7 @@ function renderBoard(fen, lastMove) {
       ghost.style.height = fromRect.height + "px";
       ghost.style.transform = "scale(1)";
       wrap.appendChild(ghost);
+      if (wasOccupiedBefore) { setTimeout(() => playCaptureFallSound(), 30); } // মৃত গুটিটা "পড়ে যাওয়ার" শব্দ, attacker পৌঁছানোর আগেই
       // শব্দ এবং capture — দুটোই blind timer-এর বদলে ব্রাউজারের transitionend event-এ ফায়ার হয়,
       // মানে গুটি ঠিক যে মুহূর্তে থামছে, সেই মুহূর্তেই মৃত গুটিটা সরবে আর শব্দ বাজবে — কোনো drift নেই
       let landed = false;
@@ -2513,6 +2541,58 @@ function smallAlarm(){
     });
   }catch(e){}
 }
+// "স্যাটিসফাইং" গুটি-বসার শব্দ — filtered noise "tap" + কাঠের মতো উষ্ণ tone মিলিয়ে,
+// প্রত্যেকটা চালের সাথে সাথেই বাজে (কোনো নির্দিষ্ট সময় পর পর না)
+function playMoveSound(isCapture) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const baseFreq = isCapture ? 260 : 380;
+    const bufSize = Math.floor(audioCtx.sampleRate * 0.03);
+    const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+    const noise = audioCtx.createBufferSource(); noise.buffer = noiseBuf;
+    const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type = "bandpass"; noiseFilter.frequency.value = baseFreq * 2.2; noiseFilter.Q.value = 1.2;
+    const noiseGain = audioCtx.createGain(); noiseGain.gain.setValueAtTime(0.22, t); noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination); noise.start(t);
+
+    const osc1 = audioCtx.createOscillator(); const g1 = audioCtx.createGain();
+    osc1.type = "triangle";
+    osc1.frequency.setValueAtTime(baseFreq, t);
+    osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, t + 0.1);
+    g1.gain.setValueAtTime(0.0001, t);
+    g1.gain.exponentialRampToValueAtTime(0.18, t + 0.004);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    osc1.connect(g1).connect(audioCtx.destination);
+    osc1.start(t); osc1.stop(t + 0.14);
+
+    const osc2 = audioCtx.createOscillator(); const g2 = audioCtx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(baseFreq * 0.5, t);
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(0.09, t + 0.008);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc2.connect(g2).connect(audioCtx.destination);
+    osc2.start(t); osc2.stop(t + 0.22);
+  } catch (e) {}
+}
+// কাঠের গুটি "পড়ে গিয়ে" এলিমিনেট হওয়ার শব্দ — capture-এর মুহূর্তে বাজে
+function playCaptureFallSound() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    [0, 0.09, 0.16, 0.21].forEach((delay, i) => {
+      const tt = t + delay;
+      const freq = 180 - i * 25;
+      const vol = 0.16 - i * 0.03;
+      const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+      osc.type = "triangle"; osc.frequency.setValueAtTime(freq, tt);
+      g.gain.setValueAtTime(Math.max(0.02, vol), tt); g.gain.exponentialRampToValueAtTime(0.001, tt + 0.08);
+      osc.connect(g).connect(audioCtx.destination); osc.start(tt); osc.stop(tt + 0.09);
+    });
+  } catch (e) {}
+}
 function runCelebration(name, photoUrl){
   hasCelebrated = true;
   const wrap = document.getElementById("celebAvatarWrap");
@@ -2569,6 +2649,11 @@ function renderBoard(fen, lastMove, animate){
   if (shouldAnimate) {
     // চাল দেওয়ার সময় গুটিটা যেন এক ঘর থেকে আরেক ঘরে চোখের সামনে দিয়ে সরে যায় (হুট করে "টেলিপোর্ট" না করে)।
     // capture হলে — মৃত গুটিটা attacker সত্যিই পৌঁছানোর আগ পর্যন্ত জায়গায়ই থাকবে, আচমকা উধাও হবে না।
+    // ⚡ গুরুত্বপূর্ণ ফিক্স: আগে animation-এর প্রতিটা ধাপে পুরো বোর্ড (৬৪টা square) DOM থেকে মুছে
+    // আবার তৈরি হতো — এই মুহূর্তে কেউ অন্য কোনো ঘরে (যেমন capture করার জন্য) ট্যাপ করলে সেই ঘরের
+    // element-টাই হারিয়ে যেত, ট্যাপ কাজ করতো না (এটাই "টাচ কাজ করছে না" সমস্যার আসল কারণ ছিল,
+    // কোনো ইচ্ছাকৃত block/চিটিং না)। এখন শুধু from আর to — এই দুইটা ঘর ছাড়া বাকি ৬২টা ঘরের
+    // DOM element কখনোই touch হয় না, তাই সেগুলোতে ট্যাপ সবসময় নির্ভরযোগ্যভাবে কাজ করবে।
     const fromEl = boardEl.querySelector('[data-square="'+lastMove.from+'"]');
     const toEl = boardEl.querySelector('[data-square="'+lastMove.to+'"]');
     const toRC = squareToRC(lastMove.to);
@@ -2592,9 +2677,11 @@ function renderBoard(fen, lastMove, animate){
       ghost.style.transition = "left "+(ANIM_MS/1000)+"s ease-in-out,top "+(ANIM_MS/1000)+"s ease-in-out,transform "+(ANIM_MS/1000)+"s ease-in-out";
       ghost.style.filter = "drop-shadow(0 8px 10px rgba(0,0,0,0.6))";
       wrap.appendChild(ghost);
-      // destination square-এ এখন attacker না, বরং মৃত্যুর অপেক্ষায় থাকা গুটিটা (থাকলে) দেখানো হচ্ছে
-      const transGrid = grid.map(g => (g.r===toRC.r && g.c===toRC.c) ? {r:g.r,c:g.c,piece:capturedPieceChar} : g);
-      drawGrid(transGrid, lastMove, false);
+      // পুরনো highlight সরিয়ে শুধু from/to ঘর দুটোই surgically আপডেট — বাকি বোর্ড অক্ষত থাকে
+      clearHighlights(boardEl);
+      setSquareContent(boardEl, lastMove.from, "", true, false);
+      setSquareContent(boardEl, lastMove.to, capturedPieceChar, false, true);
+      if (capturedPieceChar) { setTimeout(() => playCaptureFallSound(), 30); } // মৃত গুটিটা "পড়ে যাওয়ার" শব্দ, ঘোড়া/আক্রমণকারী পৌঁছানোর আগেই
       const isKnight = movingPiece.piece.toLowerCase() === "n";
       if (isKnight) {
         // ঘোড়ার আসল "L" আকৃতির পথ ধরে চলা দেখানো — সরাসরি কোনাকুনি "শর্টকাট" না নিয়ে
@@ -2623,13 +2710,35 @@ function renderBoard(fen, lastMove, animate){
         });
         setTimeout(() => { ghost.style.transform = "scale(1)"; }, ANIM_MS - 150);
       }
-      setTimeout(() => { ghost.remove(); drawGrid(grid, lastMove, false); prevFenBoardPlay = boardPart; lastRenderedFenPlay = boardPart; }, ANIM_MS);
+      setTimeout(() => {
+        ghost.remove();
+        setSquareContent(boardEl, lastMove.to, movingPiece.piece, false, true); // attacker এসে পৌঁছালো
+        playMoveSound(!!capturedPieceChar);
+        prevFenBoardPlay = boardPart; lastRenderedFenPlay = boardPart;
+      }, ANIM_MS);
       return;
     }
   }
   prevFenBoardPlay = boardPart;
   lastRenderedFenPlay = boardPart;
   drawGrid(grid, lastMove, false);
+}
+// শুধু নির্দিষ্ট একটা ঘরের ভেতরের গুটি/highlight বদলায় — পুরো বোর্ড DOM থেকে মোছা হয় না,
+// তাই বাকি সব ঘরের click listener অক্ষত থাকে (এটাই টাচ নির্ভরযোগ্য রাখার মূল চাবিকাঠি)
+function setSquareContent(boardEl, sqName, piece, isFrom, isTo) {
+  const sq = boardEl.querySelector('[data-square="' + sqName + '"]');
+  if (!sq) return;
+  sq.classList.toggle("lastFrom", !!isFrom);
+  sq.classList.toggle("lastTo", !!isTo);
+  if (piece) {
+    const isWhite = piece === piece.toUpperCase();
+    sq.innerHTML = '<span class="piece ' + (isWhite ? "piece-w" : "piece-b") + '">' + (PIECE_GLYPH[piece] || "") + '</span>';
+  } else {
+    sq.innerHTML = "";
+  }
+}
+function clearHighlights(boardEl) {
+  boardEl.querySelectorAll(".lastFrom,.lastTo").forEach(el => { el.classList.remove("lastFrom"); el.classList.remove("lastTo"); });
 }
 function drawGrid(grid, lastMove, hideDestination){
   const boardEl = document.getElementById("board");
