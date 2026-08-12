@@ -2842,6 +2842,340 @@ setInterval(poll, 1500); poll();
 </script></body></html>`;
 
 // ---------------------------------------------------------------------------
+// ৭.৫ — SNAKE GAME — AI নিজেই খেলে, ২৪/৭ দেখার জন্য satisfying/hypnotic লুপ
+// ---------------------------------------------------------------------------
+const SNAKE_COLS = 24, SNAKE_ROWS = 16;
+let snakeLoopActive = false;
+let snakeHighScore = (readState("snake-highscore") || {}).score || 0;
+
+function snakeNewGame() {
+  const startR = Math.floor(SNAKE_ROWS / 2), startC = Math.floor(SNAKE_COLS / 3);
+  return {
+    body: [{ r: startR, c: startC }, { r: startR, c: startC - 1 }, { r: startR, c: startC - 2 }],
+    dir: { r: 0, c: 1 },
+    food: snakeRandomFood([{ r: startR, c: startC }, { r: startR, c: startC - 1 }, { r: startR, c: startC - 2 }]),
+    score: 0,
+  };
+}
+function snakeRandomFood(body) {
+  let pos;
+  do {
+    pos = { r: Math.floor(Math.random() * SNAKE_ROWS), c: Math.floor(Math.random() * SNAKE_COLS) };
+  } while (body.some((s) => s.r === pos.r && s.c === pos.c));
+  return pos;
+}
+// BFS দিয়ে খাবার পর্যন্ত সবচেয়ে ছোট নিরাপদ পথ খোঁজা — সাপ যেন উদ্দেশ্যপূর্ণভাবে চলে, এলোমেলো না
+function snakeFindPath(game) {
+  const occupied = new Set(game.body.slice(0, -1).map((s) => s.r + "," + s.c)); // লেজ বাদ (এক ধাপ পর সরে যাবে)
+  const start = game.body[0];
+  const target = game.food;
+  const q = [[start.r, start.c]];
+  const visited = new Set([start.r + "," + start.c]);
+  const parent = {};
+  const dirs = [{ r: -1, c: 0 }, { r: 1, c: 0 }, { r: 0, c: -1 }, { r: 0, c: 1 }];
+  while (q.length) {
+    const [r, c] = q.shift();
+    if (r === target.r && c === target.c) {
+      const path = [];
+      let cur = r + "," + c;
+      while (cur !== start.r + "," + start.c) {
+        path.unshift(cur);
+        cur = parent[cur];
+      }
+      return path.map((p) => { const [pr, pc] = p.split(",").map(Number); return { r: pr, c: pc }; });
+    }
+    for (const d of dirs) {
+      const nr = r + d.r, nc = c + d.c;
+      if (nr < 0 || nr >= SNAKE_ROWS || nc < 0 || nc >= SNAKE_COLS) continue;
+      const key = nr + "," + nc;
+      if (visited.has(key) || occupied.has(key)) continue;
+      visited.add(key);
+      parent[key] = r + "," + c;
+      q.push([nr, nc]);
+    }
+  }
+  return null; // কোনো নিরাপদ পথ নেই
+}
+function snakeSafeMoves(game) {
+  const occupied = new Set(game.body.slice(0, -1).map((s) => s.r + "," + s.c));
+  const head = game.body[0];
+  const dirs = [{ r: -1, c: 0 }, { r: 1, c: 0 }, { r: 0, c: -1 }, { r: 0, c: 1 }];
+  return dirs.filter((d) => {
+    const nr = head.r + d.r, nc = head.c + d.c;
+    if (nr < 0 || nr >= SNAKE_ROWS || nc < 0 || nc >= SNAKE_COLS) return false;
+    return !occupied.has(nr + "," + nc);
+  });
+}
+async function runSnakeLoop() {
+  if (snakeLoopActive) return;
+  snakeLoopActive = true;
+  let game = snakeNewGame();
+  writeState("snake", { ...game, highScore: snakeHighScore, status: "playing" });
+  while (snakeLoopActive) {
+    const path = snakeFindPath(game);
+    let nextDir;
+    if (path && path.length) {
+      const step = path[0];
+      nextDir = { r: step.r - game.body[0].r, c: step.c - game.body[0].c };
+    } else {
+      // খাবার পর্যন্ত নিরাপদ পথ নেই — বেঁচে থাকার জন্য যেকোনো নিরাপদ দিকে যাওয়া, সময় কেনার চেষ্টা
+      const safe = snakeSafeMoves(game);
+      if (!safe.length) {
+        // আটকে গেছে — game over, নতুন গেম শুরু হবে
+        writeState("snake", { ...game, highScore: snakeHighScore, status: "gameover" });
+        if (game.score > snakeHighScore) { snakeHighScore = game.score; writeState("snake-highscore", { score: snakeHighScore }); }
+        await sleep(2500);
+        game = snakeNewGame();
+        writeState("snake", { ...game, highScore: snakeHighScore, status: "playing" });
+        await sleep(600);
+        continue;
+      }
+      nextDir = safe[Math.floor(Math.random() * safe.length)];
+    }
+    const newHead = { r: game.body[0].r + nextDir.r, c: game.body[0].c + nextDir.c };
+    const ateFood = newHead.r === game.food.r && newHead.c === game.food.c;
+    game.body.unshift(newHead);
+    if (ateFood) {
+      game.score += 10;
+      game.food = snakeRandomFood(game.body);
+    } else {
+      game.body.pop();
+    }
+    game.dir = nextDir;
+    writeState("snake", { ...game, highScore: snakeHighScore, status: "playing" });
+    await sleep(160); // চালের গতি — খুব দ্রুত না, দেখতে satisfying/hypnotic থাকে এমন গতি
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ৭.৬ — BALL SORT PUZZLE — AI নিজেই সমাধান করে দেখায়, শেষ হলে নতুন পাজল
+// ---------------------------------------------------------------------------
+const BS_TUBE_COUNT = 9, BS_TUBE_CAPACITY = 4, BS_COLOR_COUNT = 7; // ৭টা রঙ, ২টা খালি টিউব
+const BS_COLORS = ["#E8443D", "#4FC3F7", "#FFD866", "#8BE28B", "#B084F5", "#FF8FCF", "#FFA94D"];
+
+function bsGeneratePuzzle() {
+  // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
+  let tubes = [];
+  for (let i = 0; i < BS_COLOR_COUNT; i++) tubes.push(new Array(BS_TUBE_CAPACITY).fill(i));
+  tubes.push([]); tubes.push([]); // ২টা খালি টিউব
+  for (let shuffle = 0; shuffle < 220; shuffle++) {
+    const from = Math.floor(Math.random() * tubes.length);
+    const to = Math.floor(Math.random() * tubes.length);
+    if (from === to || !tubes[from].length || tubes[to].length >= BS_TUBE_CAPACITY) continue;
+    tubes[to].push(tubes[from].pop());
+  }
+  return tubes;
+}
+function bsIsSolved(tubes) {
+  return tubes.every((t) => t.length === 0 || (t.length === BS_TUBE_CAPACITY && t.every((c) => c === t[0])));
+}
+function bsCanPour(tubes, from, to) {
+  if (from === to) return false;
+  const f = tubes[from], t = tubes[to];
+  if (!f.length) return false;
+  if (t.length >= BS_TUBE_CAPACITY) return false;
+  if (t.length === 0) return true;
+  return t[t.length - 1] === f[f.length - 1];
+}
+function bsClone(tubes) { return tubes.map((t) => [...t]); }
+function bsKey(tubes) { return tubes.map((t) => t.join(",")).join("|"); }
+// BFS দিয়ে solve — state space সাধারণত ছোট থাকে কারণ পাজলটাই solved অবস্থা থেকে অল্প শাফল করে বানানো
+function bsSolve(tubes) {
+  const startKey = bsKey(tubes);
+  const q = [tubes];
+  const visited = new Set([startKey]);
+  const parent = {}; // key -> { fromKey, move: {from,to} }
+  parent[startKey] = null;
+  let steps = 0;
+  while (q.length && steps < 40000) {
+    steps++;
+    const cur = q.shift();
+    const curKey = bsKey(cur);
+    if (bsIsSolved(cur)) {
+      const moves = [];
+      let k = curKey;
+      while (parent[k]) {
+        moves.unshift(parent[k].move);
+        k = parent[k].fromKey;
+      }
+      return moves;
+    }
+    for (let from = 0; from < cur.length; from++) {
+      for (let to = 0; to < cur.length; to++) {
+        if (!bsCanPour(cur, from, to)) continue;
+        const next = bsClone(cur);
+        next[to].push(next[from].pop());
+        const nextKey = bsKey(next);
+        if (visited.has(nextKey)) continue;
+        visited.add(nextKey);
+        parent[nextKey] = { fromKey: curKey, move: { from, to } };
+        q.push(next);
+      }
+    }
+  }
+  return null; // সমাধান পাওয়া যায়নি (তাত্ত্বিকভাবে বিরল, নতুন পাজল বানিয়ে নেওয়া হবে)
+}
+let ballSortLoopActive = false;
+async function runBallSortLoop() {
+  if (ballSortLoopActive) return;
+  ballSortLoopActive = true;
+  while (ballSortLoopActive) {
+    let tubes = bsGeneratePuzzle();
+    let solution = bsSolve(tubes);
+    let attempts = 0;
+    while (!solution && attempts < 5) { tubes = bsGeneratePuzzle(); solution = bsSolve(tubes); attempts++; }
+    if (!solution) { await sleep(2000); continue; } // চরম বিরল কেস, আবার চেষ্টা
+    writeState("ballsort", { tubes, colors: BS_COLORS, status: "playing", lastMove: null, movesLeft: solution.length });
+    await sleep(1500);
+    for (let i = 0; i < solution.length && ballSortLoopActive; i++) {
+      const mv = solution[i];
+      tubes[mv.to].push(tubes[mv.from].pop());
+      writeState("ballsort", { tubes: bsClone(tubes), colors: BS_COLORS, status: "playing", lastMove: mv, movesLeft: solution.length - i - 1 });
+      await sleep(650); // প্রতিটা ঢালার মাঝে বিরতি — দর্শক স্পষ্ট দেখতে পাবে
+    }
+    writeState("ballsort", { tubes, colors: BS_COLORS, status: "solved", lastMove: null, movesLeft: 0 });
+    await sleep(3000); // সমাধান হওয়া পাজলটা কিছুক্ষণ দেখানো, তারপর নতুন পাজল
+  }
+}
+
+const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Snake — Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
+font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:14px;}
+h1{color:#FFD866;font-size:22px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
+#scoreRow{display:flex;gap:24px;font-size:14px;color:#7C8AAD;margin-bottom:10px;font-weight:700;}
+#scoreRow b{color:#FFD866;font-size:18px;}
+#boardWrap{position:relative;flex:1;min-height:0;width:100%;max-width:900px;display:flex;align-items:center;justify-content:center;}
+#board{background:#161b2e;border:4px solid #8a5a2a;border-radius:8px;box-shadow:0 20px 46px rgba(0,0,0,0.75);}
+.flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:60px;font-weight:900;
+color:#FFD866;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9);}
+.flash.show{animation:pop 2.2s ease-out forwards;}
+@keyframes pop{0%{opacity:0;transform:scale(0.6);}15%{opacity:1;transform:scale(1.05);}80%{opacity:1;}100%{opacity:0;}}
+</style></head><body>
+<h1>🐍 Snake — Live</h1>
+<div id="scoreRow">Score: <b id="scoreVal">0</b> &nbsp;|&nbsp; High Score: <b id="highScoreVal">0</b></div>
+<div id="boardWrap"><canvas id="board"></canvas></div>
+<div class="flash" id="flash"></div>
+<script>
+const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+let cellSize = 28;
+function resize(){
+  const wrap = document.getElementById("boardWrap");
+  const availW = wrap.clientWidth - 8, availH = wrap.clientHeight - 8;
+  cellSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
+  canvas.width = cellSize * COLS; canvas.height = cellSize * ROWS;
+}
+window.addEventListener("resize", resize); resize();
+let lastStatus = "";
+function draw(data){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // checkerboard
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+    ctx.fillStyle = (r+c)%2===0 ? "#1c2338" : "#161b2e";
+    ctx.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
+  }
+  // food
+  ctx.fillStyle = "#E8443D";
+  ctx.beginPath();
+  ctx.arc(data.food.c*cellSize+cellSize/2, data.food.r*cellSize+cellSize/2, cellSize*0.35, 0, Math.PI*2);
+  ctx.fill();
+  // snake
+  data.body.forEach((seg, i) => {
+    const isHead = i === 0;
+    ctx.fillStyle = isHead ? "#FFD866" : "#8BE28B";
+    const pad = isHead ? 1 : 2;
+    ctx.beginPath();
+    ctx.roundRect(seg.c*cellSize+pad, seg.r*cellSize+pad, cellSize-pad*2, cellSize-pad*2, 6);
+    ctx.fill();
+  });
+  document.getElementById("scoreVal").textContent = data.score;
+  document.getElementById("highScoreVal").textContent = data.highScore;
+  if (data.status === "gameover" && lastStatus !== "gameover") {
+    const flashEl = document.getElementById("flash");
+    flashEl.textContent = "💀 Game Over — Score: " + data.score;
+    flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+  }
+  lastStatus = data.status;
+}
+async function poll(){
+  try{
+    const res = await fetch("/gaming/state/snake.json?t="+Date.now());
+    const data = await res.json();
+    draw(data);
+  }catch(e){}
+}
+setInterval(poll, 160); poll();
+</script></body></html>`;
+
+const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Ball Sort Puzzle — Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
+font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:14px;}
+h1{color:#FFD866;font-size:22px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
+#statusLine{color:#7C8AAD;font-size:13px;margin-bottom:14px;font-weight:700;min-height:18px;}
+#statusLine.solved{color:#8BE28B;}
+#tubesWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;max-width:1100px;}
+.tube{width:52px;height:220px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 20px 20px;
+display:flex;flex-direction:column-reverse;padding:4px;gap:4px;box-shadow:0 10px 24px rgba(0,0,0,0.5);}
+.ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:inset 0 -4px 8px rgba(0,0,0,0.35),inset 0 3px 4px rgba(255,255,255,0.4);
+transition:transform 0.3s ease;}
+.flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:900;
+color:#8BE28B;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9);}
+.flash.show{animation:pop 2.2s ease-out forwards;}
+@keyframes pop{0%{opacity:0;transform:scale(0.6);}15%{opacity:1;transform:scale(1.05);}80%{opacity:1;}100%{opacity:0;}}
+</style></head><body>
+<h1>🧪 Ball Sort Puzzle — Live</h1>
+<div id="statusLine">Thinking...</div>
+<div id="tubesWrap"></div>
+<div class="flash" id="flash"></div>
+<script>
+let lastStatus = "";
+function render(data){
+  const wrap = document.getElementById("tubesWrap");
+  wrap.innerHTML = "";
+  data.tubes.forEach((tube) => {
+    const tubeEl = document.createElement("div");
+    tubeEl.className = "tube";
+    tube.forEach((colorIdx) => {
+      const ball = document.createElement("div");
+      ball.className = "ball";
+      ball.style.background = data.colors[colorIdx];
+      tubeEl.appendChild(ball);
+    });
+    wrap.appendChild(tubeEl);
+  });
+  const statusEl = document.getElementById("statusLine");
+  if (data.status === "solved") {
+    statusEl.textContent = "✅ Solved! Starting a new puzzle...";
+    statusEl.classList.add("solved");
+    if (lastStatus !== "solved") {
+      const flashEl = document.getElementById("flash");
+      flashEl.textContent = "🎉 Solved!";
+      flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+    }
+  } else {
+    statusEl.textContent = "Thinking... " + data.movesLeft + " moves left";
+    statusEl.classList.remove("solved");
+  }
+  lastStatus = data.status;
+}
+async function poll(){
+  try{
+    const res = await fetch("/gaming/state/ballsort.json?t="+Date.now());
+    const data = await res.json();
+    render(data);
+  }catch(e){}
+}
+setInterval(poll, 500); poll();
+</script></body></html>`;
+
+// ---------------------------------------------------------------------------
 // ৮. মূল mount ফাংশন — server.js থেকে কল হয়
 // ---------------------------------------------------------------------------
 module.exports = function mountGaming(app) {
@@ -3010,5 +3344,11 @@ module.exports = function mountGaming(app) {
   schedulerTick().catch((e) => console.error("❌ schedulerTick এ error:", e));
   setInterval(() => schedulerTick().catch((e) => console.error("❌ schedulerTick এ error:", e)), 60000);
 
-  console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess, /gaming/overlay/sports, /gaming/challenge/join এ পাওয়া যাবে।");
+  // ---------- নতুন গেম: Snake ও Ball Sort Puzzle — সিডিউলারের বাইরে, নিজে থেকেই ২৪/৭ চলবে ----------
+  app.get("/gaming/overlay/snake", (req, res) => res.type("html").send(SNAKE_OVERLAY_HTML));
+  app.get("/gaming/overlay/ballsort", (req, res) => res.type("html").send(BALLSORT_OVERLAY_HTML));
+  runSnakeLoop().catch((e) => console.error("❌ Snake loop-এ error:", e));
+  runBallSortLoop().catch((e) => console.error("❌ Ball Sort loop-এ error:", e));
+
+  console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess, /gaming/overlay/sports, /gaming/overlay/snake, /gaming/overlay/ballsort, /gaming/challenge/join এ পাওয়া যাবে।");
 };
