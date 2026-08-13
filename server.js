@@ -1691,6 +1691,16 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <a class="quick-link" href="/gaming/challenge/join" target="_blank"><span class="emoji">🎮</span>Challenge join</a>
       <a class="quick-link" href="/pay/chessbattle" target="_blank"><span class="emoji">💸</span>Pay</a>
     </div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">🐍 Snake — Live</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/gaming/overlay/snake" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+    </div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">🧪 Ball Sort Puzzle — Live</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/gaming/overlay/ballsort" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+    </div>
   </section>
 
   <!-- GATEWAYS -->
