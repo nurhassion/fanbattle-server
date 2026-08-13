@@ -2952,16 +2952,17 @@ async function runSnakeLoop() {
 // ---------------------------------------------------------------------------
 // ৭.৬ — BALL SORT PUZZLE — AI নিজেই সমাধান করে দেখায়, শেষ হলে নতুন পাজল
 // ---------------------------------------------------------------------------
-const BS_TUBE_COUNT = 15, BS_TUBE_CAPACITY = 4, BS_COLOR_COUNT = 13; // ১৩টা রঙ, ২টা খালি টিউব (আগের সফল ১১-রঙ ভার্সন স্থিতিশীল প্রমাণিত হওয়ায় আরেকটু বাড়ানো হলো)
+const BS_TUBE_COUNT = 20, BS_TUBE_CAPACITY = 5, BS_COLOR_COUNT = 18; // ১৮টা রঙ, ২টা খালি টিউব, প্রতি টিউবে ৫টা বল
 const BS_COLORS = ["#FF3B30", "#29B6F6", "#FFD60A", "#34D399", "#A855F7", "#FF6EC7", "#FF8C00",
-  "#00E5C7", "#FF375F", "#7CFC00", "#5B6EFF", "#FF9F1C", "#C77DFF"]; // মোট ১৩টা রঙ — উজ্জ্বল ও স্যাচুরেটেড
+  "#00E5C7", "#FF375F", "#7CFC00", "#5B6EFF", "#FF9F1C", "#C77DFF",
+  "#FF6B6B", "#00C2FF", "#B6FF00", "#FF4FD8", "#FFB800"]; // মোট ১৮টা রঙ — উজ্জ্বল ও স্যাচুরেটেড
 
 function bsGeneratePuzzle() {
   // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
   let tubes = [];
   for (let i = 0; i < BS_COLOR_COUNT; i++) tubes.push(new Array(BS_TUBE_CAPACITY).fill(i));
   tubes.push([]); tubes.push([]); // ২টা খালি টিউব
-  for (let shuffle = 0; shuffle < 150; shuffle++) { // ২২০ থেকে কমিয়ে ১৫০ — বেশি টিউব/রঙে (১১/১৩) সমাধান খুঁজতে সময় নেয়, তাই খুব বেশি প্যাঁচানো এড়িয়ে দ্রুত সমাধান পাওয়ার সম্ভাবনা বাড়ানো হলো
+  for (let shuffle = 0; shuffle < 120; shuffle++) { // ১৮ রঙের অনেক বড় পাজলে খুব বেশি শাফল করলে সমাধান খুঁজে বের করা কঠিন হয়ে যায়, তাই কমানো হলো
     const from = Math.floor(Math.random() * tubes.length);
     const to = Math.floor(Math.random() * tubes.length);
     if (from === to || !tubes[from].length || tubes[to].length >= BS_TUBE_CAPACITY) continue;
@@ -2994,7 +2995,7 @@ async function bsSolve(tubes) {
   let steps = 0;
   // ⚠️ নিরাপত্তার জন্য একটা visited-state সীমা — এত বড় পাজলে (১১ রঙ) না থামালে এই একটা search
   // কয়েক গিগাবাইট মেমরি খেয়ে ফেলতে পারত, যেটা ছোট সার্ভারে পুরো অ্যাপকেই ক্র্যাশ করিয়ে দিতে পারে
-  const MAX_VISITED = 150000;
+  const MAX_VISITED = 300000; // ১৮ রঙের বড় পাজলে আরও বেশি state লাগতে পারে, তাই সীমাটা বাড়ানো হলো (এখনো bounded/নিরাপদ)
   while (q.length && steps < 250000 && visited.size < MAX_VISITED) {
     steps++;
     if (steps % 1500 === 0) await sleep(0); // event loop-কে বাকি কাজ (chess ইত্যাদি) করার সুযোগ দেওয়া
@@ -3034,7 +3035,7 @@ async function runBallSortLoop() {
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "solving", lastMove: null, movesLeft: null, fastest: bsFastestState }); // "চিন্তা করছে" — বড় পাজলে solve করতে কিছুটা সময় লাগে
     let solution = await bsSolve(tubes);
     let attempts = 0;
-    while (!solution && attempts < 5) { tubes = bsGeneratePuzzle(); solution = await bsSolve(tubes); attempts++; }
+    while (!solution && attempts < 8) { tubes = bsGeneratePuzzle(); solution = await bsSolve(tubes); attempts++; } // ১৮ রঙের বড় পাজলে মাঝে মাঝে সমাধান খুঁজতে ব্যর্থ হতে পারে, তাই বেশি চেষ্টা করা হচ্ছে
     if (!solution) { await sleep(2000); continue; } // চরম বিরল কেস, আবার চেষ্টা
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "playing", lastMove: null, movesLeft: solution.length, fastest: bsFastestState });
     await sleep(1200);
@@ -3066,7 +3067,7 @@ const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:8px;
-display:grid;grid-template-columns:190px 1fr 190px;gap:10px;}
+display:grid;grid-template-columns:230px 1fr 230px;gap:10px;}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3111,16 +3112,37 @@ font-size:24px;display:flex;align-items:center;justify-content:center;}
 .tsInfo{flex:1.5;display:flex;align-items:center;justify-content:center;background:#12172a;border-top:1px solid #2a3352;
 font-size:10px;font-weight:700;color:#fff;padding:2px 4px;text-align:center;}
 .tsInfo .tsAmt{color:#FFD866;}
+/* যে চ্যালেঞ্জ করে বর্তমানে খেলছে তার ছবি — এখনো কেউ challenge করার প্রকৃত সিস্টেম চালু হয়নি,
+   তাই আপাতত "কেউ খেলছে না" অবস্থাই দেখাবে; সিস্টেম যোগ হলে এটা automatic populate হবে */
+#challengerBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;overflow:hidden;flex:0 0 34%;
+display:flex;flex-direction:column;}
+#challengerPhotoWrap{flex:1;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+#challengerPhotoWrap img{width:100%;height:100%;object-fit:cover;}
+#challengerPhotoWrap .cFallback{width:60%;height:60%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
+font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:center;}
+#challengerName{padding:6px;text-align:center;font-size:12px;font-weight:800;background:#12172a;border-top:1px solid #2a3352;}
+.altView{display:none;}
+.altView.show{display:block;}
 </style></head><body>
 <div class="sideCol">
+  <div id="challengerBox">
+    <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
+    <div id="challengerName">No one playing right now</div>
+  </div>
   <div id="tipQrWrap">
     <img id="tipQrImg" src="" alt="Scan to help">
     <div class="tipLabel">🙏 Help Me</div>
     <div class="tipSub">Voluntary support — not tied to the game, never required</div>
   </div>
   <div class="rulesBox">
-    <h3>💛 Recent Supporters</h3>
-    <div id="recentDonorList"></div>
+    <div class="altView show" id="recentView">
+      <h3>💛 Recent Supporters</h3>
+      <div id="recentDonorList"></div>
+    </div>
+    <div class="altView" id="queueView">
+      <h3>🔴 Challenge Queue</h3>
+      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+    </div>
   </div>
 </div>
 <div class="centerCol">
@@ -3163,6 +3185,16 @@ async function refreshRecentDonors(){
 }
 refreshTopDonors(); refreshRecentDonors();
 setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
+
+// Recent Supporters ↔ Challenge Queue — প্রতি ১ মিনিটে পালাক্রমে বদলায়
+// (⚠️ চ্যালেঞ্জ/queue-এর real backend এখনো এই গেমে যোগ হয়নি, তাই queueList আপাতত সবসময় খালি দেখাবে)
+let altShowingRecent = true;
+function toggleAltPanel(){
+  altShowingRecent = !altShowingRecent;
+  document.getElementById("recentView").classList.toggle("show", altShowingRecent);
+  document.getElementById("queueView").classList.toggle("show", !altShowingRecent);
+}
+setInterval(toggleAltPanel, 60000);
 
 const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
 const canvas = document.getElementById("board");
@@ -3320,7 +3352,7 @@ const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charse
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:10px;
-display:grid;grid-template-columns:190px 1fr 190px;gap:10px;}
+display:grid;grid-template-columns:230px 1fr 230px;gap:10px;}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3329,8 +3361,11 @@ h1{color:#FFD866;font-size:20px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,2
 #fastestLine{color:#8BE28B;font-size:11px;margin-bottom:10px;font-weight:700;background:#161b2e;
 border:1px solid #2a3352;border-radius:8px;padding:5px 12px;}
 #fastestLine b{color:#FFD866;}
-#tubesWrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
-.tube{width:46px;height:200px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 18px 18px;
+/* ২০টা টিউব — উপরে ১০টা, নিচে ১০টা করে দুই সারিতে, আগের চেয়ে লম্বা ও চওড়া */
+#tubesWrap{flex:1;min-height:0;width:100%;display:grid;grid-template-columns:repeat(10,1fr);grid-auto-rows:1fr;
+gap:10px;align-items:center;justify-items:center;padding:6px;}
+.tube{width:58px;height:260px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 18px 18px;
+display:flex;flex-direction:column-reverse;padding:4px;gap:3px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
 display:flex;flex-direction:column-reverse;padding:4px;gap:3px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 3px 6px rgba(0,0,0,0.45);}
 .flyingBall{border-radius:50%;box-shadow:0 6px 14px rgba(0,0,0,0.6);z-index:20;}
@@ -3362,16 +3397,36 @@ font-size:24px;display:flex;align-items:center;justify-content:center;}
 .tsInfo{flex:1.5;display:flex;align-items:center;justify-content:center;background:#12172a;border-top:1px solid #2a3352;
 font-size:10px;font-weight:700;color:#fff;padding:2px 4px;text-align:center;}
 .tsInfo .tsAmt{color:#FFD866;}
+/* যে চ্যালেঞ্জ করে বর্তমানে খেলছে তার ছবি — এখনো real challenge backend যোগ হয়নি, তাই আপাতত placeholder */
+#challengerBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;overflow:hidden;flex:0 0 34%;
+display:flex;flex-direction:column;}
+#challengerPhotoWrap{flex:1;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+#challengerPhotoWrap img{width:100%;height:100%;object-fit:cover;}
+#challengerPhotoWrap .cFallback{width:60%;height:60%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
+font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:center;}
+#challengerName{padding:6px;text-align:center;font-size:12px;font-weight:800;background:#12172a;border-top:1px solid #2a3352;}
+.altView{display:none;}
+.altView.show{display:block;}
 </style></head><body>
 <div class="sideCol">
+  <div id="challengerBox">
+    <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
+    <div id="challengerName">No one playing right now</div>
+  </div>
   <div id="tipQrWrap">
     <img id="tipQrImg" src="" alt="Scan to help">
     <div class="tipLabel">🙏 Help Me</div>
     <div class="tipSub">Voluntary support — not tied to the game, never required</div>
   </div>
   <div class="rulesBox">
-    <h3>💛 Recent Supporters</h3>
-    <div id="recentDonorList"></div>
+    <div class="altView show" id="recentView">
+      <h3>💛 Recent Supporters</h3>
+      <div id="recentDonorList"></div>
+    </div>
+    <div class="altView" id="queueView">
+      <h3>🔴 Challenge Queue</h3>
+      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+    </div>
   </div>
 </div>
 <div class="centerCol">
@@ -3409,6 +3464,16 @@ async function refreshRecentDonors(){
 }
 refreshTopDonors(); refreshRecentDonors();
 setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
+
+// Recent Supporters ↔ Challenge Queue — প্রতি ১ মিনিটে পালাক্রমে বদলায়
+// (⚠️ চ্যালেঞ্জ/queue-এর real backend এখনো এই গেমে যোগ হয়নি, তাই queueList আপাতত সবসময় খালি দেখাবে)
+let altShowingRecent = true;
+function toggleAltPanel(){
+  altShowingRecent = !altShowingRecent;
+  document.getElementById("recentView").classList.toggle("show", altShowingRecent);
+  document.getElementById("queueView").classList.toggle("show", !altShowingRecent);
+}
+setInterval(toggleAltPanel, 60000);
 
 let lastStatus = "";
 let lastMoveSig = "";
