@@ -2952,9 +2952,9 @@ async function runSnakeLoop() {
 // ---------------------------------------------------------------------------
 // ৭.৬ — BALL SORT PUZZLE — AI নিজেই সমাধান করে দেখায়, শেষ হলে নতুন পাজল
 // ---------------------------------------------------------------------------
-const BS_TUBE_COUNT = 13, BS_TUBE_CAPACITY = 4, BS_COLOR_COUNT = 11; // ১১টা রঙ, ২টা খালি টিউব
+const BS_TUBE_COUNT = 15, BS_TUBE_CAPACITY = 4, BS_COLOR_COUNT = 13; // ১৩টা রঙ, ২টা খালি টিউব (আগের সফল ১১-রঙ ভার্সন স্থিতিশীল প্রমাণিত হওয়ায় আরেকটু বাড়ানো হলো)
 const BS_COLORS = ["#FF3B30", "#29B6F6", "#FFD60A", "#34D399", "#A855F7", "#FF6EC7", "#FF8C00",
-  "#00E5C7", "#FF375F", "#7CFC00", "#5B6EFF"]; // মোট ১১টা রঙ — আগে কিছু রঙ ফিকে/মেরা লাগছিল, এখন সবগুলো উজ্জ্বল ও স্যাচুরেটেড
+  "#00E5C7", "#FF375F", "#7CFC00", "#5B6EFF", "#FF9F1C", "#C77DFF"]; // মোট ১৩টা রঙ — উজ্জ্বল ও স্যাচুরেটেড
 
 function bsGeneratePuzzle() {
   // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
@@ -3038,9 +3038,9 @@ async function runBallSortLoop() {
     if (!solution) { await sleep(2000); continue; } // চরম বিরল কেস, আবার চেষ্টা
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "playing", lastMove: null, movesLeft: solution.length, fastest: bsFastestState });
     await sleep(1200);
-    // মোট সমাধানের সময়টা একটা লক্ষ্যমাত্রার (~১০ মিনিট) কাছাকাছি রাখার চেষ্টা
-    const targetTotalMs = 10 * 60 * 1000;
-    const perMoveDelay = Math.max(600, Math.min(3000, Math.round(targetTotalMs / Math.max(1, solution.length))));
+    // মোট সমাধানের সময়টা একটা লক্ষ্যমাত্রার (~১৪ মিনিট) কাছাকাছি রাখার চেষ্টা — আগের চেয়ে আরও ধীর
+    const targetTotalMs = 14 * 60 * 1000;
+    const perMoveDelay = Math.max(900, Math.min(3800, Math.round(targetTotalMs / Math.max(1, solution.length))));
     const solveStartedAt = Date.now();
     for (let i = 0; i < solution.length && ballSortLoopActive; i++) {
       const mv = solution[i];
@@ -3065,10 +3065,13 @@ const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 <style>
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
-font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:8px;}
-h1{color:#FFD866;font-size:22px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-#scoreRow{display:flex;gap:20px;font-size:13px;color:#7C8AAD;margin-bottom:6px;font-weight:700;flex-wrap:wrap;justify-content:center;}
-#scoreRow b{color:#FFD866;font-size:17px;}
+font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:8px;
+display:grid;grid-template-columns:190px 1fr 190px;gap:10px;}
+.sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
+.centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
+h1{color:#FFD866;font-size:20px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
+#scoreRow{display:flex;gap:16px;font-size:12px;color:#7C8AAD;margin-bottom:6px;font-weight:700;flex-wrap:wrap;justify-content:center;}
+#scoreRow b{color:#FFD866;font-size:15px;}
 #scoreRow .hs{color:#8BE28B;}
 #boardWrap{position:relative;flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;}
 /* ছকঘর/checkerboard বাদ — এখন একটা প্রাকৃতিক, সবুজ ঘাসের মাঠের মতো রঙিন থিম */
@@ -3079,23 +3082,88 @@ color:#FFD866;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9)
 @keyframes pop{0%{opacity:0;transform:scale(0.6);}15%{opacity:1;transform:scale(1.05);}80%{opacity:1;}100%{opacity:0;}}
 /* নিচের ৪টা "সুইচ" — শুধু ভিজ্যুয়াল ইঙ্গিত, সাপ যেদিকে যাচ্ছে সেদিকেরটা আলো জ্বলে ওঠে, যেন মনে হয়
    কেউ সুইচ চেপে সাপ ঘোরাচ্ছে (আসলে AI নিজেই সিদ্ধান্ত নেয়, এটা শুধু দর্শকদের জন্য একটা মজার ইঙ্গিত) */
-#dpad{display:grid;grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px;gap:5px;margin-top:8px;flex-shrink:0;}
+#dpad{display:grid;grid-template-columns:40px 40px 40px;grid-template-rows:40px 40px 40px;gap:5px;margin-top:8px;flex-shrink:0;}
 .dbtn{background:#161b2e;border:2px solid #2a3352;border-radius:8px;display:flex;align-items:center;justify-content:center;
-font-size:18px;color:#5a6a8a;transition:all 0.15s;}
+font-size:16px;color:#5a6a8a;transition:all 0.15s;}
 .dbtn.active{background:#FFD866;border-color:#FFD866;color:#0a0e1f;box-shadow:0 0 16px rgba(255,216,102,0.7);transform:scale(1.08);}
 #dUp{grid-column:2;grid-row:1;} #dLeft{grid-column:1;grid-row:2;} #dRight{grid-column:3;grid-row:2;} #dDown{grid-column:2;grid-row:3;}
+/* বাম কলাম — QR/Help Me বক্স + সাম্প্রতিক সাপোর্টারদের স্থায়ী তালিকা */
+#tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:12px;text-align:center;flex-shrink:0;}
+#tipQrImg{width:120px;height:120px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
+.tipLabel{color:#FFD866;font-weight:800;font-size:14px;margin-top:8px;}
+.tipSub{color:#5a6a8a;font-size:9px;margin-top:4px;line-height:1.35;}
+.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;flex:1;min-height:0;overflow-y:auto;}
+.rulesBox h3{margin:0 0 8px;font-size:11px;color:#FFD866;text-transform:uppercase;letter-spacing:1px;font-weight:800;}
+.miniListRow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #202a44;font-size:11px;}
+.miniListRow:last-child{border-bottom:none;}
+.miniAvatar{width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;}
+.miniAvatarFallback{width:20px;height:20px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:800;
+font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+/* ডান কলাম — টপ ৩ সাপোর্টার, স্ট্যাক করা ৯০% ছবি + ১০% নাম/অ্যামাউন্ট */
+.topSupporterPanel{flex:1;display:flex;flex-direction:column;min-height:0;background:#161b2e;
+border:1px solid #2a3352;border-radius:14px;overflow:hidden;}
+.tsPhoto{flex:8.5;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;}
+.tsRank{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:#FFD866;
+color:#0a0e1f;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center;z-index:2;}
+.tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.tsPhoto .tsFallback{width:55%;height:55%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:900;
+font-size:24px;display:flex;align-items:center;justify-content:center;}
+.tsInfo{flex:1.5;display:flex;align-items:center;justify-content:center;background:#12172a;border-top:1px solid #2a3352;
+font-size:10px;font-weight:700;color:#fff;padding:2px 4px;text-align:center;}
+.tsInfo .tsAmt{color:#FFD866;}
 </style></head><body>
-<h1>🐍 Snake — Live</h1>
-<div id="scoreRow">Score: <b id="scoreVal">0</b> &nbsp;|&nbsp; <span class="hs">🏆 High Score: <b id="highScoreVal">0</b> — <span id="highScoreNameVal">Grandmaster</span></span></div>
-<div id="boardWrap"><canvas id="board"></canvas></div>
-<div id="dpad">
-  <div class="dbtn" id="dUp">▲</div>
-  <div class="dbtn" id="dLeft">◀</div>
-  <div class="dbtn" id="dRight">▶</div>
-  <div class="dbtn" id="dDown">▼</div>
+<div class="sideCol">
+  <div id="tipQrWrap">
+    <img id="tipQrImg" src="" alt="Scan to help">
+    <div class="tipLabel">🙏 Help Me</div>
+    <div class="tipSub">Voluntary support — not tied to the game, never required</div>
+  </div>
+  <div class="rulesBox">
+    <h3>💛 Recent Supporters</h3>
+    <div id="recentDonorList"></div>
+  </div>
+</div>
+<div class="centerCol">
+  <h1>🐍 Snake — Live</h1>
+  <div id="scoreRow">Score: <b id="scoreVal">0</b> &nbsp;|&nbsp; <span class="hs">🏆 High Score: <b id="highScoreVal">0</b> — <span id="highScoreNameVal">Grandmaster</span></span></div>
+  <div id="boardWrap"><canvas id="board"></canvas></div>
+  <div id="dpad">
+    <div class="dbtn" id="dUp">▲</div>
+    <div class="dbtn" id="dLeft">◀</div>
+    <div class="dbtn" id="dRight">▶</div>
+    <div class="dbtn" id="dDown">▼</div>
+  </div>
+</div>
+<div class="sideCol">
+  <div class="topSupporterPanel" id="topSup1"><div class="tsPhoto" id="tsPhoto1"><div class="tsRank">1</div></div><div class="tsInfo" id="tsInfo1">—</div></div>
+  <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
+  <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
 </div>
 <div class="flash" id="flash"></div>
 <script>
+// ---------- QR/Help Me + টপ ৩ সাপোর্টার + সাম্প্রতিক সাপোর্টার (স্থায়ী তালিকা) ----------
+document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(location.origin + "/pay/snake");
+function fillTopSupporterPanel(idx, donor){
+  const photoEl = document.getElementById("tsPhoto" + idx);
+  const infoEl = document.getElementById("tsInfo" + idx);
+  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="tsFallback">?</div>'; infoEl.innerHTML = '<span style="color:#5a6a8a;">No tips yet</span>'; return; }
+  photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
+  infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
+}
+async function refreshTopDonors(){
+  try { const res = await fetch("/top-donors/snake"); const data = await res.json(); const top = data.top || [];
+    fillTopSupporterPanel(1, top[0]); fillTopSupporterPanel(2, top[1]); fillTopSupporterPanel(3, top[2]); } catch(e){}
+}
+async function refreshRecentDonors(){
+  try { const res = await fetch("/recent-donors/snake?limit=6"); const data = await res.json(); const list = data.recent || [];
+    document.getElementById("recentDonorList").innerHTML = list.length ? list.map(d =>
+      '<div class="miniListRow">' + (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
+      '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
+    ).join("") : '<div style="font-size:10px;color:#5a6a8a;">No tips yet</div>'; } catch(e){}
+}
+refreshTopDonors(); refreshRecentDonors();
+setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
+
 const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
@@ -3105,6 +3173,7 @@ function resize(){
   const availW = wrap.clientWidth - 8, availH = wrap.clientHeight - 8;
   cellSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
   canvas.width = cellSize * COLS; canvas.height = cellSize * ROWS;
+  if (typeof regenerateGrassDecor === "function") regenerateGrassDecor(); // সাইজ বদলালে ঘাসের সজ্জাও নতুন করে বসবে
 }
 window.addEventListener("resize", resize); resize();
 
@@ -3126,7 +3195,23 @@ document.body.addEventListener("click", () => { if (!audioCtx) audioCtx = new (w
 
 let lastStatus = "", lastScore = 0;
 let prevBody = null, curBody = null, curFood = null, lastTickTime = performance.now();
-const TICK_MS = 220;
+const TICK_MS = 110; // ⚠️ এটা সার্ভারের tick rate-এর সাথে হুবহু মেলানো জরুরি — আগে সার্ভার ১১০ms করে দেওয়া হয়েছিল
+// কিন্তু এখানে ভুলে ২২০ রয়ে গিয়েছিল, ফলে client প্রতি আপডেটের অর্ধেক সময় "থেমে" থাকতো — এটাই আসল
+// "আটকে আটকে" চলার কারণ ছিল, কোনো ইচ্ছাকৃত ধীরগতি বা bug অন্য কিছু না
+
+// পটভূমির ঘাস-সজ্জা একবারই তৈরি হয় (প্রতি ফ্রেমে না, নাহলে মিটমিট করবে), resize হলে আবার তৈরি হয়
+let grassDecor = [];
+function regenerateGrassDecor(){
+  grassDecor = [];
+  const count = Math.floor((canvas.width * canvas.height) / 900);
+  for (let i=0;i<count;i++) {
+    grassDecor.push({
+      x: Math.random()*canvas.width, y: Math.random()*canvas.height,
+      h: 5 + Math.random()*9, tilt: (Math.random()-0.5)*0.6,
+      shade: Math.random() > 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
+    });
+  }
+}
 
 function updateDpad(dir){
   ["dUp","dDown","dLeft","dRight"].forEach(id => document.getElementById(id).classList.remove("active"));
@@ -3142,16 +3227,17 @@ function render(now){
   if (!curBody) return;
   const t = Math.min(1, (now - lastTickTime) / TICK_MS);
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  // ছকঘর বাদ — এখন একটা প্রাকৃতিক সবুজ মাঠের মতো গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড, সাথে হালকা ঘাসের টেক্সচার
-  const grad = ctx.createLinearGradient(0,0,0,canvas.height);
-  grad.addColorStop(0, "#3a7d2e");
-  grad.addColorStop(1, "#2a5c20");
+  // ছকঘর/গ্রিড লাইন সম্পূর্ণ বাদ — এখন একটা আসল জঙ্গল/মাঠের মতো গ্রেডিয়েন্ট + ছড়ানো ঘাসের টুকরো
+  const grad = ctx.createRadialGradient(canvas.width/2,canvas.height/2,10,canvas.width/2,canvas.height/2,canvas.width*0.75);
+  grad.addColorStop(0, "#4a8f34");
+  grad.addColorStop(1, "#264d1c");
   ctx.fillStyle = grad;
   ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.strokeStyle = "rgba(255,255,255,0.04)";
-  ctx.lineWidth = 1;
-  for (let i=0;i<canvas.width;i+=cellSize) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
-  for (let j=0;j<canvas.height;j+=cellSize) { ctx.beginPath(); ctx.moveTo(0,j); ctx.lineTo(canvas.width,j); ctx.stroke(); }
+  if (!grassDecor.length) regenerateGrassDecor();
+  grassDecor.forEach((g) => {
+    ctx.strokeStyle = g.shade; ctx.lineWidth = 2; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(g.x + g.tilt*g.h, g.y - g.h); ctx.stroke();
+  });
 
   // খাবার — গ্লসি, দুই-টোন হাইলাইট, হালকা pulsating
   const pulse = 1 + Math.sin(now/220)*0.08;
@@ -3161,7 +3247,8 @@ function render(now){
   ctx.fillStyle = "rgba(255,255,255,0.45)";
   ctx.beginPath(); ctx.arc(fx-cellSize*0.1, fy-cellSize*0.1, cellSize*0.12*pulse, 0, Math.PI*2); ctx.fill();
 
-  // সাপ — সোজা লাইন না, quadratic curve দিয়ে মসৃণভাবে বাঁক নিয়ে চলে (যেমন আসল সাপ চলে)
+  // সাপ — রঙিন (মাথার দিকে উজ্জ্বল, লেজের দিকে গাঢ়), লেজের দিকে সরু হয়ে আসা, আর সোজা পথেও
+  // সামান্য ঢেউ-খেলানো (sine wiggle) — যেন আসল সাপের শরীরের স্বাভাবিক নড়াচড়া
   let body = curBody;
   if (prevBody && prevBody.length === curBody.length) {
     body = curBody.map((seg, i) => ({
@@ -3169,23 +3256,31 @@ function render(now){
       c: prevBody[i].c + (seg.c - prevBody[i].c) * t,
     }));
   }
-  const pts = body.map((seg) => ({ x: seg.c*cellSize+cellSize/2, y: seg.r*cellSize+cellSize/2 }));
-  ctx.strokeStyle = "#8BE28B";
-  ctx.lineWidth = cellSize * 0.78;
-  ctx.lineCap = "round"; ctx.lineJoin = "round";
-  ctx.beginPath();
-  if (pts.length > 1) {
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i=1;i<pts.length-1;i++) {
-      const midX = (pts[i].x + pts[i+1].x)/2, midY = (pts[i].y + pts[i+1].y)/2;
-      ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+  const pts = body.map((seg, i) => {
+    let x = seg.c*cellSize+cellSize/2, y = seg.r*cellSize+cellSize/2;
+    const wiggle = Math.sin(now/260 - i*0.9) * cellSize * 0.09; // চলার সময় শরীরে ছোট্ট, স্বাভাবিক তরঙ্গ
+    return { x: x + wiggle, y };
+  });
+  for (let i=0;i<pts.length-1;i++) {
+    const segT = i / Math.max(1, pts.length-1); // ০ = মাথা, ১ = লেজ
+    const w = cellSize * (0.78 - segT*0.42); // লেজের দিকে ক্রমশ সরু
+    const green = Math.round(226 - segT*90), red = Math.round(139 - segT*70);
+    ctx.strokeStyle = "rgb(" + red + "," + green + ",130)";
+    ctx.lineWidth = Math.max(cellSize*0.16, w);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(pts[i].x, pts[i].y);
+    if (i < pts.length-2) {
+      const midX = (pts[i+1].x + pts[i+2].x)/2, midY = (pts[i+1].y + pts[i+2].y)/2;
+      ctx.quadraticCurveTo(pts[i+1].x, pts[i+1].y, midX, midY);
+    } else {
+      ctx.lineTo(pts[i+1].x, pts[i+1].y);
     }
-    ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+    ctx.stroke();
   }
-  ctx.stroke();
   // মাথা — আলাদা রঙ + চোখ, যাতে বোঝা যায় কোনদিকে যাচ্ছে
-  const head = body[0];
-  const hx = head.c*cellSize+cellSize/2, hy = head.r*cellSize+cellSize/2;
+  const head = pts[0];
+  const hx = head.x, hy = head.y;
   ctx.fillStyle = "#FFD866";
   ctx.beginPath(); ctx.arc(hx, hy, cellSize*0.42, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = "#0a0e1f";
@@ -3216,7 +3311,7 @@ async function poll(){
     lastStatus = data.status;
   }catch(e){}
 }
-setInterval(poll, 220); poll();
+setInterval(poll, 110); poll();
 </script></body></html>`;
 
 const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Ball Sort Puzzle — Live</title>
@@ -3224,29 +3319,97 @@ const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charse
 <style>
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
-font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:14px;}
-h1{color:#FFD866;font-size:22px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-#statusLine{color:#7C8AAD;font-size:13px;margin-bottom:6px;font-weight:700;min-height:18px;}
+font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:10px;
+display:grid;grid-template-columns:190px 1fr 190px;gap:10px;}
+.sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
+.centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
+h1{color:#FFD866;font-size:20px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
+#statusLine{color:#7C8AAD;font-size:12px;margin-bottom:6px;font-weight:700;min-height:18px;}
 #statusLine.solved{color:#8BE28B;}
-#fastestLine{color:#8BE28B;font-size:12px;margin-bottom:10px;font-weight:700;background:#161b2e;
+#fastestLine{color:#8BE28B;font-size:11px;margin-bottom:10px;font-weight:700;background:#161b2e;
 border:1px solid #2a3352;border-radius:8px;padding:5px 12px;}
 #fastestLine b{color:#FFD866;}
-#tubesWrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;}
-.tube{width:52px;height:216px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 20px 20px;
-display:flex;flex-direction:column-reverse;padding:4px;gap:4px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
+#tubesWrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
+.tube{width:46px;height:200px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 18px 18px;
+display:flex;flex-direction:column-reverse;padding:4px;gap:3px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 3px 6px rgba(0,0,0,0.45);}
 .flyingBall{border-radius:50%;box-shadow:0 6px 14px rgba(0,0,0,0.6);z-index:20;}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:900;
 color:#8BE28B;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9);}
 .flash.show{animation:pop 2.2s ease-out forwards;}
 @keyframes pop{0%{opacity:0;transform:scale(0.6);}15%{opacity:1;transform:scale(1.05);}80%{opacity:1;}100%{opacity:0;}}
+/* বাম কলাম — QR/Help Me বক্স + সাম্প্রতিক সাপোর্টারদের স্থায়ী তালিকা */
+#tipQrWrap{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:12px;text-align:center;flex-shrink:0;}
+#tipQrImg{width:120px;height:120px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
+.tipLabel{color:#FFD866;font-weight:800;font-size:14px;margin-top:8px;}
+.tipSub{color:#5a6a8a;font-size:9px;margin-top:4px;line-height:1.35;}
+.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;flex:1;min-height:0;overflow-y:auto;}
+.rulesBox h3{margin:0 0 8px;font-size:11px;color:#FFD866;text-transform:uppercase;letter-spacing:1px;font-weight:800;}
+.miniListRow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #202a44;font-size:11px;}
+.miniListRow:last-child{border-bottom:none;}
+.miniAvatar{width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;}
+.miniAvatarFallback{width:20px;height:20px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:800;
+font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+/* ডান কলাম — টপ ৩ সাপোর্টার */
+.topSupporterPanel{flex:1;display:flex;flex-direction:column;min-height:0;background:#161b2e;
+border:1px solid #2a3352;border-radius:14px;overflow:hidden;}
+.tsPhoto{flex:8.5;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;}
+.tsRank{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:#FFD866;
+color:#0a0e1f;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center;z-index:2;}
+.tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.tsPhoto .tsFallback{width:55%;height:55%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:900;
+font-size:24px;display:flex;align-items:center;justify-content:center;}
+.tsInfo{flex:1.5;display:flex;align-items:center;justify-content:center;background:#12172a;border-top:1px solid #2a3352;
+font-size:10px;font-weight:700;color:#fff;padding:2px 4px;text-align:center;}
+.tsInfo .tsAmt{color:#FFD866;}
 </style></head><body>
-<h1>🧪 Ball Sort Puzzle — Live</h1>
-<div id="statusLine">Thinking...</div>
-<div id="fastestLine">🏆 Fastest solve: <b id="fastestTime">—</b> — <span id="fastestName">Grandmaster</span></div>
-<div id="tubesWrap"></div>
+<div class="sideCol">
+  <div id="tipQrWrap">
+    <img id="tipQrImg" src="" alt="Scan to help">
+    <div class="tipLabel">🙏 Help Me</div>
+    <div class="tipSub">Voluntary support — not tied to the game, never required</div>
+  </div>
+  <div class="rulesBox">
+    <h3>💛 Recent Supporters</h3>
+    <div id="recentDonorList"></div>
+  </div>
+</div>
+<div class="centerCol">
+  <h1>🧪 Ball Sort Puzzle — Live</h1>
+  <div id="statusLine">Thinking...</div>
+  <div id="fastestLine">🏆 Fastest solve: <b id="fastestTime">—</b> — <span id="fastestName">Grandmaster</span></div>
+  <div id="tubesWrap"></div>
+</div>
+<div class="sideCol">
+  <div class="topSupporterPanel" id="topSup1"><div class="tsPhoto" id="tsPhoto1"><div class="tsRank">1</div></div><div class="tsInfo" id="tsInfo1">—</div></div>
+  <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
+  <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
+</div>
 <div class="flash" id="flash"></div>
 <script>
+// ---------- QR/Help Me + টপ ৩ সাপোর্টার + সাম্প্রতিক সাপোর্টার (স্থায়ী তালিকা) ----------
+document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(location.origin + "/pay/ballsort");
+function fillTopSupporterPanel(idx, donor){
+  const photoEl = document.getElementById("tsPhoto" + idx);
+  const infoEl = document.getElementById("tsInfo" + idx);
+  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="tsFallback">?</div>'; infoEl.innerHTML = '<span style="color:#5a6a8a;">No tips yet</span>'; return; }
+  photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
+  infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
+}
+async function refreshTopDonors(){
+  try { const res = await fetch("/top-donors/ballsort"); const data = await res.json(); const top = data.top || [];
+    fillTopSupporterPanel(1, top[0]); fillTopSupporterPanel(2, top[1]); fillTopSupporterPanel(3, top[2]); } catch(e){}
+}
+async function refreshRecentDonors(){
+  try { const res = await fetch("/recent-donors/ballsort?limit=6"); const data = await res.json(); const list = data.recent || [];
+    document.getElementById("recentDonorList").innerHTML = list.length ? list.map(d =>
+      '<div class="miniListRow">' + (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
+      '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
+    ).join("") : '<div style="font-size:10px;color:#5a6a8a;">No tips yet</div>'; } catch(e){}
+}
+refreshTopDonors(); refreshRecentDonors();
+setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
+
 let lastStatus = "";
 let lastMoveSig = "";
 let animating = false;
