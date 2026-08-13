@@ -2844,7 +2844,7 @@ setInterval(poll, 1500); poll();
 // ---------------------------------------------------------------------------
 // ৭.৫ — SNAKE GAME — AI নিজেই খেলে, ২৪/৭ দেখার জন্য satisfying/hypnotic লুপ
 // ---------------------------------------------------------------------------
-const SNAKE_COLS = 24, SNAKE_ROWS = 16;
+const SNAKE_COLS = 32, SNAKE_ROWS = 20;
 let snakeLoopActive = false;
 let snakeHighScore = (readState("snake-highscore") || {}).score || 0;
 
@@ -2943,15 +2943,16 @@ async function runSnakeLoop() {
     }
     game.dir = nextDir;
     writeState("snake", { ...game, highScore: snakeHighScore, status: "playing" });
-    await sleep(160); // চালের গতি — খুব দ্রুত না, দেখতে satisfying/hypnotic থাকে এমন গতি
+    await sleep(220); // চালের গতি — একটু ধীর করা হলো, মানুষ খেলছে এমন অনুভূতি (client-side smooth interpolation-এর সাথে মিলিয়ে)
   }
 }
 
 // ---------------------------------------------------------------------------
 // ৭.৬ — BALL SORT PUZZLE — AI নিজেই সমাধান করে দেখায়, শেষ হলে নতুন পাজল
 // ---------------------------------------------------------------------------
-const BS_TUBE_COUNT = 9, BS_TUBE_CAPACITY = 4, BS_COLOR_COUNT = 7; // ৭টা রঙ, ২টা খালি টিউব
-const BS_COLORS = ["#E8443D", "#4FC3F7", "#FFD866", "#8BE28B", "#B084F5", "#FF8FCF", "#FFA94D"];
+const BS_TUBE_COUNT = 13, BS_TUBE_CAPACITY = 4, BS_COLOR_COUNT = 11; // ১১টা রঙ, ২টা খালি টিউব
+const BS_COLORS = ["#E8443D", "#4FC3F7", "#FFD866", "#8BE28B", "#B084F5", "#FF8FCF", "#FFA94D",
+  "#4AD9C0", "#C9D3E0", "#8A5A2A", "#5C6BFF"]; // মোট ১১টা রঙ, প্রতিটা BS_COLOR_COUNT-এর সাথে মিলে
 
 function bsGeneratePuzzle() {
   // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
@@ -2979,16 +2980,22 @@ function bsCanPour(tubes, from, to) {
 }
 function bsClone(tubes) { return tubes.map((t) => [...t]); }
 function bsKey(tubes) { return tubes.map((t) => t.join(",")).join("|"); }
-// BFS দিয়ে solve — state space সাধারণত ছোট থাকে কারণ পাজলটাই solved অবস্থা থেকে অল্প শাফল করে বানানো
-function bsSolve(tubes) {
+// BFS দিয়ে solve — বড় পাজলে (১৫টা টিউব) state space অনেক বড় হতে পারে, তাই প্রতি কয়েক হাজার
+// ধাপে একবার event loop-কে "শ্বাস" নেওয়ার সুযোগ দেওয়া হচ্ছে (await sleep(0)) — নাহলে এই solve
+// চলাকালীন পুরো সার্ভার (chess সহ সবকিছু) কিছুক্ষণের জন্য জমে/আটকে যেতে পারত, যেটা মেনে নেওয়া যায় না
+async function bsSolve(tubes) {
   const startKey = bsKey(tubes);
   const q = [tubes];
   const visited = new Set([startKey]);
   const parent = {}; // key -> { fromKey, move: {from,to} }
   parent[startKey] = null;
   let steps = 0;
-  while (q.length && steps < 40000) {
+  // ⚠️ নিরাপত্তার জন্য একটা visited-state সীমা — এত বড় পাজলে (১১ রঙ) না থামালে এই একটা search
+  // কয়েক গিগাবাইট মেমরি খেয়ে ফেলতে পারত, যেটা ছোট সার্ভারে পুরো অ্যাপকেই ক্র্যাশ করিয়ে দিতে পারে
+  const MAX_VISITED = 150000;
+  while (q.length && steps < 250000 && visited.size < MAX_VISITED) {
     steps++;
+    if (steps % 1500 === 0) await sleep(0); // event loop-কে বাকি কাজ (chess ইত্যাদি) করার সুযোগ দেওয়া
     const cur = q.shift();
     const curKey = bsKey(cur);
     if (bsIsSolved(cur)) {
@@ -3021,17 +3028,22 @@ async function runBallSortLoop() {
   ballSortLoopActive = true;
   while (ballSortLoopActive) {
     let tubes = bsGeneratePuzzle();
-    let solution = bsSolve(tubes);
+    writeState("ballsort", { tubes, colors: BS_COLORS, status: "solving", lastMove: null, movesLeft: null }); // "চিন্তা করছে" — বড় পাজলে solve করতে কিছুটা সময় লাগে
+    let solution = await bsSolve(tubes);
     let attempts = 0;
-    while (!solution && attempts < 5) { tubes = bsGeneratePuzzle(); solution = bsSolve(tubes); attempts++; }
+    while (!solution && attempts < 5) { tubes = bsGeneratePuzzle(); solution = await bsSolve(tubes); attempts++; }
     if (!solution) { await sleep(2000); continue; } // চরম বিরল কেস, আবার চেষ্টা
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "playing", lastMove: null, movesLeft: solution.length });
     await sleep(1500);
+    // মোট সমাধানের সময়টা একটা লক্ষ্যমাত্রার (~৪ মিনিট) কাছাকাছি রাখার চেষ্টা — খুব বেশি চাল থাকলে
+    // প্রতি চালের বিরতি একটু কমিয়ে, কম চাল থাকলে বাড়িয়ে — যাতে "কম্পিউটার-দ্রুত" মনে না হয়
+    const targetTotalMs = 4 * 60 * 1000;
+    const perMoveDelay = Math.max(700, Math.min(2200, Math.round(targetTotalMs / Math.max(1, solution.length))));
     for (let i = 0; i < solution.length && ballSortLoopActive; i++) {
       const mv = solution[i];
       tubes[mv.to].push(tubes[mv.from].pop());
       writeState("ballsort", { tubes: bsClone(tubes), colors: BS_COLORS, status: "playing", lastMove: mv, movesLeft: solution.length - i - 1 });
-      await sleep(650); // প্রতিটা ঢালার মাঝে বিরতি — দর্শক স্পষ্ট দেখতে পাবে
+      await sleep(perMoveDelay); // প্রতিটা ঢালার মাঝে বিরতি — দর্শক স্পষ্ট দেখতে পাবে, মানুষ ভাবছে এমন অনুভূতি
     }
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "solved", lastMove: null, movesLeft: 0 });
     await sleep(3000); // সমাধান হওয়া পাজলটা কিছুক্ষণ দেখানো, তারপর নতুন পাজল
@@ -3043,26 +3055,39 @@ const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 <style>
 *{box-sizing:border-box;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
-font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:14px;}
-h1{color:#FFD866;font-size:22px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-#scoreRow{display:flex;gap:24px;font-size:14px;color:#7C8AAD;margin-bottom:10px;font-weight:700;}
+font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:10px;}
+h1{color:#FFD866;font-size:22px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
+#scoreRow{display:flex;gap:24px;font-size:14px;color:#7C8AAD;margin-bottom:6px;font-weight:700;}
 #scoreRow b{color:#FFD866;font-size:18px;}
-#boardWrap{position:relative;flex:1;min-height:0;width:100%;max-width:900px;display:flex;align-items:center;justify-content:center;}
+#boardWrap{position:relative;flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;}
 #board{background:#161b2e;border:4px solid #8a5a2a;border-radius:8px;box-shadow:0 20px 46px rgba(0,0,0,0.75);}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:60px;font-weight:900;
 color:#FFD866;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9);}
 .flash.show{animation:pop 2.2s ease-out forwards;}
 @keyframes pop{0%{opacity:0;transform:scale(0.6);}15%{opacity:1;transform:scale(1.05);}80%{opacity:1;}100%{opacity:0;}}
+/* নিচের ৪টা "সুইচ" — শুধু ভিজ্যুয়াল ইঙ্গিত, সাপ যেদিকে যাচ্ছে সেদিকেরটা আলো জ্বলে ওঠে, যেন মনে হয়
+   কেউ সুইচ চেপে সাপ ঘোরাচ্ছে (আসলে AI নিজেই সিদ্ধান্ত নেয়, এটা শুধু দর্শকদের জন্য একটা মজার ইঙ্গিত) */
+#dpad{display:grid;grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px;gap:5px;margin-top:10px;flex-shrink:0;}
+.dbtn{background:#161b2e;border:2px solid #2a3352;border-radius:8px;display:flex;align-items:center;justify-content:center;
+font-size:18px;color:#5a6a8a;transition:all 0.15s;}
+.dbtn.active{background:#FFD866;border-color:#FFD866;color:#0a0e1f;box-shadow:0 0 16px rgba(255,216,102,0.7);transform:scale(1.08);}
+#dUp{grid-column:2;grid-row:1;} #dLeft{grid-column:1;grid-row:2;} #dRight{grid-column:3;grid-row:2;} #dDown{grid-column:2;grid-row:3;}
 </style></head><body>
 <h1>🐍 Snake — Live</h1>
 <div id="scoreRow">Score: <b id="scoreVal">0</b> &nbsp;|&nbsp; High Score: <b id="highScoreVal">0</b></div>
 <div id="boardWrap"><canvas id="board"></canvas></div>
+<div id="dpad">
+  <div class="dbtn" id="dUp">▲</div>
+  <div class="dbtn" id="dLeft">◀</div>
+  <div class="dbtn" id="dRight">▶</div>
+  <div class="dbtn" id="dDown">▼</div>
+</div>
 <div class="flash" id="flash"></div>
 <script>
 const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
-let cellSize = 28;
+let cellSize = 24;
 function resize(){
   const wrap = document.getElementById("boardWrap");
   const availW = wrap.clientWidth - 8, availH = wrap.clientHeight - 8;
@@ -3070,45 +3095,102 @@ function resize(){
   canvas.width = cellSize * COLS; canvas.height = cellSize * ROWS;
 }
 window.addEventListener("resize", resize); resize();
-let lastStatus = "";
-function draw(data){
+
+let audioCtx = null;
+function playEatSound(){
+  try{
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    [520, 780].forEach((f,i) => {
+      const tt = t + i*0.06;
+      const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+      osc.type = "triangle"; osc.frequency.setValueAtTime(f, tt);
+      g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.18, tt+0.01); g.gain.exponentialRampToValueAtTime(0.001, tt+0.16);
+      osc.connect(g).connect(audioCtx.destination); osc.start(tt); osc.stop(tt+0.18);
+    });
+  }catch(e){}
+}
+document.body.addEventListener("click", () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); }, { once: true });
+
+let lastStatus = "", lastScore = 0;
+let prevBody = null, curBody = null, curFood = null, lastTickTime = performance.now();
+const TICK_MS = 220;
+
+function updateDpad(dir){
+  ["dUp","dDown","dLeft","dRight"].forEach(id => document.getElementById(id).classList.remove("active"));
+  if (!dir) return;
+  if (dir.r === -1) document.getElementById("dUp").classList.add("active");
+  else if (dir.r === 1) document.getElementById("dDown").classList.add("active");
+  else if (dir.c === -1) document.getElementById("dLeft").classList.add("active");
+  else if (dir.c === 1) document.getElementById("dRight").classList.add("active");
+}
+
+function render(now){
+  requestAnimationFrame(render);
+  if (!curBody) return;
+  const t = Math.min(1, (now - lastTickTime) / TICK_MS);
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  // checkerboard
   for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
     ctx.fillStyle = (r+c)%2===0 ? "#1c2338" : "#161b2e";
     ctx.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
   }
-  // food
+  // খাবার — একটু pulsating, চোখে পড়ার মতো
+  const pulse = 1 + Math.sin(now/220)*0.08;
   ctx.fillStyle = "#E8443D";
   ctx.beginPath();
-  ctx.arc(data.food.c*cellSize+cellSize/2, data.food.r*cellSize+cellSize/2, cellSize*0.35, 0, Math.PI*2);
+  ctx.arc(curFood.c*cellSize+cellSize/2, curFood.r*cellSize+cellSize/2, cellSize*0.36*pulse, 0, Math.PI*2);
   ctx.fill();
-  // snake
-  data.body.forEach((seg, i) => {
-    const isHead = i === 0;
-    ctx.fillStyle = isHead ? "#FFD866" : "#8BE28B";
-    const pad = isHead ? 1 : 2;
-    ctx.beginPath();
-    ctx.roundRect(seg.c*cellSize+pad, seg.r*cellSize+pad, cellSize-pad*2, cellSize-pad*2, 6);
-    ctx.fill();
-  });
-  document.getElementById("scoreVal").textContent = data.score;
-  document.getElementById("highScoreVal").textContent = data.highScore;
-  if (data.status === "gameover" && lastStatus !== "gameover") {
-    const flashEl = document.getElementById("flash");
-    flashEl.textContent = "💀 Game Over — Score: " + data.score;
-    flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+
+  // সাপ — আলাদা আলাদা বক্স না, একটানা মসৃণ "worm" আকৃতি, আগের ও এখনকার অবস্থানের মাঝে interpolate করা
+  let body = curBody;
+  if (prevBody && prevBody.length === curBody.length) {
+    body = curBody.map((seg, i) => ({
+      r: prevBody[i].r + (seg.r - prevBody[i].r) * t,
+      c: prevBody[i].c + (seg.c - prevBody[i].c) * t,
+    }));
   }
-  lastStatus = data.status;
+  ctx.strokeStyle = "#8BE28B";
+  ctx.lineWidth = cellSize * 0.78;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  body.forEach((seg, i) => {
+    const x = seg.c*cellSize+cellSize/2, y = seg.r*cellSize+cellSize/2;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  // মাথা — আলাদা রঙ + চোখ, যাতে বোঝা যায় কোনদিকে যাচ্ছে
+  const head = body[0];
+  const hx = head.c*cellSize+cellSize/2, hy = head.r*cellSize+cellSize/2;
+  ctx.fillStyle = "#FFD866";
+  ctx.beginPath(); ctx.arc(hx, hy, cellSize*0.42, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#0a0e1f";
+  ctx.beginPath(); ctx.arc(hx-cellSize*0.12, hy-cellSize*0.1, cellSize*0.07, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx+cellSize*0.12, hy-cellSize*0.1, cellSize*0.07, 0, Math.PI*2); ctx.fill();
 }
+requestAnimationFrame(render);
+
 async function poll(){
   try{
     const res = await fetch("/gaming/state/snake.json?t="+Date.now());
     const data = await res.json();
-    draw(data);
+    prevBody = curBody || data.body;
+    curBody = data.body;
+    curFood = data.food;
+    lastTickTime = performance.now();
+    updateDpad(data.dir);
+    document.getElementById("scoreVal").textContent = data.score;
+    document.getElementById("highScoreVal").textContent = data.highScore;
+    if (data.score > lastScore) playEatSound();
+    lastScore = data.score;
+    if (data.status === "gameover" && lastStatus !== "gameover") {
+      const flashEl = document.getElementById("flash");
+      flashEl.textContent = "💀 Game Over — Score: " + data.score;
+      flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+    }
+    lastStatus = data.status;
   }catch(e){}
 }
-setInterval(poll, 160); poll();
+setInterval(poll, 220); poll();
 </script></body></html>`;
 
 const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Ball Sort Puzzle — Live</title>
@@ -3120,11 +3202,11 @@ font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;flex
 h1{color:#FFD866;font-size:22px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
 #statusLine{color:#7C8AAD;font-size:13px;margin-bottom:14px;font-weight:700;min-height:18px;}
 #statusLine.solved{color:#8BE28B;}
-#tubesWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;max-width:1100px;}
-.tube{width:52px;height:220px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 20px 20px;
-display:flex;flex-direction:column-reverse;padding:4px;gap:4px;box-shadow:0 10px 24px rgba(0,0,0,0.5);}
-.ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:inset 0 -4px 8px rgba(0,0,0,0.35),inset 0 3px 4px rgba(255,255,255,0.4);
-transition:transform 0.3s ease;}
+#tubesWrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;}
+.tube{width:50px;height:216px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 20px 20px;
+display:flex;flex-direction:column-reverse;padding:4px;gap:4px;box-shadow:0 10px 24px rgba(0,0,0,0.5);position:relative;}
+.ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:inset 0 -4px 8px rgba(0,0,0,0.35),inset 0 3px 4px rgba(255,255,255,0.4);}
+.flyingBall{border-radius:50%;box-shadow:inset 0 -4px 8px rgba(0,0,0,0.35),inset 0 3px 4px rgba(255,255,255,0.4),0 6px 14px rgba(0,0,0,0.6);z-index:20;}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:900;
 color:#8BE28B;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9);}
 .flash.show{animation:pop 2.2s ease-out forwards;}
@@ -3136,41 +3218,128 @@ color:#8BE28B;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9)
 <div class="flash" id="flash"></div>
 <script>
 let lastStatus = "";
-function render(data){
+let lastMoveSig = "";
+let animating = false;
+
+let audioCtx = null;
+document.body.addEventListener("click", () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); }, { once: true });
+// মিষ্টি, নরম "জল ঢালার" মতো শব্দ — বল টিউব থেকে বেরিয়ে অন্য টিউবে পড়ার মুহূর্তে বাজে
+function playPourSound(){
+  try{
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    osc.type = "sine"; osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(420, t + 0.28);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.13, t+0.03); g.gain.exponentialRampToValueAtTime(0.001, t+0.32);
+    osc.connect(g).connect(audioCtx.destination); osc.start(t); osc.stop(t+0.34);
+    // ছোট্ট "প্লিং" — বল টিউবে গিয়ে বসার মুহূর্তে
+    const osc2 = audioCtx.createOscillator(); const g2 = audioCtx.createGain();
+    osc2.type = "triangle"; osc2.frequency.setValueAtTime(1100, t+0.26);
+    g2.gain.setValueAtTime(0.0001, t+0.26); g2.gain.exponentialRampToValueAtTime(0.12, t+0.27); g2.gain.exponentialRampToValueAtTime(0.001, t+0.4);
+    osc2.connect(g2).connect(audioCtx.destination); osc2.start(t+0.26); osc2.stop(t+0.42);
+  }catch(e){}
+}
+
+function renderStatic(tubes, colors){
   const wrap = document.getElementById("tubesWrap");
   wrap.innerHTML = "";
-  data.tubes.forEach((tube) => {
+  tubes.forEach((tube) => {
     const tubeEl = document.createElement("div");
     tubeEl.className = "tube";
     tube.forEach((colorIdx) => {
       const ball = document.createElement("div");
       ball.className = "ball";
-      ball.style.background = data.colors[colorIdx];
+      ball.style.background = colors[colorIdx];
       tubeEl.appendChild(ball);
     });
     wrap.appendChild(tubeEl);
   });
-  const statusEl = document.getElementById("statusLine");
-  if (data.status === "solved") {
-    statusEl.textContent = "✅ Solved! Starting a new puzzle...";
-    statusEl.classList.add("solved");
-    if (lastStatus !== "solved") {
-      const flashEl = document.getElementById("flash");
-      flashEl.textContent = "🎉 Solved!";
-      flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
-    }
-  } else {
-    statusEl.textContent = "Thinking... " + data.movesLeft + " moves left";
-    statusEl.classList.remove("solved");
-  }
-  lastStatus = data.status;
 }
+
+// আসল "বল বেরিয়ে অন্য টিউবে ঢোকা" অ্যানিমেশন — আগে বল সরাসরি লাফিয়ে অন্য জায়গায় দেখা যেত, এখন
+// বল টিউব থেকে উপরে উঠে, বাঁক নিয়ে, তারপর নতুন টিউবে নেমে যায় — যেন সত্যিই কেউ ঢালছে
+function animateMove(mv, tubesAfter, colors){
+  animating = true;
+  const before = tubesAfter.map((t) => [...t]);
+  const movedColor = before[mv.to].pop();
+  before[mv.from].push(movedColor);
+  renderStatic(before, colors);
+
+  const wrap = document.getElementById("tubesWrap");
+  const fromTubeEl = wrap.children[mv.from];
+  const toTubeEl = wrap.children[mv.to];
+  if (!fromTubeEl || !toTubeEl) { animating = false; renderStatic(tubesAfter, colors); return; }
+  const fromRect = fromTubeEl.getBoundingClientRect();
+  const toRect = toTubeEl.getBoundingClientRect();
+  const ballSize = fromRect.width - 10;
+
+  const flyBall = document.createElement("div");
+  flyBall.className = "ball flyingBall";
+  flyBall.style.background = colors[movedColor];
+  flyBall.style.position = "fixed";
+  flyBall.style.width = ballSize + "px"; flyBall.style.height = ballSize + "px";
+  const startX = fromRect.left + fromRect.width/2 - ballSize/2;
+  const startY = fromRect.top + 6;
+  flyBall.style.left = startX + "px"; flyBall.style.top = startY + "px";
+  document.body.appendChild(flyBall);
+
+  playPourSound();
+  const riseTop = Math.min(fromRect.top, toRect.top) - 55;
+  requestAnimationFrame(() => {
+    flyBall.style.transition = "top 0.22s ease-out";
+    flyBall.style.top = riseTop + "px";
+    setTimeout(() => {
+      const endX = toRect.left + toRect.width/2 - ballSize/2;
+      const endY = toRect.top + 6;
+      flyBall.style.transition = "left 0.28s ease-in-out, top 0.3s ease-in";
+      flyBall.style.left = endX + "px";
+      flyBall.style.top = endY + "px";
+      setTimeout(() => {
+        flyBall.remove();
+        renderStatic(tubesAfter, colors);
+        animating = false;
+      }, 310);
+    }, 230);
+  });
+}
+
 async function poll(){
+  if (animating) return; // একটা অ্যানিমেশন চলাকালীন নতুন poll-এর জন্য অপেক্ষা, নাহলে ছন্দ ভেঙে যাবে
   try{
     const res = await fetch("/gaming/state/ballsort.json?t="+Date.now());
     const data = await res.json();
-    render(data);
-  }catch(e){}
+    const statusEl = document.getElementById("statusLine");
+
+    if (data.status === "solving") {
+      statusEl.textContent = "🤔 একটা বড় পাজল — সমাধান খুঁজে বের করছে...";
+      statusEl.classList.remove("solved");
+      lastStatus = data.status;
+      return;
+    }
+    if (data.status === "solved") {
+      statusEl.textContent = "✅ Solved! Starting a new puzzle...";
+      statusEl.classList.add("solved");
+      if (lastStatus !== "solved") {
+        renderStatic(data.tubes, data.colors);
+        const flashEl = document.getElementById("flash");
+        flashEl.textContent = "🎉 Solved!";
+        flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+      }
+      lastStatus = data.status; lastMoveSig = "";
+      return;
+    }
+    statusEl.textContent = "Thinking... " + data.movesLeft + " moves left";
+    statusEl.classList.remove("solved");
+    const moveSig = data.lastMove ? (data.lastMove.from + "-" + data.lastMove.to + "-" + data.movesLeft) : "init";
+    if (data.lastMove && moveSig !== lastMoveSig) {
+      lastMoveSig = moveSig;
+      animateMove(data.lastMove, data.tubes, data.colors);
+    } else if (!data.lastMove) {
+      renderStatic(data.tubes, data.colors);
+    }
+    lastStatus = data.status;
+  }catch(e){ animating = false; }
 }
 setInterval(poll, 500); poll();
 </script></body></html>`;
