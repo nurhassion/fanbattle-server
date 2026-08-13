@@ -294,10 +294,10 @@ async function uploadPhotoToDriveAndLog(name, photoDataUrl) {
 // helper maps any side value to which overlay's queue it belongs in.
 function sideToChannel(side) {
   if (side === 'left' || side === 'right') return 'fanbattle';
-  if (side === 'dailyneedle' || side === 'zerototrader' || side === 'chessbattle') return side;
+  if (side === 'dailyneedle' || side === 'zerototrader' || side === 'chessbattle' || side === 'snake' || side === 'ballsort') return side;
   return 'fanbattle';
 }
-let latestEventsByChannel = { fanbattle: [], dailyneedle: [], zerototrader: [], chessbattle: [] };
+let latestEventsByChannel = { fanbattle: [], dailyneedle: [], zerototrader: [], chessbattle: [], snake: [], ballsort: [] };
 
 // ---- Celebration timing is DELIBERATELY separated from bookkeeping. ----
 // The payment itself is recorded immediately (recordDonation) so accounting/
@@ -541,8 +541,8 @@ fetchRecentPayments();
 // name for Daily Needle/Zero to Trader) to the short prefix embedded in the
 // Instamojo purpose field/PayPal custom_id — this is how /thanks and the
 // background poller later figure out which channel a payment belongs to.
-const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', zerototrader: 'ZT', chessbattle: 'CB' };
-const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', zerototrader: 'Zero to Trader tip', chessbattle: 'Chess Battle Live tip' };
+const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', zerototrader: 'ZT', chessbattle: 'CB', snake: 'SN', ballsort: 'BS' };
+const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', zerototrader: 'Zero to Trader tip', chessbattle: 'Chess Battle Live tip', snake: 'Snake tip', ballsort: 'Ball Sort Puzzle tip' };
 async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone) {
   const prefix = SIDE_PREFIX[side] || 'R';
   const purpose = `${prefix}: ${SIDE_LABEL[side] || 'Fan Battle Live tip'}`;
@@ -703,7 +703,8 @@ app.post('/paypal-create-order', async (req, res) => {
     // us set this per-order, so each channel shows its own brand here.
     const PAYPAL_BRAND_NAME = {
       left: 'Fan Battle Live', right: 'Fan Battle Live',
-      dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live'
+      dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live',
+      snake: 'Snake Live', ballsort: 'Ball Sort Puzzle Live'
     };
     const brandName = PAYPAL_BRAND_NAME[side] || 'Fan Battle Live';
     const orderRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
@@ -1263,10 +1264,10 @@ app.get('/pay-right', async (req, res) => {
 // Same exact mechanism as /pay-left and /pay-right above (India → Instamojo,
 // abroad → PayPal, decided per-visitor) — just a single QR per channel
 // instead of two, since neither channel has "sides" to split between.
-const SINGLE_CHANNEL_PAY_LABEL = { dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live' };
+const SINGLE_CHANNEL_PAY_LABEL = { dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live', snake: 'Snake Live', ballsort: 'Ball Sort Puzzle Live' };
 app.get('/pay/:channel', async (req, res) => {
   const channel = req.params.channel;
-  if (channel !== 'dailyneedle' && channel !== 'zerototrader' && channel !== 'chessbattle') return res.status(404).send('Unknown channel');
+  if (!SINGLE_CHANNEL_PAY_LABEL[channel]) return res.status(404).send('Unknown channel');
   const label = SINGLE_CHANNEL_PAY_LABEL[channel];
   const gw = loadGatewaySettings();
   if (req.query.force === 'paypal') {
@@ -1304,7 +1305,8 @@ app.get('/events', (req, res) => {
 // entirely separate queues, so one channel's tips never show up on
 // another channel's overlay.
 app.get('/events/:channel', (req, res) => {
-  const channel = (req.params.channel === 'dailyneedle' || req.params.channel === 'zerototrader' || req.params.channel === 'chessbattle') ? req.params.channel : 'fanbattle';
+  const validChannels = ['dailyneedle', 'zerototrader', 'chessbattle', 'snake', 'ballsort'];
+  const channel = validChannels.includes(req.params.channel) ? req.params.channel : 'fanbattle';
   const eventsToSend = [...latestEventsByChannel[channel]];
   latestEventsByChannel[channel] = [];
   const photosOut = {};
