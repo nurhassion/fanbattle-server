@@ -2501,6 +2501,70 @@ document.getElementById("cfgForm").addEventListener("submit", function(e){
 });
 </script></body></html>`;
 
+// ---------------------------------------------------------------------------
+// Snake ও Ball Sort-এর ব্যাকগ্রাউন্ড মিউজিক — একসাথে একটাই ছোট্ট, গোপন অ্যাডমিন পেজ
+// ---------------------------------------------------------------------------
+const MINDGAMES_ADMIN_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Mind Games — Background Music</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<style>
+body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:520px;margin:0 auto;}
+h1{color:#FFD866;font-size:20px;}
+h2{color:#8BE28B;font-size:15px;margin-top:26px;}
+.warn{background:#2a1a1a;border:1px solid #5c2a2a;border-radius:8px;padding:10px 14px;font-size:12px;color:#E8998F;margin-top:10px;}
+label{display:block;margin-top:14px;font-size:12px;color:#7C8AAD;font-weight:700;}
+input[type=text],input[type=range]{width:100%;padding:10px;border-radius:8px;border:1px solid #26314f;
+background:#131a2c;color:#fff;font-size:14px;margin-top:6px;font-family:inherit;box-sizing:border-box;}
+button{padding:12px 18px;border-radius:8px;border:none;background:#FFD866;color:#0a0e1f;font-weight:800;
+font-size:14px;cursor:pointer;margin-top:20px;}
+#status{margin-top:12px;font-size:13px;color:#8BE28B;min-height:18px;}
+</style></head><body>
+<h1>🎵 Snake &amp; Ball Sort — Background Music</h1>
+<div class="warn">This link is private — do not share it publicly, it is not linked from any public page.</div>
+<form id="cfgForm">
+  <h2>🐍 Snake</h2>
+  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+  <input type="text" id="snakeMusicUrl" placeholder="https://...mp3">
+  <label>Volume — <span id="snakeVolLabel">15%</span></label>
+  <input type="range" id="snakeMusicVolume" min="0" max="1" step="0.05" value="0.15">
+
+  <h2>🧪 Ball Sort Puzzle</h2>
+  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+  <input type="text" id="ballsortMusicUrl" placeholder="https://...mp3">
+  <label>Volume — <span id="ballsortVolLabel">15%</span></label>
+  <input type="range" id="ballsortMusicVolume" min="0" max="1" step="0.05" value="0.15">
+
+  <button type="submit">Save</button>
+  <div id="status"></div>
+</form>
+<script>
+Promise.all([fetch("/gaming/snake-config").then(function(r){return r.json();}), fetch("/gaming/ballsort-config").then(function(r){return r.json();})])
+  .then(function(results){
+    const s = results[0], b = results[1];
+    document.getElementById("snakeMusicUrl").value = s.bgMusicUrl || "";
+    document.getElementById("snakeMusicVolume").value = s.bgMusicVolume != null ? s.bgMusicVolume : 0.15;
+    document.getElementById("snakeVolLabel").textContent = Math.round((s.bgMusicVolume != null ? s.bgMusicVolume : 0.15) * 100) + "%";
+    document.getElementById("ballsortMusicUrl").value = b.bgMusicUrl || "";
+    document.getElementById("ballsortMusicVolume").value = b.bgMusicVolume != null ? b.bgMusicVolume : 0.15;
+    document.getElementById("ballsortVolLabel").textContent = Math.round((b.bgMusicVolume != null ? b.bgMusicVolume : 0.15) * 100) + "%";
+  });
+document.getElementById("snakeMusicVolume").addEventListener("input", function(e){ document.getElementById("snakeVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
+document.getElementById("ballsortMusicVolume").addEventListener("input", function(e){ document.getElementById("ballsortVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
+document.getElementById("cfgForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  const body = {
+    snakeMusicUrl: document.getElementById("snakeMusicUrl").value.trim(),
+    snakeMusicVolume: parseFloat(document.getElementById("snakeMusicVolume").value) || 0.15,
+    ballsortMusicUrl: document.getElementById("ballsortMusicUrl").value.trim(),
+    ballsortMusicVolume: parseFloat(document.getElementById("ballsortMusicVolume").value) || 0.15,
+  };
+  const statusEl = document.getElementById("status");
+  fetch("/gaming/mindgames-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) })
+    .then(function(res){ statusEl.textContent = res.ok ? "Saved. Takes effect on the live overlay within about 15 seconds." : "Could not save."; })
+    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
+});
+</script></body></html>`;
+
 const CHALLENGE_PLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Your Move!</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
@@ -2953,9 +3017,11 @@ async function runSnakeLoop() {
 // ৭.৬ — BALL SORT PUZZLE — AI নিজেই সমাধান করে দেখায়, শেষ হলে নতুন পাজল
 // ---------------------------------------------------------------------------
 const BS_TUBE_COUNT = 20, BS_TUBE_CAPACITY = 5, BS_COLOR_COUNT = 18; // ১৮টা রঙ, ২টা খালি টিউব, প্রতি টিউবে ৫টা বল
-const BS_COLORS = ["#FF3B30", "#29B6F6", "#FFD60A", "#34D399", "#A855F7", "#FF6EC7", "#FF8C00",
-  "#00E5C7", "#FF375F", "#7CFC00", "#5B6EFF", "#FF9F1C", "#C77DFF",
-  "#FF6B6B", "#00C2FF", "#B6FF00", "#FF4FD8", "#FFB800"]; // মোট ১৮টা রঙ — উজ্জ্বল ও স্যাচুরেটেড
+// ১৮টা রঙ — HSL চাকায় সমানভাবে ছড়ানো (প্রতি ২০° ব্যবধানে) + পালাক্রমে হালকা/গাঢ়, যাতে
+// কাছাকাছি রঙ (যেমন দুটো সবুজ) ভুল করে একই রকম না লাগে, তাড়াহুড়োতেও আলাদা বোঝা যায়
+const BS_COLORS = ["#EE2B2B", "#D45211", "#EEAD2B", "#D4D411", "#ADEE2B", "#52D411", "#2BEE2B",
+  "#11D452", "#2BEEAD", "#11D4D4", "#2BADEE", "#1152D4", "#2B2BEE", "#5211D4", "#AD2BEE",
+  "#D411D4", "#EE2BAD", "#D41152"];
 
 function bsGeneratePuzzle() {
   // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
@@ -3199,6 +3265,26 @@ function toggleAltPanel(){
 }
 setInterval(toggleAltPanel, 60000);
 
+// ব্যাকগ্রাউন্ড মিউজিক — /gaming/mindgames-admin থেকে সেট করা
+const bgMusicEl = new Audio();
+bgMusicEl.loop = true;
+let lastMusicUrl = "";
+async function loadMusicConfig(){
+  try {
+    const res = await fetch("/gaming/snake-config");
+    const cfg = await res.json();
+    if (cfg.bgMusicUrl && cfg.bgMusicUrl !== lastMusicUrl) {
+      lastMusicUrl = cfg.bgMusicUrl;
+      bgMusicEl.src = cfg.bgMusicUrl;
+      bgMusicEl.play().catch(() => {}); // ব্রাউজারের autoplay নীতির কারণে প্রথমবার নাও বাজতে পারে, ব্যবহারকারীর প্রথম ক্লিকে বাজবে
+    }
+    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+  } catch(e) {}
+}
+loadMusicConfig();
+setInterval(loadMusicConfig, 15000);
+document.body.addEventListener("click", () => { bgMusicEl.play().catch(() => {}); }, { once: true });
+
 const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
@@ -3259,7 +3345,15 @@ function updateDpad(dir){
 
 function render(now){
   requestAnimationFrame(render);
-  if (!curBody) return;
+  if (!curBody) {
+    // যদি সার্ভার থেকে কোনো state এখনো না এসে থাকে (fresh deploy/সাময়িক নেটওয়ার্ক সমস্যা),
+    // অন্তত একটা "Loading..." দেখানো হচ্ছে যাতে বোঝা যায় সমস্যাটা কোথায়, একদম ফাঁকা না থাকে
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#264d1c"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#FFD866"; ctx.font = "bold 20px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Loading...", canvas.width/2, canvas.height/2);
+    return;
+  }
   const t = Math.min(1, (now - lastTickTime) / TICK_MS);
   ctx.clearRect(0,0,canvas.width,canvas.height);
   // ছকঘর/গ্রিড লাইন সম্পূর্ণ বাদ — এখন একটা আসল জঙ্গল/মাঠের মতো গ্রেডিয়েন্ট + ছড়ানো ঘাসের টুকরো
@@ -3357,7 +3451,7 @@ html{background:#0a0e1f;}
 body{margin:0;color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:10px;
 display:grid;grid-template-columns:230px 1fr 230px;gap:10px;position:relative;}
-#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.4;filter:brightness(0.55);}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.75;filter:brightness(0.85);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3368,11 +3462,20 @@ border:1px solid #2a3352;border-radius:8px;padding:5px 12px;}
 #fastestLine b{color:#FFD866;}
 /* ২০টা টিউব — উপরে ১০টা, নিচে ১০টা করে দুই সারিতে, আগের চেয়ে লম্বা ও চওড়া */
 #tubesWrap{flex:1;min-height:0;width:100%;display:grid;grid-template-columns:repeat(10,1fr);grid-auto-rows:1fr;
-gap:5px;align-items:center;justify-items:center;padding:4px;}
-.tube{width:64px;height:300px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 18px 18px;
-display:flex;flex-direction:column-reverse;padding:4px;gap:3px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
-.ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 3px 6px rgba(0,0,0,0.45);}
+gap:6px;align-items:center;justify-items:center;padding:4px;}
+/* কাচের মতো টিউব — আধা-স্বচ্ছ, ওপরে-নিচে হালকা রিফ্লেকশন স্ট্রাইপ, পাতলা উজ্জ্বল বর্ডার */
+.tube{width:60px;height:288px;background:linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 8%, rgba(20,26,46,0.55) 20%, rgba(10,14,31,0.68) 100%);
+backdrop-filter:blur(2px);border:2px solid rgba(255,255,255,0.28);border-top:none;border-radius:4px 4px 22px 22px;
+display:flex;flex-direction:column-reverse;padding:5px;gap:3px;
+box-shadow:0 10px 26px rgba(0,0,0,0.55), inset 3px 0 6px rgba(255,255,255,0.12), inset -3px 0 6px rgba(0,0,0,0.35);position:relative;overflow:hidden;}
+.tube::before{content:"";position:absolute;top:0;left:8%;width:14%;height:100%;background:linear-gradient(180deg,rgba(255,255,255,0.35),rgba(255,255,255,0.05));
+border-radius:20px;pointer-events:none;} /* কাচের গায়ে আলোর প্রতিফলনের রেখা */
+.ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 3px 6px rgba(0,0,0,0.45);position:relative;z-index:1;}
 .flyingBall{border-radius:50%;box-shadow:0 6px 14px rgba(0,0,0,0.6);z-index:20;}
+/* স্ক্রিন-রেকর্ডিং-এর টাচ-পয়েন্ট রিং-এর মতো — বল তোলা/রাখার মুহূর্তে দেখা দেয়, মনে হয় কেউ হাত দিয়ে ধরছে */
+.tapIndicator{position:fixed;width:36px;height:36px;border-radius:50%;border:3px solid rgba(255,216,102,0.9);
+background:rgba(255,216,102,0.15);pointer-events:none;z-index:25;animation:tapPulse 0.5s ease-out forwards;}
+@keyframes tapPulse{0%{transform:scale(0.4);opacity:1;}70%{transform:scale(1.3);opacity:0.6;}100%{transform:scale(1.6);opacity:0;}}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:900;
 color:#8BE28B;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9);}
 .flash.show{animation:pop 2.2s ease-out forwards;}
@@ -3480,6 +3583,26 @@ function toggleAltPanel(){
 }
 setInterval(toggleAltPanel, 60000);
 
+// ব্যাকগ্রাউন্ড মিউজিক — /gaming/mindgames-admin থেকে সেট করা
+const bgMusicEl = new Audio();
+bgMusicEl.loop = true;
+let lastMusicUrl = "";
+async function loadMusicConfig(){
+  try {
+    const res = await fetch("/gaming/ballsort-config");
+    const cfg = await res.json();
+    if (cfg.bgMusicUrl && cfg.bgMusicUrl !== lastMusicUrl) {
+      lastMusicUrl = cfg.bgMusicUrl;
+      bgMusicEl.src = cfg.bgMusicUrl;
+      bgMusicEl.play().catch(() => {});
+    }
+    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+  } catch(e) {}
+}
+loadMusicConfig();
+setInterval(loadMusicConfig, 15000);
+document.body.addEventListener("click", () => { bgMusicEl.play().catch(() => {}); }, { once: true });
+
 let lastStatus = "";
 let lastMoveSig = "";
 let animating = false;
@@ -3560,23 +3683,35 @@ function animateMove(mv, tubesAfter, colors){
   flyBall.style.left = startX + "px"; flyBall.style.top = startY + "px";
   document.body.appendChild(flyBall);
 
+  // স্ক্রিন-রেকর্ডিং-এ যেমন আঙুলের ট্যাপ পয়েন্ট দেখায়, তেমনি একটা "tap" রিং — মনে হবে কেউ হাত দিয়ে
+  // বলটা তুলে অন্য টিউবে রাখছে, নিজে নিজে ভেসে যাচ্ছে না
+  function showTapIndicator(x, y){
+    const tap = document.createElement("div");
+    tap.className = "tapIndicator";
+    tap.style.left = (x - 18) + "px"; tap.style.top = (y - 18) + "px";
+    document.body.appendChild(tap);
+    setTimeout(() => tap.remove(), 500);
+  }
+  showTapIndicator(startX + ballSize/2, startY + ballSize/2);
+
   playPourSound();
   const riseTop = Math.min(fromRect.top, toRect.top) - 55;
   requestAnimationFrame(() => {
-    flyBall.style.transition = "top 0.22s ease-out";
+    flyBall.style.transition = "top 0.4s ease-out";
     flyBall.style.top = riseTop + "px";
     setTimeout(() => {
       const endX = toRect.left + toRect.width/2 - ballSize/2;
       const endY = toRect.top + 6;
-      flyBall.style.transition = "left 0.28s ease-in-out, top 0.3s ease-in";
+      flyBall.style.transition = "left 0.5s ease-in-out, top 0.55s ease-in";
       flyBall.style.left = endX + "px";
       flyBall.style.top = endY + "px";
       setTimeout(() => {
+        showTapIndicator(endX + ballSize/2, endY + ballSize/2); // গন্তব্যে "রাখার" মুহূর্তে আরেকটা ট্যাপ চিহ্ন
         flyBall.remove();
         renderStatic(tubesAfter, colors);
         animating = false;
-      }, 310);
-    }, 230);
+      }, 560);
+    }, 410);
   });
 }
 
@@ -3694,6 +3829,30 @@ module.exports = function mountGaming(app) {
       commentaryUrls: Array.isArray(body.commentaryUrls) ? body.commentaryUrls.slice(0, 20).map(s => (s || "").toString().slice(0, 500)) : [],
       loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
       celebVoiceURI: (body.celebVoiceURI || "").toString().slice(0, 300),
+    });
+    res.json({ ok: true });
+  });
+
+  // ---------- Snake ও Ball Sort-এর ব্যাকগ্রাউন্ড মিউজিক — ছোট্ট, দুটো গেমের জন্য একসাথে একটাই গোপন পেজ ----------
+  function readMindGameConfig(game) {
+    try { return JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
+    catch (e) { return { bgMusicUrl: "", bgMusicVolume: 0.15 }; }
+  }
+  function writeMindGameConfig(game, cfg) {
+    fs.writeFileSync(path.join(STATE_DIR, `${game}-config.json`), JSON.stringify(cfg, null, 2));
+  }
+  app.get("/gaming/snake-config", (req, res) => res.json(readMindGameConfig("snake")));
+  app.get("/gaming/ballsort-config", (req, res) => res.json(readMindGameConfig("ballsort")));
+  app.get("/gaming/mindgames-admin", (req, res) => res.type("html").send(MINDGAMES_ADMIN_HTML));
+  app.post("/gaming/mindgames-admin", express.json(), (req, res) => {
+    const body = req.body || {};
+    writeMindGameConfig("snake", {
+      bgMusicUrl: (body.snakeMusicUrl || "").toString().slice(0, 500),
+      bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.snakeMusicVolume) || 0.15)),
+    });
+    writeMindGameConfig("ballsort", {
+      bgMusicUrl: (body.ballsortMusicUrl || "").toString().slice(0, 500),
+      bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.ballsortMusicVolume) || 0.15)),
     });
     res.json({ ok: true });
   });
