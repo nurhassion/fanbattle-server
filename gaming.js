@@ -3637,7 +3637,10 @@ module.exports = function mountGaming(app) {
   app.use("/gaming/audio", express.static(AUDIO_DIR));
   app.use("/gaming/uploads", express.static(CHALLENGE_UPLOAD_DIR));
   // গেমের ব্যাকগ্রাউন্ড ভিডিও (Snake/Ball Sort) — রিপোর মূলে "game-assets" ফোল্ডারে রাখা ফাইল সরাসরি সার্ভ হবে
-  app.use("/game-assets", express.static(path.join(__dirname, "game-assets")));
+  // গেমের ব্যাকগ্রাউন্ড ভিডিও (Snake/Ball Sort) — আসল ফোল্ডারের নাম রিপোতে "gaming assetes" (স্পেস+ভিন্ন বানান
+  // সহ) হয়ে গিয়েছিল, কিন্তু URL path-টা এখনো পরিষ্কার "/game-assets" রাখা হলো — client-এর কোনো
+  // পরিবর্তন লাগছে না, শুধু এখানে সঠিক আসল ফোল্ডারের নাম দেখিয়ে দেওয়া হলো
+  app.use("/game-assets", express.static(path.join(__dirname, "gaming assetes")));
   app.get("/gaming/overlay/chess", (req, res) => res.type("html").send(CHESS_OVERLAY_HTML));
   app.get("/gaming/overlay/sports", (req, res) => res.type("html").send(SPORTS_OVERLAY_HTML));
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
