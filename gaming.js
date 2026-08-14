@@ -3065,9 +3065,11 @@ const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 *{box-sizing:border-box;}
-body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
+html{background:#0a0e1f;}
+body{margin:0;color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:8px;
-display:grid;grid-template-columns:230px 1fr 230px;gap:10px;}
+display:grid;grid-template-columns:230px 1fr 230px;gap:10px;position:relative;}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.4;filter:brightness(0.55);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3124,6 +3126,7 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
 .altView{display:none;}
 .altView.show{display:block;}
 </style></head><body>
+<video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/snake-bg.mp4" type="video/mp4"></video>
 <div class="sideCol">
   <div id="challengerBox">
     <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
@@ -3350,9 +3353,11 @@ const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charse
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 *{box-sizing:border-box;}
-body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#12081f 60%,#0a0e1f 100%);color:#F5F7FA;
+html{background:#0a0e1f;}
+body{margin:0;color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:10px;
-display:grid;grid-template-columns:230px 1fr 230px;gap:10px;}
+display:grid;grid-template-columns:230px 1fr 230px;gap:10px;position:relative;}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.4;filter:brightness(0.55);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3363,9 +3368,8 @@ border:1px solid #2a3352;border-radius:8px;padding:5px 12px;}
 #fastestLine b{color:#FFD866;}
 /* ২০টা টিউব — উপরে ১০টা, নিচে ১০টা করে দুই সারিতে, আগের চেয়ে লম্বা ও চওড়া */
 #tubesWrap{flex:1;min-height:0;width:100%;display:grid;grid-template-columns:repeat(10,1fr);grid-auto-rows:1fr;
-gap:10px;align-items:center;justify-items:center;padding:6px;}
-.tube{width:58px;height:260px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 18px 18px;
-display:flex;flex-direction:column-reverse;padding:4px;gap:3px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
+gap:5px;align-items:center;justify-items:center;padding:4px;}
+.tube{width:64px;height:300px;background:#161b2e;border:3px solid #2a3352;border-radius:0 0 18px 18px;
 display:flex;flex-direction:column-reverse;padding:4px;gap:3px;box-shadow:0 10px 24px rgba(0,0,0,0.5),inset 0 0 20px rgba(0,0,0,0.4);position:relative;}
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 3px 6px rgba(0,0,0,0.45);}
 .flyingBall{border-radius:50%;box-shadow:0 6px 14px rgba(0,0,0,0.6);z-index:20;}
@@ -3408,6 +3412,7 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
 .altView{display:none;}
 .altView.show{display:block;}
 </style></head><body>
+<video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/ballsort-bg.mp4" type="video/mp4"></video>
 <div class="sideCol">
   <div id="challengerBox">
     <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
@@ -3591,6 +3596,9 @@ async function poll(){
     if (data.status === "solving") {
       statusEl.textContent = "🤔 একটা বড় পাজল — সমাধান খুঁজে বের করছে...";
       statusEl.classList.remove("solved");
+      // ⚠️ আসল বাগ — এই "solving" অবস্থায় টিউবগুলো কখনো রেন্ডারই হতো না, তাই বড় পাজলে
+      // AI চিন্তা করার পুরোটা সময় (এখন আরও দীর্ঘ, ১৮ রঙের কারণে) টিউব একদম ফাঁকা দেখাতো
+      if (lastStatus !== "solving") { renderStatic(data.tubes, data.colors); lastMoveSig = ""; }
       lastStatus = data.status;
       return;
     }
@@ -3628,6 +3636,8 @@ module.exports = function mountGaming(app) {
   app.use("/gaming/state", express.static(STATE_DIR));
   app.use("/gaming/audio", express.static(AUDIO_DIR));
   app.use("/gaming/uploads", express.static(CHALLENGE_UPLOAD_DIR));
+  // গেমের ব্যাকগ্রাউন্ড ভিডিও (Snake/Ball Sort) — রিপোর মূলে "game-assets" ফোল্ডারে রাখা ফাইল সরাসরি সার্ভ হবে
+  app.use("/game-assets", express.static(path.join(__dirname, "game-assets")));
   app.get("/gaming/overlay/chess", (req, res) => res.type("html").send(CHESS_OVERLAY_HTML));
   app.get("/gaming/overlay/sports", (req, res) => res.type("html").send(SPORTS_OVERLAY_HTML));
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
