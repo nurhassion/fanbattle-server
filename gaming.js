@@ -3442,16 +3442,8 @@ function render(now){
       return { x: p.x*0.5 + (prev.x+next.x)*0.25, y: p.y*0.5 + (prev.y+next.y)*0.25 };
     });
   }
-  // হেলেদুলে (swaying) চলাফেরা — প্রতিটা বিন্দুকে তার নিজের গতির লম্ব দিকে সামান্য দোলানো হচ্ছে,
-  // সময় ও index অনুযায়ী তরঙ্গায়িত, রেফারেন্স ভিডিওর সাপের স্বাভাবিক নড়াচড়ার মতো
-  pts = pts.map((p, i) => {
-    const prev = pts[Math.max(0, i-1)], next = pts[Math.min(pts.length-1, i+1)];
-    const dx = next.x - prev.x, dy = next.y - prev.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = -dy/len, ny = dx/len; // চলার দিকের লম্ব (perpendicular) ভেক্টর
-    const wiggle = Math.sin(now/280 - i*0.6) * cellSize * 0.1;
-    return { x: p.x + nx*wiggle, y: p.y + ny*wiggle };
-  });
+  // ⚠️ আগে এখানে একটা perpendicular "swaying/wiggle" যোগ করা হয়েছিল, কিন্তু সেটা "হাওয়ায় ভাসছে"-এর
+  // মতো লাগছিল বলে সম্পূর্ণ সরিয়ে দেওয়া হলো — সাপ এখন শুধু গন্তব্যের দিকে সরাসরি, মসৃণভাবে এগোবে
   const beadR = cellSize * 0.46;
   // লেজ থেকে মাথার দিকে আঁকা হচ্ছে, যাতে মাথা সবসময় বাকি পুঁতিগুলোর উপরে (overlap) থাকে
   for (let i = pts.length - 1; i >= 1; i--) {
