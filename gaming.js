@@ -2439,9 +2439,64 @@ font-size:14px;cursor:pointer;margin-top:10px;}
   <button type="submit">Save</button>
   <div id="status"></div>
 </form>
+
+<hr style="border-color:#26314f;margin:34px 0;">
+<h1 style="color:#8BE28B;">🐍 Snake — Background Music</h1>
+<form id="snakeCfgForm">
+  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+  <input type="text" id="snakeMusicUrl" placeholder="https://...mp3">
+  <label>Volume — <span id="snakeVolLabel">15%</span></label>
+  <input type="range" id="snakeMusicVolume" min="0" max="1" step="0.05" value="0.15">
+  <button type="submit">Save</button>
+  <div id="snakeStatus"></div>
+</form>
+
+<hr style="border-color:#26314f;margin:34px 0;">
+<h1 style="color:#FFD866;">🧪 Ball Sort Puzzle — Background Music</h1>
+<form id="ballsortCfgForm">
+  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+  <input type="text" id="ballsortMusicUrl" placeholder="https://...mp3">
+  <label>Volume — <span id="ballsortVolLabel">15%</span></label>
+  <input type="range" id="ballsortMusicVolume" min="0" max="1" step="0.05" value="0.15">
+  <button type="submit">Save</button>
+  <div id="ballsortStatus"></div>
+</form>
+
+<script>
+fetch("/gaming/snake-config").then(function(r){ return r.json(); }).then(function(cfg){
+  document.getElementById("snakeMusicUrl").value = cfg.bgMusicUrl || "";
+  document.getElementById("snakeMusicVolume").value = cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15;
+  document.getElementById("snakeVolLabel").textContent = Math.round((cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15) * 100) + "%";
+});
+fetch("/gaming/ballsort-config").then(function(r){ return r.json(); }).then(function(cfg){
+  document.getElementById("ballsortMusicUrl").value = cfg.bgMusicUrl || "";
+  document.getElementById("ballsortMusicVolume").value = cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15;
+  document.getElementById("ballsortVolLabel").textContent = Math.round((cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15) * 100) + "%";
+});
+document.getElementById("snakeMusicVolume").addEventListener("input", function(e){ document.getElementById("snakeVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
+document.getElementById("ballsortMusicVolume").addEventListener("input", function(e){ document.getElementById("ballsortVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
+document.getElementById("snakeCfgForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  const statusEl = document.getElementById("snakeStatus");
+  fetch("/gaming/mindgames-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+    snakeMusicUrl: document.getElementById("snakeMusicUrl").value.trim(),
+    snakeMusicVolume: parseFloat(document.getElementById("snakeMusicVolume").value) || 0.15,
+  }) }).then(function(res){ statusEl.textContent = res.ok ? "Saved." : "Could not save."; })
+    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
+});
+document.getElementById("ballsortCfgForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  const statusEl = document.getElementById("ballsortStatus");
+  fetch("/gaming/mindgames-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+    ballsortMusicUrl: document.getElementById("ballsortMusicUrl").value.trim(),
+    ballsortMusicVolume: parseFloat(document.getElementById("ballsortMusicVolume").value) || 0.15,
+  }) }).then(function(res){ statusEl.textContent = res.ok ? "Saved." : "Could not save."; })
+    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
+});
+</script>
+
 <script>
 let availableVoices = [];
-let selectedVoice = null;
 function scoreVoice(v){
   let score = 0;
   if (/bn|beng|india|hindi/i.test(v.lang) || /bn|beng|india/i.test(v.name)) score += 5;
@@ -2496,70 +2551,6 @@ document.getElementById("cfgForm").addEventListener("submit", function(e){
   };
   const statusEl = document.getElementById("status");
   fetch("/gaming/chess-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) })
-    .then(function(res){ statusEl.textContent = res.ok ? "Saved. Takes effect on the live overlay within about 15 seconds." : "Could not save."; })
-    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
-});
-</script></body></html>`;
-
-// ---------------------------------------------------------------------------
-// Snake ও Ball Sort-এর ব্যাকগ্রাউন্ড মিউজিক — একসাথে একটাই ছোট্ট, গোপন অ্যাডমিন পেজ
-// ---------------------------------------------------------------------------
-const MINDGAMES_ADMIN_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Mind Games — Background Music</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<style>
-body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:520px;margin:0 auto;}
-h1{color:#FFD866;font-size:20px;}
-h2{color:#8BE28B;font-size:15px;margin-top:26px;}
-.warn{background:#2a1a1a;border:1px solid #5c2a2a;border-radius:8px;padding:10px 14px;font-size:12px;color:#E8998F;margin-top:10px;}
-label{display:block;margin-top:14px;font-size:12px;color:#7C8AAD;font-weight:700;}
-input[type=text],input[type=range]{width:100%;padding:10px;border-radius:8px;border:1px solid #26314f;
-background:#131a2c;color:#fff;font-size:14px;margin-top:6px;font-family:inherit;box-sizing:border-box;}
-button{padding:12px 18px;border-radius:8px;border:none;background:#FFD866;color:#0a0e1f;font-weight:800;
-font-size:14px;cursor:pointer;margin-top:20px;}
-#status{margin-top:12px;font-size:13px;color:#8BE28B;min-height:18px;}
-</style></head><body>
-<h1>🎵 Snake &amp; Ball Sort — Background Music</h1>
-<div class="warn">This link is private — do not share it publicly, it is not linked from any public page.</div>
-<form id="cfgForm">
-  <h2>🐍 Snake</h2>
-  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
-  <input type="text" id="snakeMusicUrl" placeholder="https://...mp3">
-  <label>Volume — <span id="snakeVolLabel">15%</span></label>
-  <input type="range" id="snakeMusicVolume" min="0" max="1" step="0.05" value="0.15">
-
-  <h2>🧪 Ball Sort Puzzle</h2>
-  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
-  <input type="text" id="ballsortMusicUrl" placeholder="https://...mp3">
-  <label>Volume — <span id="ballsortVolLabel">15%</span></label>
-  <input type="range" id="ballsortMusicVolume" min="0" max="1" step="0.05" value="0.15">
-
-  <button type="submit">Save</button>
-  <div id="status"></div>
-</form>
-<script>
-Promise.all([fetch("/gaming/snake-config").then(function(r){return r.json();}), fetch("/gaming/ballsort-config").then(function(r){return r.json();})])
-  .then(function(results){
-    const s = results[0], b = results[1];
-    document.getElementById("snakeMusicUrl").value = s.bgMusicUrl || "";
-    document.getElementById("snakeMusicVolume").value = s.bgMusicVolume != null ? s.bgMusicVolume : 0.15;
-    document.getElementById("snakeVolLabel").textContent = Math.round((s.bgMusicVolume != null ? s.bgMusicVolume : 0.15) * 100) + "%";
-    document.getElementById("ballsortMusicUrl").value = b.bgMusicUrl || "";
-    document.getElementById("ballsortMusicVolume").value = b.bgMusicVolume != null ? b.bgMusicVolume : 0.15;
-    document.getElementById("ballsortVolLabel").textContent = Math.round((b.bgMusicVolume != null ? b.bgMusicVolume : 0.15) * 100) + "%";
-  });
-document.getElementById("snakeMusicVolume").addEventListener("input", function(e){ document.getElementById("snakeVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
-document.getElementById("ballsortMusicVolume").addEventListener("input", function(e){ document.getElementById("ballsortVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
-document.getElementById("cfgForm").addEventListener("submit", function(e){
-  e.preventDefault();
-  const body = {
-    snakeMusicUrl: document.getElementById("snakeMusicUrl").value.trim(),
-    snakeMusicVolume: parseFloat(document.getElementById("snakeMusicVolume").value) || 0.15,
-    ballsortMusicUrl: document.getElementById("ballsortMusicUrl").value.trim(),
-    ballsortMusicVolume: parseFloat(document.getElementById("ballsortMusicVolume").value) || 0.15,
-  };
-  const statusEl = document.getElementById("status");
-  fetch("/gaming/mindgames-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) })
     .then(function(res){ statusEl.textContent = res.ok ? "Saved. Takes effect on the live overlay within about 15 seconds." : "Could not save."; })
     .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
 });
@@ -3017,18 +3008,35 @@ async function runSnakeLoop() {
 // ৭.৬ — BALL SORT PUZZLE — AI নিজেই সমাধান করে দেখায়, শেষ হলে নতুন পাজল
 // ---------------------------------------------------------------------------
 const BS_TUBE_COUNT = 20, BS_TUBE_CAPACITY = 5, BS_COLOR_COUNT = 18; // ১৮টা রঙ, ২টা খালি টিউব, প্রতি টিউবে ৫টা বল
-// ১৮টা রঙ — HSL চাকায় সমানভাবে ছড়ানো (প্রতি ২০° ব্যবধানে) + পালাক্রমে হালকা/গাঢ়, যাতে
-// কাছাকাছি রঙ (যেমন দুটো সবুজ) ভুল করে একই রকম না লাগে, তাড়াহুড়োতেও আলাদা বোঝা যায়
-const BS_COLORS = ["#EE2B2B", "#D45211", "#EEAD2B", "#D4D411", "#ADEE2B", "#52D411", "#2BEE2B",
-  "#11D452", "#2BEEAD", "#11D4D4", "#2BADEE", "#1152D4", "#2B2BEE", "#5211D4", "#AD2BEE",
-  "#D411D4", "#EE2BAD", "#D41152"];
+// ইউজারের দেওয়া ১৮টা রঙের নাম অনুযায়ী — প্রতিটাকে উজ্জ্বল/স্যাচুরেটেড ভার্সনে রাখা হয়েছে যাতে
+// অন্ধকার ব্যাকগ্রাউন্ডেও স্পষ্ট দেখা যায় এবং কাছাকাছি রঙ (যেমন Sapphire vs Indigo) গুলিয়ে না যায়
+const BS_COLORS = [
+  "#1E5FFF", // Sapphire
+  "#10C469", // Emerald
+  "#9B4DFF", // Amethyst
+  "#00C2C2", // Teal
+  "#B98CFF", // Lavender
+  "#FF6F5E", // Coral
+  "#FF2D55", // Crimson
+  "#2DE0C7", // Turquoise
+  "#A32148", // Burgundy
+  "#E8C22E", // Mustard
+  "#5B3FD9", // Indigo
+  "#FFA173", // Peach
+  "#7A8CB3", // Slate
+  "#A6A83A", // Olive
+  "#8FA0FF", // Periwinkle
+  "#FFB100", // Amber
+  "#3FE0A5", // Mint
+  "#A8455C", // Rosewood
+];
 
 function bsGeneratePuzzle() {
   // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
   let tubes = [];
   for (let i = 0; i < BS_COLOR_COUNT; i++) tubes.push(new Array(BS_TUBE_CAPACITY).fill(i));
   tubes.push([]); tubes.push([]); // ২টা খালি টিউব
-  for (let shuffle = 0; shuffle < 120; shuffle++) { // ১৮ রঙের অনেক বড় পাজলে খুব বেশি শাফল করলে সমাধান খুঁজে বের করা কঠিন হয়ে যায়, তাই কমানো হলো
+  for (let shuffle = 0; shuffle < 180; shuffle++) { // ইউজার চেয়েছেন আরও জটিল/কঠিন পাজল — বাড়ানো হলো (memory-safety cap অক্ষত আছে, তাই এখনো নিরাপদ)
     const from = Math.floor(Math.random() * tubes.length);
     const to = Math.floor(Math.random() * tubes.length);
     if (from === to || !tubes[from].length || tubes[to].length >= BS_TUBE_CAPACITY) continue;
@@ -3107,7 +3115,9 @@ async function runBallSortLoop() {
     await sleep(1200);
     // মোট সমাধানের সময়টা একটা লক্ষ্যমাত্রার (~১৪ মিনিট) কাছাকাছি রাখার চেষ্টা — আগের চেয়ে আরও ধীর
     const targetTotalMs = 14 * 60 * 1000;
-    const perMoveDelay = Math.max(900, Math.min(3800, Math.round(targetTotalMs / Math.max(1, solution.length))));
+    // ⚠️ ন্যূনতম বিরতি অবশ্যই client-side অ্যানিমেশনের মোট সময়ের (~২.৩ সেকেন্ড) চেয়ে বেশি রাখা জরুরি,
+    // নাহলে পরের চাল আসার আগেই আগেরটার অ্যানিমেশন শেষ না হয়ে ছন্দ ভেঙে যাবে
+    const perMoveDelay = Math.max(2400, Math.min(3800, Math.round(targetTotalMs / Math.max(1, solution.length))));
     const solveStartedAt = Date.now();
     for (let i = 0; i < solution.length && ballSortLoopActive; i++) {
       const mv = solution[i];
@@ -3133,8 +3143,8 @@ const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 *{box-sizing:border-box;}
 html{background:#0a0e1f;}
 body{margin:0;color:#F5F7FA;
-font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:8px;
-display:grid;grid-template-columns:230px 1fr 230px;gap:10px;position:relative;}
+font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:8px;position:relative;}
+.liveFrame{display:grid;grid-template-columns:230px 1fr 230px;gap:10px;height:calc(100vh - 16px);}
 #bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.4;filter:brightness(0.55);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
@@ -3193,6 +3203,7 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
 .altView.show{display:block;}
 </style></head><body>
 <video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/snake-bg.mp4" type="video/mp4"></video>
+<div class="liveFrame">
 <div class="sideCol">
   <div id="challengerBox">
     <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
@@ -3230,8 +3241,21 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
   <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
   <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
 </div>
+</div>
 <div class="flash" id="flash"></div>
 <script>
+// ⚠️ কোনো কারণে স্ক্রিপ্টের যেকোনো জায়গায় unexpected error হলে (যেমন আগে "Cannot access before
+// initialization" হয়েছিল) — সেটা যেন নীরবে পুরো গেম থামিয়ে না দেয়, বরং সরাসরি স্ক্রিনে স্পষ্ট
+// দেখা যায়, যাতে স্ক্রিনশট পাঠালেই আসল কারণ বোঝা যায়
+window.addEventListener("error", (e) => {
+  const el = document.getElementById("board") || document.body;
+  if (el.tagName === "CANVAS") {
+    const c = el.getContext("2d");
+    c.fillStyle = "#3a0e0e"; c.fillRect(0,0,el.width,el.height);
+    c.fillStyle = "#FF8A80"; c.font = "13px monospace"; c.textAlign = "center";
+    c.fillText("Script error: " + e.message, el.width/2, el.height/2);
+  }
+});
 // ---------- QR/Help Me + টপ ৩ সাপোর্টার + সাম্প্রতিক সাপোর্টার (স্থায়ী তালিকা) ----------
 document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(location.origin + "/pay/snake");
 function fillTopSupporterPanel(idx, donor){
@@ -3265,7 +3289,7 @@ function toggleAltPanel(){
 }
 setInterval(toggleAltPanel, 60000);
 
-// ব্যাকগ্রাউন্ড মিউজিক — /gaming/mindgames-admin থেকে সেট করা
+// ব্যাকগ্রাউন্ড মিউজিক — শুধু পড়ে (read-only), সেট করার ফর্ম এখন গোপন /gaming/chess-admin পেজে
 const bgMusicEl = new Audio();
 bgMusicEl.loop = true;
 let lastMusicUrl = "";
@@ -3289,12 +3313,27 @@ const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 let cellSize = 24;
+// পটভূমির ঘাস-সজ্জা — এটা resize()-এর আগে declare করা জরুরি, কারণ resize() নিচে সাথে সাথেই
+// কল হয় এবং এটাকে ব্যবহার করে। আগে এটা নিচে থাকায় "Cannot access before initialization" error
+// হয়ে পুরো স্ক্রিপ্টটাই থেমে যাচ্ছিল (এটাই আসল কারণ ছিল সাপ একদম না চলার)
+let grassDecor = [];
+function regenerateGrassDecor(){
+  grassDecor = [];
+  const count = Math.floor((canvas.width * canvas.height) / 900);
+  for (let i=0;i<count;i++) {
+    grassDecor.push({
+      x: Math.random()*canvas.width, y: Math.random()*canvas.height,
+      h: 5 + Math.random()*9, tilt: (Math.random()-0.5)*0.6,
+      shade: Math.random() > 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
+    });
+  }
+}
 function resize(){
   const wrap = document.getElementById("boardWrap");
   const availW = wrap.clientWidth - 8, availH = wrap.clientHeight - 8;
   cellSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
   canvas.width = cellSize * COLS; canvas.height = cellSize * ROWS;
-  if (typeof regenerateGrassDecor === "function") regenerateGrassDecor(); // সাইজ বদলালে ঘাসের সজ্জাও নতুন করে বসবে
+  regenerateGrassDecor(); // সাইজ বদলালে ঘাসের সজ্জাও নতুন করে বসবে
 }
 window.addEventListener("resize", resize); resize();
 
@@ -3320,20 +3359,6 @@ const TICK_MS = 110; // ⚠️ এটা সার্ভারের tick rate-�
 // কিন্তু এখানে ভুলে ২২০ রয়ে গিয়েছিল, ফলে client প্রতি আপডেটের অর্ধেক সময় "থেমে" থাকতো — এটাই আসল
 // "আটকে আটকে" চলার কারণ ছিল, কোনো ইচ্ছাকৃত ধীরগতি বা bug অন্য কিছু না
 
-// পটভূমির ঘাস-সজ্জা একবারই তৈরি হয় (প্রতি ফ্রেমে না, নাহলে মিটমিট করবে), resize হলে আবার তৈরি হয়
-let grassDecor = [];
-function regenerateGrassDecor(){
-  grassDecor = [];
-  const count = Math.floor((canvas.width * canvas.height) / 900);
-  for (let i=0;i<count;i++) {
-    grassDecor.push({
-      x: Math.random()*canvas.width, y: Math.random()*canvas.height,
-      h: 5 + Math.random()*9, tilt: (Math.random()-0.5)*0.6,
-      shade: Math.random() > 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
-    });
-  }
-}
-
 function updateDpad(dir){
   ["dUp","dDown","dLeft","dRight"].forEach(id => document.getElementById(id).classList.remove("active"));
   if (!dir) return;
@@ -3345,6 +3370,7 @@ function updateDpad(dir){
 
 function render(now){
   requestAnimationFrame(render);
+  try {
   if (!curBody) {
     // যদি সার্ভার থেকে কোনো state এখনো না এসে থাকে (fresh deploy/সাময়িক নেটওয়ার্ক সমস্যা),
     // অন্তত একটা "Loading..." দেখানো হচ্ছে যাতে বোঝা যায় সমস্যাটা কোথায়, একদম ফাঁকা না থাকে
@@ -3415,6 +3441,13 @@ function render(now){
   ctx.fillStyle = "#0a0e1f";
   ctx.beginPath(); ctx.arc(hx-cellSize*0.12, hy-cellSize*0.1, cellSize*0.07, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(hx+cellSize*0.12, hy-cellSize*0.1, cellSize*0.07, 0, Math.PI*2); ctx.fill();
+  } catch(err) {
+    // ভবিষ্যতে যদি আবার এমন কোনো bug হয় যেটা draw করার মাঝপথে থেমে যায়, অন্তত এখানে স্পষ্ট
+    // error message দেখা যাবে (ক্যানভাসের উপরেই লেখা), স্ক্রিনশট পাঠালেই আসল কারণ সরাসরি বোঝা যাবে
+    ctx.fillStyle = "#3a0e0e"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#FF8A80"; ctx.font = "13px monospace"; ctx.textAlign = "center";
+    ctx.fillText("Render error: " + (err && err.message ? err.message : String(err)), canvas.width/2, canvas.height/2);
+  }
 }
 requestAnimationFrame(render);
 
@@ -3550,6 +3583,12 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
 </div>
 <div class="flash" id="flash"></div>
 <script>
+// ⚠️ কোনো কারণে স্ক্রিপ্টের যেকোনো জায়গায় unexpected error হলে, নীরবে গেম থামিয়ে না দিয়ে
+// সরাসরি স্ক্রিনে দেখানো — যাতে স্ক্রিনশট পাঠালেই আসল কারণ বোঝা যায়
+window.addEventListener("error", (e) => {
+  const statusEl = document.getElementById("statusLine");
+  if (statusEl) { statusEl.textContent = "⚠️ Script error: " + e.message; statusEl.style.color = "#FF8A80"; }
+});
 // ---------- QR/Help Me + টপ ৩ সাপোর্টার + সাম্প্রতিক সাপোর্টার (স্থায়ী তালিকা) ----------
 document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(location.origin + "/pay/ballsort");
 function fillTopSupporterPanel(idx, donor){
@@ -3583,7 +3622,7 @@ function toggleAltPanel(){
 }
 setInterval(toggleAltPanel, 60000);
 
-// ব্যাকগ্রাউন্ড মিউজিক — /gaming/mindgames-admin থেকে সেট করা
+// ব্যাকগ্রাউন্ড মিউজিক — /gaming/chess-admin পেজে (স্ক্রল করে নিচে) সেট করা হয়, এখানে শুধু পড়া হয়
 const bgMusicEl = new Audio();
 bgMusicEl.loop = true;
 let lastMusicUrl = "";
@@ -3697,12 +3736,12 @@ function animateMove(mv, tubesAfter, colors){
   playPourSound();
   const riseTop = Math.min(fromRect.top, toRect.top) - 55;
   requestAnimationFrame(() => {
-    flyBall.style.transition = "top 0.4s ease-out";
+    flyBall.style.transition = "top 1.0s ease-out";
     flyBall.style.top = riseTop + "px";
     setTimeout(() => {
       const endX = toRect.left + toRect.width/2 - ballSize/2;
       const endY = toRect.top + 6;
-      flyBall.style.transition = "left 0.5s ease-in-out, top 0.55s ease-in";
+      flyBall.style.transition = "left 1.2s ease-in-out, top 1.25s ease-in";
       flyBall.style.left = endX + "px";
       flyBall.style.top = endY + "px";
       setTimeout(() => {
@@ -3710,8 +3749,8 @@ function animateMove(mv, tubesAfter, colors){
         flyBall.remove();
         renderStatic(tubesAfter, colors);
         animating = false;
-      }, 560);
-    }, 410);
+      }, 1270);
+    }, 1020);
   });
 }
 
