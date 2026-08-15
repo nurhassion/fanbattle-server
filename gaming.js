@@ -2440,61 +2440,6 @@ font-size:14px;cursor:pointer;margin-top:10px;}
   <div id="status"></div>
 </form>
 
-<hr style="border-color:#26314f;margin:34px 0;">
-<h1 style="color:#8BE28B;">🐍 Snake — Background Music</h1>
-<form id="snakeCfgForm">
-  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
-  <input type="text" id="snakeMusicUrl" placeholder="https://...mp3">
-  <label>Volume — <span id="snakeVolLabel">15%</span></label>
-  <input type="range" id="snakeMusicVolume" min="0" max="1" step="0.05" value="0.15">
-  <button type="submit">Save</button>
-  <div id="snakeStatus"></div>
-</form>
-
-<hr style="border-color:#26314f;margin:34px 0;">
-<h1 style="color:#FFD866;">🧪 Ball Sort Puzzle — Background Music</h1>
-<form id="ballsortCfgForm">
-  <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
-  <input type="text" id="ballsortMusicUrl" placeholder="https://...mp3">
-  <label>Volume — <span id="ballsortVolLabel">15%</span></label>
-  <input type="range" id="ballsortMusicVolume" min="0" max="1" step="0.05" value="0.15">
-  <button type="submit">Save</button>
-  <div id="ballsortStatus"></div>
-</form>
-
-<script>
-fetch("/gaming/snake-config").then(function(r){ return r.json(); }).then(function(cfg){
-  document.getElementById("snakeMusicUrl").value = cfg.bgMusicUrl || "";
-  document.getElementById("snakeMusicVolume").value = cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15;
-  document.getElementById("snakeVolLabel").textContent = Math.round((cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15) * 100) + "%";
-});
-fetch("/gaming/ballsort-config").then(function(r){ return r.json(); }).then(function(cfg){
-  document.getElementById("ballsortMusicUrl").value = cfg.bgMusicUrl || "";
-  document.getElementById("ballsortMusicVolume").value = cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15;
-  document.getElementById("ballsortVolLabel").textContent = Math.round((cfg.bgMusicVolume != null ? cfg.bgMusicVolume : 0.15) * 100) + "%";
-});
-document.getElementById("snakeMusicVolume").addEventListener("input", function(e){ document.getElementById("snakeVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
-document.getElementById("ballsortMusicVolume").addEventListener("input", function(e){ document.getElementById("ballsortVolLabel").textContent = Math.round(e.target.value * 100) + "%"; });
-document.getElementById("snakeCfgForm").addEventListener("submit", function(e){
-  e.preventDefault();
-  const statusEl = document.getElementById("snakeStatus");
-  fetch("/gaming/mindgames-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
-    snakeMusicUrl: document.getElementById("snakeMusicUrl").value.trim(),
-    snakeMusicVolume: parseFloat(document.getElementById("snakeMusicVolume").value) || 0.15,
-  }) }).then(function(res){ statusEl.textContent = res.ok ? "Saved." : "Could not save."; })
-    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
-});
-document.getElementById("ballsortCfgForm").addEventListener("submit", function(e){
-  e.preventDefault();
-  const statusEl = document.getElementById("ballsortStatus");
-  fetch("/gaming/mindgames-admin", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
-    ballsortMusicUrl: document.getElementById("ballsortMusicUrl").value.trim(),
-    ballsortMusicVolume: parseFloat(document.getElementById("ballsortMusicVolume").value) || 0.15,
-  }) }).then(function(res){ statusEl.textContent = res.ok ? "Saved." : "Could not save."; })
-    .catch(function(){ statusEl.textContent = "Could not save — network problem."; });
-});
-</script>
-
 <script>
 let availableVoices = [];
 function scoreVoice(v){
@@ -3031,17 +2976,39 @@ const BS_COLORS = [
   "#A8455C", // Rosewood
 ];
 
-function bsGeneratePuzzle() {
-  // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে
+// একই টিউবে পরপর (touching) দুটো একই রঙের বল যেন না থাকে — তাড়াহুড়োয় বোঝা কঠিন হয়ে যায় এই কারণে
+// ইউজার এই নিয়ম রাখতে বলেছেন। একই টিউবে একই রঙ একাধিকবার থাকতেই পারে, শুধু পাশাপাশি (adjacent) না।
+function bsHasAdjacentDuplicate(tubes) {
+  return tubes.some((t) => {
+    for (let i = 1; i < t.length; i++) { if (t[i] === t[i - 1]) return true; }
+    return false;
+  });
+}
+function bsGeneratePuzzleOnce() {
+  // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে।
+  // প্রতিটা চালের সময় "গন্তব্যে পরপর একই রঙ হয়ে যাচ্ছে কিনা" যাচাই করে সেই চাল বাদ দেওয়া হয়, যাতে
+  // শাফল শেষে কোথাও দুটো একই রঙের বল সরাসরি গায়ে গায়ে না লেগে থাকে
   let tubes = [];
   for (let i = 0; i < BS_COLOR_COUNT; i++) tubes.push(new Array(BS_TUBE_CAPACITY).fill(i));
   tubes.push([]); tubes.push([]); // ২টা খালি টিউব
-  for (let shuffle = 0; shuffle < 180; shuffle++) { // ইউজার চেয়েছেন আরও জটিল/কঠিন পাজল — বাড়ানো হলো (memory-safety cap অক্ষত আছে, তাই এখনো নিরাপদ)
+  let done = 0, attempts = 0;
+  while (done < 180 && attempts < 4000) { // ইউজার চেয়েছেন আরও জটিল/কঠিন পাজল — বাড়ানো হলো (memory-safety cap অক্ষত আছে, তাই এখনো নিরাপদ)
+    attempts++;
     const from = Math.floor(Math.random() * tubes.length);
     const to = Math.floor(Math.random() * tubes.length);
     if (from === to || !tubes[from].length || tubes[to].length >= BS_TUBE_CAPACITY) continue;
+    const movingColor = tubes[from][tubes[from].length - 1];
+    if (tubes[to].length > 0 && tubes[to][tubes[to].length - 1] === movingColor) continue; // পরপর একই রঙ হয়ে যেত, এই চাল বাদ
     tubes[to].push(tubes[from].pop());
+    done++;
   }
+  return tubes;
+}
+function bsGeneratePuzzle() {
+  // কালেভদ্রে (কম শাফল-সুযোগ পাওয়া কোনো টিউব) তারপরও adjacent-duplicate থেকে যেতে পারে —
+  // সেক্ষেত্রে পুরো পাজলটাই আবার নতুন করে তৈরি করা হচ্ছে, যতক্ষণ না নিয়ম মেনে চলে
+  let tubes, tries = 0;
+  do { tubes = bsGeneratePuzzleOnce(); tries++; } while (bsHasAdjacentDuplicate(tubes) && tries < 40);
   return tubes;
 }
 function bsIsSolved(tubes) {
@@ -3143,9 +3110,9 @@ const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="
 *{box-sizing:border-box;}
 html{background:#0a0e1f;}
 body{margin:0;color:#F5F7FA;
-font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:8px;position:relative;}
+font-family:'Segoe UI',sans-serif;overflow-y:auto;min-height:100vh;padding:8px;position:relative;}
 .liveFrame{display:grid;grid-template-columns:230px 1fr 230px;gap:10px;height:calc(100vh - 16px);}
-#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.4;filter:brightness(0.55);}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.75;filter:brightness(0.85);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3201,6 +3168,19 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
 #challengerName{padding:6px;text-align:center;font-size:12px;font-weight:800;background:#12172a;border-top:1px solid #2a3352;}
 .altView{display:none;}
 .altView.show{display:block;}
+/* নিচে-স্ক্রল-করা ব্যাকগ্রাউন্ড মিউজিক+কমেন্ট্রি সেটিংস — দর্শক/স্ট্রিম কখনো এটা দেখবে না, শুধু
+   normal live-frame উচ্চতার নিচে থাকে, আপনি নিজের মনিটরে স্ক্রল করলে দেখতে পাবেন */
+#bgSettingsPanel{max-width:560px;margin:30px auto 20px;padding:20px;background:#12172a;border:1px solid #2a3352;
+border-radius:16px;position:relative;}
+#bgSettingsPanel h2{color:#FFD866;font-size:16px;margin:0 0 4px;}
+#bgSettingsPanel label{display:block;margin-top:14px;font-size:11px;color:#7C8AAD;font-weight:700;}
+#bgSettingsPanel input[type=text],#bgSettingsPanel input[type=number],#bgSettingsPanel textarea{width:100%;padding:9px;border-radius:8px;border:1px solid #26314f;
+background:#0f1526;color:#fff;font-size:13px;margin-top:5px;box-sizing:border-box;font-family:inherit;}
+#bgSettingsPanel textarea{min-height:90px;resize:vertical;}
+#bgSettingsPanel input[type=range]{width:100%;margin-top:6px;}
+#bgSettingsPanel button{margin-top:14px;padding:10px 18px;border-radius:8px;border:none;background:#FFD866;
+color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
+#bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
 </style></head><body>
 <video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/snake-bg.mp4" type="video/mp4"></video>
 <div class="liveFrame">
@@ -3241,6 +3221,21 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
   <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
   <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
 </div>
+</div>
+<div id="bgSettingsPanel">
+  <h2>🎵 Background Music &amp; Commentary</h2>
+  <form id="bgSettingsForm">
+    <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+    <input type="text" id="bgMusicUrlInput" placeholder="https://...mp3">
+    <label>Volume — <span id="volLabel">15%</span></label>
+    <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
+    <label>Your own recorded commentary audio links (one URL per line — cycles through them)</label>
+    <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
+    <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
+    <input type="number" id="loopIntervalInput" min="20" value="90">
+    <button type="submit">Save</button>
+    <div id="bgSettingsStatus"></div>
+  </form>
 </div>
 <div class="flash" id="flash"></div>
 <script>
@@ -3289,10 +3284,23 @@ function toggleAltPanel(){
 }
 setInterval(toggleAltPanel, 60000);
 
-// ব্যাকগ্রাউন্ড মিউজিক — শুধু পড়ে (read-only), সেট করার ফর্ম এখন গোপন /gaming/chess-admin পেজে
+// ব্যাকগ্রাউন্ড মিউজিক + কমেন্ট্রি — এই পেজেই নিচে স্ক্রল করলে ফর্ম দিয়ে সরাসরি সেট করা যায় (chess-এর প্যাটার্নে)
 const bgMusicEl = new Audio();
 bgMusicEl.loop = true;
+const commentaryAudioEl = new Audio();
 let lastMusicUrl = "";
+let commentaryList = [];
+let commentaryIdx = 0;
+let commentaryTimer = null;
+function scheduleCommentary(intervalSec){
+  if (commentaryTimer) clearInterval(commentaryTimer);
+  if (!commentaryList.length) return;
+  commentaryTimer = setInterval(() => {
+    commentaryAudioEl.src = commentaryList[commentaryIdx % commentaryList.length];
+    commentaryAudioEl.play().catch(() => {});
+    commentaryIdx++;
+  }, Math.max(20, intervalSec) * 1000);
+}
 async function loadMusicConfig(){
   try {
     const res = await fetch("/gaming/snake-config");
@@ -3303,37 +3311,58 @@ async function loadMusicConfig(){
       bgMusicEl.play().catch(() => {}); // ব্রাউজারের autoplay নীতির কারণে প্রথমবার নাও বাজতে পারে, ব্যবহারকারীর প্রথম ক্লিকে বাজবে
     }
     bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    const newList = Array.isArray(cfg.commentaryUrls) ? cfg.commentaryUrls : [];
+    if (JSON.stringify(newList) !== JSON.stringify(commentaryList)) {
+      commentaryList = newList; commentaryIdx = 0;
+      scheduleCommentary(cfg.loopIntervalSec || 90);
+    }
+    // ফর্মের ইনপুটেও বর্তমান মান দেখানো — কিন্তু ব্যবহারকারী টাইপ করছেন এমন কোনো ফিল্ড overwrite না করে
+    if (document.activeElement !== document.getElementById("bgMusicUrlInput")) {
+      document.getElementById("bgMusicUrlInput").value = cfg.bgMusicUrl || "";
+    }
+    document.getElementById("bgMusicVolumeInput").value = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    document.getElementById("volLabel").textContent = Math.round((typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15) * 100) + "%";
+    if (document.activeElement !== document.getElementById("commentaryUrlsInput")) {
+      document.getElementById("commentaryUrlsInput").value = newList.join(String.fromCharCode(10));
+    }
+    if (document.activeElement !== document.getElementById("loopIntervalInput")) {
+      document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
+    }
   } catch(e) {}
 }
 loadMusicConfig();
 setInterval(loadMusicConfig, 15000);
 document.body.addEventListener("click", () => { bgMusicEl.play().catch(() => {}); }, { once: true });
+document.getElementById("bgMusicVolumeInput").addEventListener("input", (e) => {
+  document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
+});
+document.getElementById("bgSettingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const statusEl = document.getElementById("bgSettingsStatus");
+  const linesRaw = document.getElementById("commentaryUrlsInput").value;
+  const lines = linesRaw.split(String.fromCharCode(10)).map((s) => s.trim()).filter(Boolean);
+  try {
+    await fetch("/gaming/snake-config", { method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
+        bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
+        commentaryUrls: lines,
+        loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+      }) });
+    statusEl.textContent = "Saved!";
+    lastMusicUrl = ""; // পরের loadMusicConfig() কল-এ নতুন মিউজিক অবিলম্বে লোড হবে
+  } catch(e) { statusEl.textContent = "Could not save — network problem."; }
+});
 
 const COLS = ${SNAKE_COLS}, ROWS = ${SNAKE_ROWS};
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 let cellSize = 24;
-// পটভূমির ঘাস-সজ্জা — এটা resize()-এর আগে declare করা জরুরি, কারণ resize() নিচে সাথে সাথেই
-// কল হয় এবং এটাকে ব্যবহার করে। আগে এটা নিচে থাকায় "Cannot access before initialization" error
-// হয়ে পুরো স্ক্রিপ্টটাই থেমে যাচ্ছিল (এটাই আসল কারণ ছিল সাপ একদম না চলার)
-let grassDecor = [];
-function regenerateGrassDecor(){
-  grassDecor = [];
-  const count = Math.floor((canvas.width * canvas.height) / 900);
-  for (let i=0;i<count;i++) {
-    grassDecor.push({
-      x: Math.random()*canvas.width, y: Math.random()*canvas.height,
-      h: 5 + Math.random()*9, tilt: (Math.random()-0.5)*0.6,
-      shade: Math.random() > 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
-    });
-  }
-}
 function resize(){
   const wrap = document.getElementById("boardWrap");
   const availW = wrap.clientWidth - 8, availH = wrap.clientHeight - 8;
   cellSize = Math.floor(Math.min(availW / COLS, availH / ROWS));
   canvas.width = cellSize * COLS; canvas.height = cellSize * ROWS;
-  regenerateGrassDecor(); // সাইজ বদলালে ঘাসের সজ্জাও নতুন করে বসবে
 }
 window.addEventListener("resize", resize); resize();
 
@@ -3355,9 +3384,11 @@ document.body.addEventListener("click", () => { if (!audioCtx) audioCtx = new (w
 
 let lastStatus = "", lastScore = 0;
 let prevBody = null, curBody = null, curFood = null, lastTickTime = performance.now();
-const TICK_MS = 110; // ⚠️ এটা সার্ভারের tick rate-এর সাথে হুবহু মেলানো জরুরি — আগে সার্ভার ১১০ms করে দেওয়া হয়েছিল
-// কিন্তু এখানে ভুলে ২২০ রয়ে গিয়েছিল, ফলে client প্রতি আপডেটের অর্ধেক সময় "থেমে" থাকতো — এটাই আসল
-// "আটকে আটকে" চলার কারণ ছিল, কোনো ইচ্ছাকৃত ধীরগতি বা bug অন্য কিছু না
+let lastIntervalMs = 110; // পোল-এর মাঝের real (measured) সময়ের ব্যবধান — fixed TICK_MS ধরে না নিয়ে,
+// প্রতিবার dynamically মাপা হয়, যাতে নেটওয়ার্ক jitter-এও অ্যানিমেশন smooth থাকে
+// রেফারেন্স ভিডিওর মতো রংধনু-রঙের পুঁতির চেইন — মাথা বাদে প্রতিটা পুঁতি এই প্যালেট থেকে ক্রমানুসারে রঙ পায়,
+// সাপ যতই বড় হোক প্রতিটা পুঁতি নিজের রঙ ধরে রাখে (index-ভিত্তিক, তাই বাড়লে re-render-এও অপরিবর্তিত থাকে)
+const SNAKE_RAINBOW = ["#FF2D55","#FF9500","#FFCC00","#8BE28B","#34C759","#00C7BE","#30B0C7","#32ADE6","#5856D6","#AF52DE"];
 
 function updateDpad(dir){
   ["dUp","dDown","dLeft","dRight"].forEach(id => document.getElementById(id).classList.remove("active"));
@@ -3375,24 +3406,16 @@ function render(now){
     // যদি সার্ভার থেকে কোনো state এখনো না এসে থাকে (fresh deploy/সাময়িক নেটওয়ার্ক সমস্যা),
     // অন্তত একটা "Loading..." দেখানো হচ্ছে যাতে বোঝা যায় সমস্যাটা কোথায়, একদম ফাঁকা না থাকে
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = "#264d1c"; ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle = "#FFD866"; ctx.font = "bold 20px sans-serif"; ctx.textAlign = "center";
     ctx.fillText("Loading...", canvas.width/2, canvas.height/2);
     return;
   }
-  const t = Math.min(1, (now - lastTickTime) / TICK_MS);
+  // ⚠️ আগে interpolation একটা FIXED TICK_MS (সার্ভারের নির্ধারিত gap) ধরে নিয়ে চলত — নেটওয়ার্কে
+  // সামান্য দেরি/jitter হলেই timing মিলে যেত না, ফলে মাঝেমধ্যে "থমকে যাওয়া" ভাব হতো। এখন প্রতিটা
+  // poll()-এর মাঝের প্রকৃত (measured) সময়ের ব্যবধান ব্যবহার করা হচ্ছে — নেটওয়ার্ক জিটার সহ্য করতে পারে
+  const t = Math.min(1, (now - lastTickTime) / Math.max(60, lastIntervalMs));
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  // ছকঘর/গ্রিড লাইন সম্পূর্ণ বাদ — এখন একটা আসল জঙ্গল/মাঠের মতো গ্রেডিয়েন্ট + ছড়ানো ঘাসের টুকরো
-  const grad = ctx.createRadialGradient(canvas.width/2,canvas.height/2,10,canvas.width/2,canvas.height/2,canvas.width*0.75);
-  grad.addColorStop(0, "#4a8f34");
-  grad.addColorStop(1, "#264d1c");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  if (!grassDecor.length) regenerateGrassDecor();
-  grassDecor.forEach((g) => {
-    ctx.strokeStyle = g.shade; ctx.lineWidth = 2; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(g.x + g.tilt*g.h, g.y - g.h); ctx.stroke();
-  });
+  // ব্যাকগ্রাউন্ড সম্পূর্ণ স্বচ্ছ — সবুজ ফিল আর নেই, ভিডিও ব্যাকগ্রাউন্ড সরাসরি দেখা যাবে (Ball Sort-এর প্যাটার্নে)
 
   // খাবার — গ্লসি, দুই-টোন হাইলাইট, হালকা pulsating
   const pulse = 1 + Math.sin(now/220)*0.08;
@@ -3402,8 +3425,9 @@ function render(now){
   ctx.fillStyle = "rgba(255,255,255,0.45)";
   ctx.beginPath(); ctx.arc(fx-cellSize*0.1, fy-cellSize*0.1, cellSize*0.12*pulse, 0, Math.PI*2); ctx.fill();
 
-  // সাপ — রঙিন (মাথার দিকে উজ্জ্বল, লেজের দিকে গাঢ়), লেজের দিকে সরু হয়ে আসা, আর সোজা পথেও
-  // সামান্য ঢেউ-খেলানো (sine wiggle) — যেন আসল সাপের শরীরের স্বাভাবিক নড়াচড়া
+  // সাপ — রেফারেন্স ভিডিওর মতো আলাদা আলাদা গোল, রঙিন পুঁতির (bead) চেইন, সোজা tube না।
+  // প্রতিটা পুঁতির রঙ তার মাথা থেকে দূরত্ব (index) অনুযায়ী নির্ধারিত — তাই সাপ যতই বাড়ুক, প্রতিটা
+  // পুঁতি নিজের রঙ ধরে রাখে, শুধু নতুন লেজের দিকে নতুন রঙ যোগ হতে থাকে (প্যালেট শেষ হলে আবার শুরু থেকে)
   let body = curBody;
   if (prevBody && prevBody.length === curBody.length) {
     body = curBody.map((seg, i) => ({
@@ -3411,36 +3435,28 @@ function render(now){
       c: prevBody[i].c + (seg.c - prevBody[i].c) * t,
     }));
   }
-  const pts = body.map((seg, i) => {
-    let x = seg.c*cellSize+cellSize/2, y = seg.r*cellSize+cellSize/2;
-    const wiggle = Math.sin(now/260 - i*0.9) * cellSize * 0.09; // চলার সময় শরীরে ছোট্ট, স্বাভাবিক তরঙ্গ
-    return { x: x + wiggle, y };
-  });
-  for (let i=0;i<pts.length-1;i++) {
-    const segT = i / Math.max(1, pts.length-1); // ০ = মাথা, ১ = লেজ
-    const w = cellSize * (0.78 - segT*0.42); // লেজের দিকে ক্রমশ সরু
-    const green = Math.round(226 - segT*90), red = Math.round(139 - segT*70);
-    ctx.strokeStyle = "rgb(" + red + "," + green + ",130)";
-    ctx.lineWidth = Math.max(cellSize*0.16, w);
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(pts[i].x, pts[i].y);
-    if (i < pts.length-2) {
-      const midX = (pts[i+1].x + pts[i+2].x)/2, midY = (pts[i+1].y + pts[i+2].y)/2;
-      ctx.quadraticCurveTo(pts[i+1].x, pts[i+1].y, midX, midY);
-    } else {
-      ctx.lineTo(pts[i+1].x, pts[i+1].y);
-    }
-    ctx.stroke();
+  const pts = body.map((seg) => ({ x: seg.c*cellSize+cellSize/2, y: seg.r*cellSize+cellSize/2 }));
+  const beadR = cellSize * 0.46;
+  // লেজ থেকে মাথার দিকে আঁকা হচ্ছে, যাতে মাথা সবসময় বাকি পুঁতিগুলোর উপরে (overlap) থাকে
+  for (let i = pts.length - 1; i >= 1; i--) {
+    const color = SNAKE_RAINBOW[(i - 1) % SNAKE_RAINBOW.length];
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, beadR, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.beginPath(); ctx.arc(pts[i].x - beadR*0.28, pts[i].y - beadR*0.28, beadR*0.32, 0, Math.PI*2); ctx.fill();
   }
-  // মাথা — আলাদা রঙ + চোখ, যাতে বোঝা যায় কোনদিকে যাচ্ছে
+  // মাথা — নির্দিষ্ট/স্থায়ী রঙ (লাল), দুটো চোখ, রেফারেন্স ভিডিওর সাথে মিলিয়ে
   const head = pts[0];
-  const hx = head.x, hy = head.y;
-  ctx.fillStyle = "#FFD866";
-  ctx.beginPath(); ctx.arc(hx, hy, cellSize*0.42, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#E8443D";
+  ctx.beginPath(); ctx.arc(head.x, head.y, beadR*1.08, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.3)";
+  ctx.beginPath(); ctx.arc(head.x - beadR*0.3, head.y - beadR*0.3, beadR*0.35, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(head.x-beadR*0.32, head.y-beadR*0.15, beadR*0.28, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(head.x+beadR*0.32, head.y-beadR*0.15, beadR*0.28, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = "#0a0e1f";
-  ctx.beginPath(); ctx.arc(hx-cellSize*0.12, hy-cellSize*0.1, cellSize*0.07, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(hx+cellSize*0.12, hy-cellSize*0.1, cellSize*0.07, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(head.x-beadR*0.32, head.y-beadR*0.15, beadR*0.13, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(head.x+beadR*0.32, head.y-beadR*0.15, beadR*0.13, 0, Math.PI*2); ctx.fill();
   } catch(err) {
     // ভবিষ্যতে যদি আবার এমন কোনো bug হয় যেটা draw করার মাঝপথে থেমে যায়, অন্তত এখানে স্পষ্ট
     // error message দেখা যাবে (ক্যানভাসের উপরেই লেখা), স্ক্রিনশট পাঠালেই আসল কারণ সরাসরি বোঝা যাবে
@@ -3458,7 +3474,9 @@ async function poll(){
     prevBody = curBody || data.body;
     curBody = data.body;
     curFood = data.food;
-    lastTickTime = performance.now();
+    const nowT = performance.now();
+    lastIntervalMs = Math.min(500, Math.max(60, nowT - lastTickTime)); // পরবর্তী interpolation-এর জন্য প্রকৃত ব্যবধান মাপা হচ্ছে
+    lastTickTime = nowT;
     updateDpad(data.dir);
     document.getElementById("scoreVal").textContent = data.score;
     document.getElementById("highScoreVal").textContent = data.highScore;
@@ -3482,8 +3500,8 @@ const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charse
 *{box-sizing:border-box;}
 html{background:#0a0e1f;}
 body{margin:0;color:#F5F7FA;
-font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;padding:10px;
-display:grid;grid-template-columns:230px 1fr 230px;gap:10px;position:relative;}
+font-family:'Segoe UI',sans-serif;overflow-y:auto;min-height:100vh;padding:10px;position:relative;}
+.liveFrame{display:grid;grid-template-columns:230px 1fr 230px;gap:10px;height:calc(100vh - 20px);}
 #bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.75;filter:brightness(0.85);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
@@ -3547,8 +3565,22 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
 #challengerName{padding:6px;text-align:center;font-size:12px;font-weight:800;background:#12172a;border-top:1px solid #2a3352;}
 .altView{display:none;}
 .altView.show{display:block;}
+/* নিচে-স্ক্রল-করা ব্যাকগ্রাউন্ড মিউজিক+কমেন্ট্রি সেটিংস — দর্শক/স্ট্রিম কখনো এটা দেখবে না, শুধু
+   normal live-frame উচ্চতার নিচে থাকে, আপনি নিজের মনিটরে স্ক্রল করলে দেখতে পাবেন */
+#bgSettingsPanel{max-width:560px;margin:30px auto 20px;padding:20px;background:#12172a;border:1px solid #2a3352;
+border-radius:16px;position:relative;}
+#bgSettingsPanel h2{color:#FFD866;font-size:16px;margin:0 0 4px;}
+#bgSettingsPanel label{display:block;margin-top:14px;font-size:11px;color:#7C8AAD;font-weight:700;}
+#bgSettingsPanel input[type=text],#bgSettingsPanel input[type=number],#bgSettingsPanel textarea{width:100%;padding:9px;border-radius:8px;border:1px solid #26314f;
+background:#0f1526;color:#fff;font-size:13px;margin-top:5px;box-sizing:border-box;font-family:inherit;}
+#bgSettingsPanel textarea{min-height:90px;resize:vertical;}
+#bgSettingsPanel input[type=range]{width:100%;margin-top:6px;}
+#bgSettingsPanel button{margin-top:14px;padding:10px 18px;border-radius:8px;border:none;background:#FFD866;
+color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
+#bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
 </style></head><body>
 <video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/ballsort-bg.mp4" type="video/mp4"></video>
+<div class="liveFrame">
 <div class="sideCol">
   <div id="challengerBox">
     <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
@@ -3580,6 +3612,22 @@ font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:c
   <div class="topSupporterPanel" id="topSup1"><div class="tsPhoto" id="tsPhoto1"><div class="tsRank">1</div></div><div class="tsInfo" id="tsInfo1">—</div></div>
   <div class="topSupporterPanel" id="topSup2"><div class="tsPhoto" id="tsPhoto2"><div class="tsRank">2</div></div><div class="tsInfo" id="tsInfo2">—</div></div>
   <div class="topSupporterPanel" id="topSup3"><div class="tsPhoto" id="tsPhoto3"><div class="tsRank">3</div></div><div class="tsInfo" id="tsInfo3">—</div></div>
+</div>
+</div>
+<div id="bgSettingsPanel">
+  <h2>🎵 Background Music &amp; Commentary</h2>
+  <form id="bgSettingsForm">
+    <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+    <input type="text" id="bgMusicUrlInput" placeholder="https://...mp3">
+    <label>Volume — <span id="volLabel">15%</span></label>
+    <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
+    <label>Your own recorded commentary audio links (one URL per line — cycles through them)</label>
+    <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
+    <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
+    <input type="number" id="loopIntervalInput" min="20" value="90">
+    <button type="submit">Save</button>
+    <div id="bgSettingsStatus"></div>
+  </form>
 </div>
 <div class="flash" id="flash"></div>
 <script>
@@ -3622,10 +3670,23 @@ function toggleAltPanel(){
 }
 setInterval(toggleAltPanel, 60000);
 
-// ব্যাকগ্রাউন্ড মিউজিক — /gaming/chess-admin পেজে (স্ক্রল করে নিচে) সেট করা হয়, এখানে শুধু পড়া হয়
+// ব্যাকগ্রাউন্ড মিউজিক + কমেন্ট্রি — এই পেজেই নিচে স্ক্রল করলে ফর্ম দিয়ে সরাসরি সেট করা যায় (chess-এর প্যাটার্নে)
 const bgMusicEl = new Audio();
 bgMusicEl.loop = true;
+const commentaryAudioEl = new Audio();
 let lastMusicUrl = "";
+let commentaryList = [];
+let commentaryIdx = 0;
+let commentaryTimer = null;
+function scheduleCommentary(intervalSec){
+  if (commentaryTimer) clearInterval(commentaryTimer);
+  if (!commentaryList.length) return;
+  commentaryTimer = setInterval(() => {
+    commentaryAudioEl.src = commentaryList[commentaryIdx % commentaryList.length];
+    commentaryAudioEl.play().catch(() => {});
+    commentaryIdx++;
+  }, Math.max(20, intervalSec) * 1000);
+}
 async function loadMusicConfig(){
   try {
     const res = await fetch("/gaming/ballsort-config");
@@ -3636,11 +3697,47 @@ async function loadMusicConfig(){
       bgMusicEl.play().catch(() => {});
     }
     bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    const newList = Array.isArray(cfg.commentaryUrls) ? cfg.commentaryUrls : [];
+    if (JSON.stringify(newList) !== JSON.stringify(commentaryList)) {
+      commentaryList = newList; commentaryIdx = 0;
+      scheduleCommentary(cfg.loopIntervalSec || 90);
+    }
+    if (document.activeElement !== document.getElementById("bgMusicUrlInput")) {
+      document.getElementById("bgMusicUrlInput").value = cfg.bgMusicUrl || "";
+    }
+    document.getElementById("bgMusicVolumeInput").value = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    document.getElementById("volLabel").textContent = Math.round((typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15) * 100) + "%";
+    if (document.activeElement !== document.getElementById("commentaryUrlsInput")) {
+      document.getElementById("commentaryUrlsInput").value = newList.join(String.fromCharCode(10));
+    }
+    if (document.activeElement !== document.getElementById("loopIntervalInput")) {
+      document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
+    }
   } catch(e) {}
 }
 loadMusicConfig();
 setInterval(loadMusicConfig, 15000);
 document.body.addEventListener("click", () => { bgMusicEl.play().catch(() => {}); }, { once: true });
+document.getElementById("bgMusicVolumeInput").addEventListener("input", (e) => {
+  document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
+});
+document.getElementById("bgSettingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const statusEl = document.getElementById("bgSettingsStatus");
+  const linesRaw = document.getElementById("commentaryUrlsInput").value;
+  const lines = linesRaw.split(String.fromCharCode(10)).map((s) => s.trim()).filter(Boolean);
+  try {
+    await fetch("/gaming/ballsort-config", { method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
+        bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
+        commentaryUrls: lines,
+        loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+      }) });
+    statusEl.textContent = "Saved!";
+    lastMusicUrl = "";
+  } catch(e) { statusEl.textContent = "Could not save — network problem."; }
+});
 
 let lastStatus = "";
 let lastMoveSig = "";
@@ -3872,29 +3969,31 @@ module.exports = function mountGaming(app) {
     res.json({ ok: true });
   });
 
-  // ---------- Snake ও Ball Sort-এর ব্যাকগ্রাউন্ড মিউজিক — ছোট্ট, দুটো গেমের জন্য একসাথে একটাই গোপন পেজ ----------
+  // ---------- Snake ও Ball Sort-এর ব্যাকগ্রাউন্ড মিউজিক + কমেন্ট্রি — প্রতিটা গেমের নিজের পেজেই
+  // স্ক্রল করে নিচে সেট করা যায় (ইউজারের স্পষ্ট অনুরোধ অনুযায়ী, আলাদা কোনো admin পেজে না) ----------
   function readMindGameConfig(game) {
     try { return JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
-    catch (e) { return { bgMusicUrl: "", bgMusicVolume: 0.15 }; }
+    catch (e) { return { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90 }; }
   }
   function writeMindGameConfig(game, cfg) {
     fs.writeFileSync(path.join(STATE_DIR, `${game}-config.json`), JSON.stringify(cfg, null, 2));
   }
+  function saveMindGameConfigRoute(game) {
+    return (req, res) => {
+      const body = req.body || {};
+      writeMindGameConfig(game, {
+        bgMusicUrl: (body.bgMusicUrl || "").toString().slice(0, 500),
+        bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.15)),
+        commentaryUrls: Array.isArray(body.commentaryUrls) ? body.commentaryUrls.slice(0, 20).map(s => (s || "").toString().slice(0, 500)) : [],
+        loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
+      });
+      res.json({ ok: true });
+    };
+  }
   app.get("/gaming/snake-config", (req, res) => res.json(readMindGameConfig("snake")));
+  app.post("/gaming/snake-config", express.json(), saveMindGameConfigRoute("snake"));
   app.get("/gaming/ballsort-config", (req, res) => res.json(readMindGameConfig("ballsort")));
-  app.get("/gaming/mindgames-admin", (req, res) => res.type("html").send(MINDGAMES_ADMIN_HTML));
-  app.post("/gaming/mindgames-admin", express.json(), (req, res) => {
-    const body = req.body || {};
-    writeMindGameConfig("snake", {
-      bgMusicUrl: (body.snakeMusicUrl || "").toString().slice(0, 500),
-      bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.snakeMusicVolume) || 0.15)),
-    });
-    writeMindGameConfig("ballsort", {
-      bgMusicUrl: (body.ballsortMusicUrl || "").toString().slice(0, 500),
-      bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.ballsortMusicVolume) || 0.15)),
-    });
-    res.json({ ok: true });
-  });
+  app.post("/gaming/ballsort-config", express.json(), saveMindGameConfigRoute("ballsort"));
 
   // কুকি পড়া/লেখার জন্য হালকা helper — নতুন কোনো npm প্যাকেজ ছাড়াই
   function readCookie(req, name) {
