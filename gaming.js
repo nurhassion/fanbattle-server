@@ -3383,6 +3383,8 @@ function playEatSound(){
 document.body.addEventListener("click", () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); }, { once: true });
 
 let lastStatus = "", lastScore = 0;
+let lastDir = { r: 0, c: 1 }; // মুখ কোনদিকে হাঁ হবে তার জন্য — শুরুতে ডানদিকে মুখ করা ধরে নেওয়া হচ্ছে
+let mouthOpenUntil = 0; // এই সময় পর্যন্ত মুখ "হাঁ" অ্যানিমেশন চলবে (বল খাওয়ার মুহূর্তে সেট হয়)
 let prevBody = null, curBody = null, curFood = null, lastTickTime = performance.now();
 let lastIntervalMs = 110; // পোল-এর মাঝের real (measured) সময়ের ব্যবধান — fixed TICK_MS ধরে না নিয়ে,
 // প্রতিবার dynamically মাপা হয়, যাতে নেটওয়ার্ক jitter-এও অ্যানিমেশন smooth থাকে
@@ -3435,7 +3437,26 @@ function render(now){
       c: prevBody[i].c + (seg.c - prevBody[i].c) * t,
     }));
   }
-  const pts = body.map((seg) => ({ x: seg.c*cellSize+cellSize/2, y: seg.r*cellSize+cellSize/2 }));
+  let pts = body.map((seg) => ({ x: seg.c*cellSize+cellSize/2, y: seg.r*cellSize+cellSize/2 }));
+  // মোড়/বাঁক-গুলো যেন "কাটা কাটা" (sharp, jagged) না লাগে — প্রতিবেশী বিন্দুর গড়ের দিকে সামান্য
+  // টেনে নিয়ে (Laplacian smoothing) কোনাগুলো গোলাকার করা হচ্ছে, মাথা আর একদম শেষ প্রান্ত অপরিবর্তিত থাকে
+  for (let iter = 0; iter < 2; iter++) {
+    pts = pts.map((p, i) => {
+      if (i === 0 || i === pts.length - 1) return p;
+      const prev = pts[i-1], next = pts[i+1];
+      return { x: p.x*0.5 + (prev.x+next.x)*0.25, y: p.y*0.5 + (prev.y+next.y)*0.25 };
+    });
+  }
+  // হেলেদুলে (swaying) চলাফেরা — প্রতিটা বিন্দুকে তার নিজের গতির লম্ব দিকে সামান্য দোলানো হচ্ছে,
+  // সময় ও index অনুযায়ী তরঙ্গায়িত, রেফারেন্স ভিডিওর সাপের স্বাভাবিক নড়াচড়ার মতো
+  pts = pts.map((p, i) => {
+    const prev = pts[Math.max(0, i-1)], next = pts[Math.min(pts.length-1, i+1)];
+    const dx = next.x - prev.x, dy = next.y - prev.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy/len, ny = dx/len; // চলার দিকের লম্ব (perpendicular) ভেক্টর
+    const wiggle = Math.sin(now/280 - i*0.6) * cellSize * 0.1;
+    return { x: p.x + nx*wiggle, y: p.y + ny*wiggle };
+  });
   const beadR = cellSize * 0.46;
   // লেজ থেকে মাথার দিকে আঁকা হচ্ছে, যাতে মাথা সবসময় বাকি পুঁতিগুলোর উপরে (overlap) থাকে
   for (let i = pts.length - 1; i >= 1; i--) {
@@ -3445,10 +3466,38 @@ function render(now){
     ctx.fillStyle = "rgba(255,255,255,0.28)";
     ctx.beginPath(); ctx.arc(pts[i].x - beadR*0.28, pts[i].y - beadR*0.28, beadR*0.32, 0, Math.PI*2); ctx.fill();
   }
-  // মাথা — নির্দিষ্ট/স্থায়ী রঙ (লাল), দুটো চোখ, রেফারেন্স ভিডিওর সাথে মিলিয়ে
+  // মাথা — নির্দিষ্ট/স্থায়ী রঙ (লাল), দুটো চোখ। বল খাওয়ার মুহূর্তে মুখ "হাঁ" হয়ে সামনে এগিয়ে
+  // বলটা খেয়ে আবার বন্ধ হয়ে যায় (Pac-Man-এর মতো একটা wedge কেটে বাদ দিয়ে আঁকা হচ্ছে)
   const head = pts[0];
+  const dirAngle = Math.atan2(lastDir.r, lastDir.c); // মুখ যেদিকে তাকিয়ে আছে সেই কোণ
+  let mouthOpenAmt = 0;
+  const mouthRemain = mouthOpenUntil - now;
+  if (mouthRemain > 0) {
+    const MOUTH_ANIM_MS = 420;
+    const progress = Math.min(1, Math.max(0, 1 - mouthRemain / MOUTH_ANIM_MS));
+    mouthOpenAmt = Math.sin(progress * Math.PI); // ০ → ১ → ০ (খোলা → পুরোপুরি হাঁ → বন্ধ)
+  }
+  const maxGap = 0.85; // radian — সর্বোচ্চ কতটা হাঁ হবে
+  const gapHalf = mouthOpenAmt * maxGap;
   ctx.fillStyle = "#E8443D";
-  ctx.beginPath(); ctx.arc(head.x, head.y, beadR*1.08, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath();
+  if (gapHalf > 0.03) {
+    ctx.moveTo(head.x, head.y);
+    ctx.arc(head.x, head.y, beadR*1.08, dirAngle + gapHalf, dirAngle - gapHalf + Math.PI*2);
+    ctx.closePath();
+  } else {
+    ctx.arc(head.x, head.y, beadR*1.08, 0, Math.PI*2);
+  }
+  ctx.fill();
+  // মুখের ভেতরের অংশ (হাঁ থাকা অবস্থায় একটু গাঢ় ছায়া, বাস্তবসম্মত গভীরতার অনুভূতি)
+  if (gapHalf > 0.03) {
+    ctx.fillStyle = "#7a1410";
+    ctx.beginPath();
+    ctx.moveTo(head.x, head.y);
+    ctx.arc(head.x, head.y, beadR*0.85, dirAngle + gapHalf, dirAngle - gapHalf + Math.PI*2);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.fillStyle = "rgba(255,255,255,0.3)";
   ctx.beginPath(); ctx.arc(head.x - beadR*0.3, head.y - beadR*0.3, beadR*0.35, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = "#fff";
@@ -3478,10 +3527,11 @@ async function poll(){
     lastIntervalMs = Math.min(500, Math.max(60, nowT - lastTickTime)); // পরবর্তী interpolation-এর জন্য প্রকৃত ব্যবধান মাপা হচ্ছে
     lastTickTime = nowT;
     updateDpad(data.dir);
+    if (data.dir && (data.dir.r || data.dir.c)) lastDir = data.dir; // মুখ কোনদিকে হাঁ হবে তার জন্য সর্বশেষ দিক মনে রাখা
     document.getElementById("scoreVal").textContent = data.score;
     document.getElementById("highScoreVal").textContent = data.highScore;
     document.getElementById("highScoreNameVal").textContent = data.highScoreName || "Grandmaster";
-    if (data.score > lastScore) playEatSound();
+    if (data.score > lastScore) { playEatSound(); mouthOpenUntil = performance.now() + 420; } // বল খাওয়ার মুহূর্তে মুখ হাঁ হওয়ার অ্যানিমেশন শুরু
     lastScore = data.score;
     if (data.status === "gameover" && lastStatus !== "gameover") {
       const flashEl = document.getElementById("flash");
