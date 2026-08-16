@@ -2712,6 +2712,248 @@ async function runBallSortLoop() {
   }
 }
 
+// ===========================================================================
+// সেলিব্রেশন + আওয়াজ ডাকিং + টপ সাপোর্টার ঘোষণা
+// ---------------------------------------------------------------------------
+// Fan Battle Live / Chess Battle-এ যা আছে, হুবহু সেই ব্যবহারটাই Snake আর Ball Sort-এ।
+// তিনটে অংশ:
+//  ১) কেউ টাকা পাঠালে — বড় সেলিব্রেশন কার্ড (ছবি + নাম + টাকা), কনফেটি, আর কণ্ঠে ধন্যবাদ
+//  ২) ঘোষণার সময় ব্যাকগ্রাউন্ডের সব আওয়াজ (মিউজিক, কমেন্ট্রি, গেমের শব্দ) ৮০% নেমে যায়,
+//     ঘোষণা শেষ হলে আবার ধীরে ধীরে আগের জায়গায় ফিরে আসে — টিভির voice-over-এর মতো
+//  ৩) প্রতি ৩ মিনিটে টপ ৩ সাপোর্টারের নাম পর্দায় ও কণ্ঠে ঘোষণা
+// দুটো overlay-ই এই একই কোড ব্যবহার করে, তাই ভবিষ্যতে একবার বদলালেই দুই জায়গায় লাগু হবে।
+// ===========================================================================
+const CELEBRATION_CSS = `
+.confettiPiece{position:fixed;top:-20px;width:10px;height:16px;z-index:59;pointer-events:none;
+border-radius:2px;animation:confettiFall linear forwards;}
+@keyframes confettiFall{to{transform:translateY(105vh) rotate(720deg);opacity:0;}}
+
+.donorCeleb{position:fixed;inset:0;z-index:65;display:flex;align-items:center;justify-content:center;
+opacity:0;pointer-events:none;background:rgba(4,7,18,0.55);}
+.donorCeleb.show{animation:donorCelebFade 4.5s ease forwards;}
+@keyframes donorCelebFade{0%{opacity:0;}8%{opacity:1;}82%{opacity:1;}100%{opacity:0;}}
+.donorCelebCard{background:#161b2e;border:2px solid #FFD866;border-radius:22px;padding:26px 40px;
+text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.7);transform:scale(0.6);}
+.donorCeleb.show .donorCelebCard{animation:donorCelebPop 4.5s cubic-bezier(.2,1.4,.3,1) forwards;}
+@keyframes donorCelebPop{0%{transform:scale(0.6);}12%{transform:scale(1.08);}20%{transform:scale(1);}100%{transform:scale(1);}}
+.donorCelebTag{color:#FFD866;font-size:13px;font-weight:800;letter-spacing:1.5px;
+text-transform:uppercase;margin-bottom:10px;}
+#donorCelebPhotoWrap{width:110px;height:110px;border-radius:20px;overflow:hidden;margin:0 auto 12px;
+border:2px solid #FFD866;}
+#donorCelebPhotoWrap img{width:100%;height:100%;object-fit:cover;}
+.donorCelebName{font-size:32px;font-weight:900;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,0.6);}
+.donorCelebAmount{font-size:26px;font-weight:800;color:#FFD866;margin-top:6px;}
+.donorCelebNote{font-size:11px;color:#7C8AAD;margin-top:10px;}
+
+/* প্রতি ৩ মিনিটের টপ-সাপোর্টার ঘোষণা — পর্দার উপরে সরু একটা প্যানেল, গেম ঢাকে না */
+.topAnnounce{position:fixed;left:50%;top:0;transform:translate(-50%,-130%);z-index:64;
+background:rgba(18,23,42,0.96);border:2px solid #FFD866;border-top:none;
+border-radius:0 0 18px 18px;padding:14px 26px 16px;box-shadow:0 14px 40px rgba(0,0,0,0.7);
+transition:transform 0.6s cubic-bezier(.2,1.2,.3,1);min-width:340px;}
+.topAnnounce.show{transform:translate(-50%,0);}
+.topAnnounce h4{margin:0 0 10px;color:#FFD866;font-size:12px;letter-spacing:1.4px;
+text-transform:uppercase;text-align:center;font-weight:800;}
+.taRow{display:flex;align-items:center;gap:10px;padding:5px 0;}
+.taMedal{font-size:16px;width:22px;text-align:center;}
+.taAvatar{width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid #FFD866;}
+.taFallback{width:30px;height:30px;border-radius:50%;background:#2a3352;display:flex;
+align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#9fb0d4;}
+.taName{flex:1;font-size:14px;font-weight:700;color:#F5F7FA;}
+.taAmt{font-size:14px;font-weight:800;color:#FFD866;}
+`;
+
+const CELEBRATION_HTML = `
+<div class="donorCeleb" id="donorCelebration">
+  <div class="donorCelebCard">
+    <div class="donorCelebTag">🙏 New Supporter</div>
+    <div id="donorCelebPhotoWrap" style="display:none;"><img id="donorCelebPhotoImg"></div>
+    <div class="donorCelebName" id="donorCelebName">—</div>
+    <div class="donorCelebAmount" id="donorCelebAmount">₹0</div>
+    <div class="donorCelebNote">Voluntary support — thank you!</div>
+  </div>
+</div>
+<div class="topAnnounce" id="topAnnounce">
+  <h4>🏆 Top Supporters Right Now</h4>
+  <div id="topAnnounceRows"></div>
+</div>
+`;
+
+// gameKey: "snake" / "ballsort" — কোন চ্যানেলের টিপস ও লিডারবোর্ড পড়বে সেটা ঠিক করে
+function celebrationJS(gameKey) {
+  return `
+/* ---------- ১. সব গেম-শব্দের জন্য একটা master volume ----------
+   আগে প্রতিটা শব্দ সরাসরি audioCtx.destination-এ যেত, তাই একসাথে সবগুলোর আওয়াজ
+   কমানোর কোনো উপায় ছিল না। এখন সব শব্দ এই একটা gain node দিয়ে যায় — ঘোষণার সময়
+   শুধু এটার মান কমালেই গেমের সব শব্দ একসাথে নিচু হয়ে যায়। */
+var sfxMasterGain = null;
+function sfxOut(){
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!sfxMasterGain){
+    sfxMasterGain = audioCtx.createGain();
+    sfxMasterGain.gain.value = duckFactor;
+    sfxMasterGain.connect(audioCtx.destination);
+  }
+  return sfxMasterGain;
+}
+
+/* ---------- ২. ডাকিং — ঘোষণার সময় ব্যাকগ্রাউন্ডের আওয়াজ ৮০% কমে যায় ----------
+   হঠাৎ করে নয়, প্রায় আধা সেকেন্ড ধরে মসৃণভাবে নামে আর ওঠে — টিভি/রেডিওতে
+   voice-over এলে যেভাবে পেছনের গান নিচু হয়ে যায়, ঠিক সেভাবে। */
+var DUCK_LEVEL = 0.2;           // ২০% বাকি থাকে = ৮০% কমে
+var baseMusicVolume = 0.15;     // সেটিংসে দেওয়া আসল ভলিউম
+var duckFactor = 1;             // এখনকার গুণক (১ = স্বাভাবিক)
+var duckDepth = 0, duckTween = null;
+function applyMusicVolume(){
+  try {
+    bgMusicEl.volume = Math.max(0, Math.min(1, baseMusicVolume * duckFactor));
+    commentaryAudioEl.volume = Math.max(0, Math.min(1, duckFactor));
+    if (sfxMasterGain && audioCtx) sfxMasterGain.gain.setTargetAtTime(duckFactor, audioCtx.currentTime, 0.1);
+  } catch(e){}
+}
+function setDuck(on){
+  duckDepth += on ? 1 : -1;
+  if (duckDepth < 0) duckDepth = 0;
+  var target = duckDepth > 0 ? DUCK_LEVEL : 1;
+  if (duckTween) clearInterval(duckTween);
+  duckTween = setInterval(function(){
+    var diff = target - duckFactor;
+    if (Math.abs(diff) < 0.015){ duckFactor = target; clearInterval(duckTween); duckTween = null; }
+    else duckFactor += diff * 0.22;
+    applyMusicVolume();
+  }, 40);
+}
+
+/* ---------- ৩. ঘোষণার কণ্ঠ ---------- */
+var availableVoices = [], selectedCelebVoice = null, savedVoiceURI = "";
+function scoreVoice(v){
+  var sc = 0;
+  if (/bn|beng|india|hindi/i.test(v.lang) || /bn|beng|india/i.test(v.name)) sc += 5;
+  if (/en-IN|en-GB|en-US/i.test(v.lang)) sc += 2;
+  if (/Google|Natural|Neural|Premium/i.test(v.name)) sc += 3;
+  return sc;
+}
+function resolveCelebVoice(){
+  availableVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  if (!availableVoices.length) return;
+  var sorted = availableVoices.slice().sort(function(a,b){ return scoreVoice(b) - scoreVoice(a); });
+  var match = savedVoiceURI ? sorted.filter(function(v){ return v.voiceURI === savedVoiceURI; })[0] : null;
+  selectedCelebVoice = match || sorted[0];
+  var sel = document.getElementById("celebVoiceSelect");
+  if (sel && sel.options.length !== availableVoices.length){
+    sel.innerHTML = "";
+    availableVoices.forEach(function(v){
+      var o = document.createElement("option");
+      o.value = v.voiceURI; o.textContent = v.name + " (" + v.lang + ")";
+      if (selectedCelebVoice && v.voiceURI === selectedCelebVoice.voiceURI) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+}
+if (window.speechSynthesis){
+  window.speechSynthesis.onvoiceschanged = resolveCelebVoice;
+  resolveCelebVoice();
+}
+// কথা বলার পুরো সময়টা ডাক করা থাকে, শেষ হলেই ছেড়ে দেয়।
+// ⚠️ onend কোনো কোনো ব্রাউজারে আসে না — তাই একটা সময়সীমার নিরাপত্তা-জালও রাখা হয়েছে,
+// নাহলে একবার ব্যর্থ হলে ব্যাকগ্রাউন্ড মিউজিক চিরকাল নিচু হয়েই থেকে যেত।
+function speakCeleb(text, fallbackMs){
+  var released = false;
+  function release(){ if (released) return; released = true; setDuck(false); }
+  setDuck(true);
+  setTimeout(release, fallbackMs || Math.max(6000, text.length * 110));
+  if (!window.speechSynthesis) return;
+  try {
+    var u = new SpeechSynthesisUtterance(text);
+    if (selectedCelebVoice) u.voice = selectedCelebVoice;
+    u.rate = 0.98; u.pitch = 1.0;
+    u.onend = release; u.onerror = release;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  } catch(e){ release(); }
+}
+
+/* ---------- ৪. কনফেটি ---------- */
+function launchConfetti(){
+  var colors = ["#FFD866","#4FC3F7","#E8443D","#8BE28B","#FF8FCF","#B39DDB"];
+  for (var i = 0; i < 70; i++){
+    var piece = document.createElement("div");
+    piece.className = "confettiPiece";
+    piece.style.left = Math.random() * 100 + "vw";
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (2.2 + Math.random() * 1.8) + "s";
+    piece.style.animationDelay = (Math.random() * 0.6) + "s";
+    piece.style.transform = "rotate(" + Math.floor(Math.random() * 360) + "deg)";
+    document.body.appendChild(piece);
+    (function(el){ setTimeout(function(){ el.remove(); }, 5000); })(piece);
+  }
+}
+
+/* ---------- ৫. টাকা এলে সেলিব্রেশন ---------- */
+var donorCelebTimeout = null;
+function showDonorCelebration(name, amount, photo){
+  var card = document.getElementById("donorCelebration");
+  var wrap = document.getElementById("donorCelebPhotoWrap");
+  var img = document.getElementById("donorCelebPhotoImg");
+  if (photo){ img.src = photo; wrap.style.display = "block"; }
+  else { wrap.style.display = "none"; }
+  document.getElementById("donorCelebName").textContent = name;
+  document.getElementById("donorCelebAmount").textContent = "₹" + amount;
+  card.classList.remove("show"); void card.offsetWidth; card.classList.add("show");
+  launchConfetti();
+  clearTimeout(donorCelebTimeout);
+  donorCelebTimeout = setTimeout(function(){ card.classList.remove("show"); }, 4500);
+}
+// সার্ভার প্রতিটা verified পেমেন্ট একবারই এই queue-তে দেয়, পড়ে নিলেই মুছে যায়
+function pollTips(){
+  fetch("/events/${gameKey}").then(function(r){ return r.json(); }).then(function(data){
+    var photos = data.photos || {};
+    (data.events || []).forEach(function(ev){
+      var name = ev.name || "Anonymous";
+      var amount = Math.round(ev.amount || 0);
+      showDonorCelebration(name, amount, photos[name] || null);
+      speakCeleb("Thank you " + name + " for the " + amount + " rupee tip!");
+      refreshTopDonors(); refreshRecentDonors(); // লিডারবোর্ড সাথে সাথেই আপডেট
+    });
+  }).catch(function(){});
+}
+setInterval(pollTips, 4000);
+
+/* ---------- ৬. প্রতি ৩ মিনিটে টপ সাপোর্টার ঘোষণা ---------- */
+var TOP_ANNOUNCE_MS = 180000; // ৩ মিনিট
+function showTopAnnounce(top){
+  var rows = top.map(function(d, i){
+    var medal = ["🥇","🥈","🥉"][i] || "🏅";
+    var av = d.photo ? '<img class="taAvatar" src="' + d.photo + '">'
+                     : '<div class="taFallback">' + ((d.name && d.name[0]) || "?") + '</div>';
+    return '<div class="taRow"><span class="taMedal">' + medal + '</span>' + av +
+           '<span class="taName">' + d.name + '</span>' +
+           '<span class="taAmt">₹' + Math.round(d.amount) + '</span></div>';
+  }).join("");
+  var box = document.getElementById("topAnnounceRows");
+  box.innerHTML = rows;
+  var panel = document.getElementById("topAnnounce");
+  panel.classList.add("show");
+  setTimeout(function(){ panel.classList.remove("show"); }, 11000);
+}
+function announceTopSupporters(){
+  fetch("/top-donors/${gameKey}?limit=3").then(function(r){ return r.json(); }).then(function(data){
+    var top = data.top || [];
+    if (!top.length) return; // এখনো কেউ সাপোর্ট করেননি — বলার কিছু নেই, চুপ থাকাই ভালো
+    showTopAnnounce(top);
+    var line = "Right now, our number one supporter is " + top[0].name +
+               ", with " + Math.round(top[0].amount) + " rupees. ";
+    if (top[1]) line += "Number two is " + top[1].name + ". ";
+    if (top[2]) line += "And number three is " + top[2].name + ". ";
+    line += "Thank you all so much for supporting the stream!";
+    speakCeleb(line, 14000);
+  }).catch(function(){});
+}
+setInterval(announceTopSupporters, TOP_ANNOUNCE_MS);
+// প্রথম ঘোষণাটা শুরুর ৪৫ সেকেন্ড পরে, যাতে স্ট্রিম চালু হওয়ার সাথে সাথেই কথা শুরু না হয়
+setTimeout(announceTopSupporters, 45000);
+`;
+}
+
 const SNAKE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Snake — Live</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
@@ -2799,7 +3041,9 @@ background:#0f1526;color:#fff;font-size:13px;margin-top:5px;box-sizing:border-bo
 #bgSettingsPanel button{margin-top:14px;padding:10px 18px;border-radius:8px;border:none;background:#FFD866;
 color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
 #bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
+${CELEBRATION_CSS}
 </style></head><body>
+${CELEBRATION_HTML}
 <div id="bgFallback"></div>
 <div id="bgDim"></div>
 <video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/snake-bg.mp4"></video>
@@ -2872,6 +3116,8 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
     <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
     <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
     <input type="number" id="loopIntervalInput" min="20" value="90">
+    <label>Announcement voice (which voice reads out names and tips)</label>
+    <select id="celebVoiceSelect"></select>
     <label>Background video link (direct .mp4 URL — leave blank to use the repo folder)</label>
     <input type="text" id="bgVideoUrlInput" placeholder="https://.../background.mp4">
     <button type="submit">Save</button>
@@ -2952,7 +3198,12 @@ async function loadMusicConfig(){
       bgMusicEl.src = cfg.bgMusicUrl;
       bgMusicEl.play().catch(() => {}); // ব্রাউজারের autoplay নীতির কারণে প্রথমবার নাও বাজতে পারে, ব্যবহারকারীর প্রথম ক্লিকে বাজবে
     }
-    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    // ⚠️ সরাসরি .volume বসালে ঘোষণার মাঝখানে সেটিংস রিফ্রেশ হলে ডাকিং ভেঙে যেত —
+    // তাই আসল মানটা baseMusicVolume-এ রাখা হয়, আর প্রকৃত ভলিউম হিসেব করে বসানো হয়
+    baseMusicVolume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    savedVoiceURI = cfg.celebVoiceURI || savedVoiceURI;
+    resolveCelebVoice();
+    applyMusicVolume();
     const newList = Array.isArray(cfg.commentaryUrls) ? cfg.commentaryUrls : [];
     if (JSON.stringify(newList) !== JSON.stringify(commentaryList)) {
       commentaryList = newList; commentaryIdx = 0;
@@ -3003,6 +3254,7 @@ document.getElementById("bgSettingsForm").addEventListener("submit", async (e) =
         commentaryUrls: lines,
         loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
         bgVideoUrl: document.getElementById("bgVideoUrlInput").value.trim(),
+        celebVoiceURI: document.getElementById("celebVoiceSelect").value || "",
       }) });
     statusEl.textContent = "Saved!";
     lastMusicUrl = ""; // পরের loadMusicConfig() কল-এ নতুন মিউজিক অবিলম্বে লোড হবে
@@ -3031,7 +3283,7 @@ function playEatSound(){
       const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
       osc.type = "triangle"; osc.frequency.setValueAtTime(f, tt);
       g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.18, tt+0.01); g.gain.exponentialRampToValueAtTime(0.001, tt+0.16);
-      osc.connect(g).connect(audioCtx.destination); osc.start(tt); osc.stop(tt+0.18);
+      osc.connect(g).connect(sfxOut()); osc.start(tt); osc.stop(tt+0.18);
     });
   }catch(e){}
 }
@@ -3487,6 +3739,8 @@ requestAnimationFrame(render);
 
 // (আগে এখানে প্রতি ১১০ms-এ সার্ভারে HTTP রিকোয়েস্ট পাঠানোর poll() ছিল — সেটাই ছিল থেমে থেমে
 //  চলার আসল কারণ, তাই সম্পূর্ণ সরিয়ে দেওয়া হয়েছে। গেম এখন ১০০% ব্রাউজারেই চলে।)
+
+${celebrationJS("snake")}
 </script></body></html>`;
 
 const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Ball Sort Puzzle — Live</title>
@@ -3594,7 +3848,9 @@ background:#0f1526;color:#fff;font-size:13px;margin-top:5px;box-sizing:border-bo
 #bgSettingsPanel button{margin-top:14px;padding:10px 18px;border-radius:8px;border:none;background:#FFD866;
 color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
 #bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
+${CELEBRATION_CSS}
 </style></head><body>
+${CELEBRATION_HTML}
 <div id="bgFallback"></div>
 <div id="bgDim"></div>
 <video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/ballsort-bg.mp4"></video>
@@ -3661,6 +3917,8 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
     <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
     <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
     <input type="number" id="loopIntervalInput" min="20" value="90">
+    <label>Announcement voice (which voice reads out names and tips)</label>
+    <select id="celebVoiceSelect"></select>
     <label>Background video link (direct .mp4 URL — leave blank to use the repo folder)</label>
     <input type="text" id="bgVideoUrlInput" placeholder="https://.../background.mp4">
     <button type="submit">Save</button>
@@ -3735,7 +3993,12 @@ async function loadMusicConfig(){
       bgMusicEl.src = cfg.bgMusicUrl;
       bgMusicEl.play().catch(() => {});
     }
-    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    // ⚠️ সরাসরি .volume বসালে ঘোষণার মাঝখানে সেটিংস রিফ্রেশ হলে ডাকিং ভেঙে যেত —
+    // তাই আসল মানটা baseMusicVolume-এ রাখা হয়, আর প্রকৃত ভলিউম হিসেব করে বসানো হয়
+    baseMusicVolume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    savedVoiceURI = cfg.celebVoiceURI || savedVoiceURI;
+    resolveCelebVoice();
+    applyMusicVolume();
     const newList = Array.isArray(cfg.commentaryUrls) ? cfg.commentaryUrls : [];
     if (JSON.stringify(newList) !== JSON.stringify(commentaryList)) {
       commentaryList = newList; commentaryIdx = 0;
@@ -3785,6 +4048,7 @@ document.getElementById("bgSettingsForm").addEventListener("submit", async (e) =
         commentaryUrls: lines,
         loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
         bgVideoUrl: document.getElementById("bgVideoUrlInput").value.trim(),
+        celebVoiceURI: document.getElementById("celebVoiceSelect").value || "",
       }) });
     statusEl.textContent = "Saved!";
     lastMusicUrl = "";
@@ -3819,12 +4083,12 @@ function playPourSound(){
     osc.type = "sine"; osc.frequency.setValueAtTime(880, t);
     osc.frequency.exponentialRampToValueAtTime(420, t + 0.28);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.13, t+0.03); g.gain.exponentialRampToValueAtTime(0.001, t+0.32);
-    osc.connect(g).connect(audioCtx.destination); osc.start(t); osc.stop(t+0.34);
+    osc.connect(g).connect(sfxOut()); osc.start(t); osc.stop(t+0.34);
     // ছোট্ট "প্লিং" — বল টিউবে গিয়ে বসার মুহূর্তে
     const osc2 = audioCtx.createOscillator(); const g2 = audioCtx.createGain();
     osc2.type = "triangle"; osc2.frequency.setValueAtTime(1100, t+0.26);
     g2.gain.setValueAtTime(0.0001, t+0.26); g2.gain.exponentialRampToValueAtTime(0.12, t+0.27); g2.gain.exponentialRampToValueAtTime(0.001, t+0.4);
-    osc2.connect(g2).connect(audioCtx.destination); osc2.start(t+0.26); osc2.stop(t+0.42);
+    osc2.connect(g2).connect(sfxOut()); osc2.start(t+0.26); osc2.stop(t+0.42);
   }catch(e){}
 }
 
@@ -3976,6 +4240,8 @@ async function poll(){
   }catch(e){ animating = false; }
 }
 setInterval(poll, 500); poll();
+
+${celebrationJS("ballsort")}
 </script></body></html>`;
 
 // ===========================================================================
@@ -5164,6 +5430,8 @@ background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,0.72) 100%);}
 border:1px solid #2a3352;border-radius:16px;}
 #bgSettingsPanel h2{color:#FFD866;font-size:16px;margin:0 0 4px;}
 #bgSettingsPanel label{display:block;margin-top:14px;font-size:11px;color:#7C8AAD;font-weight:700;}
+#bgSettingsPanel select{width:100%;padding:9px;border-radius:8px;border:1px solid #26314f;
+background:#0f1526;color:#fff;font-size:13px;margin-top:5px;}
 #bgSettingsPanel input,#bgSettingsPanel textarea{width:100%;padding:9px;border-radius:8px;
 border:1px solid #26314f;background:#0f1526;color:#fff;font-size:13px;margin-top:5px;
 font-family:inherit;}
@@ -5748,7 +6016,7 @@ module.exports = function mountGaming(app) {
   function readMindGameConfig(game) {
     let cfg;
     try { cfg = JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
-    catch (e) { cfg = { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90, bgVideoUrl: "" }; }
+    catch (e) { cfg = { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90, bgVideoUrl: "", celebVoiceURI: "" }; }
     if (!cfg.bgVideoUrl) cfg.bgVideoUrl = ENV_BG_VIDEO[game] || "";
     if (!cfg.camVideoUrl) cfg.camVideoUrl = process.env.CODELIVE_CAM_VIDEO_URL || "";
     return cfg;
@@ -5766,6 +6034,8 @@ module.exports = function mountGaming(app) {
         loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
         bgVideoUrl: (body.bgVideoUrl || "").toString().slice(0, 500),
         camVideoUrl: (body.camVideoUrl || "").toString().slice(0, 500),
+        // কোন কণ্ঠে ঘোষণা পড়া হবে — ব্রাউজারভেদে ভয়েস আলাদা, তাই voiceURI সেভ করা হয়
+        celebVoiceURI: (body.celebVoiceURI || "").toString().slice(0, 300),
       });
       res.json({ ok: true });
     };
