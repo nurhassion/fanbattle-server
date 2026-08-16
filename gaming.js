@@ -3079,7 +3079,10 @@ async function runBallSortLoop() {
     const targetTotalMs = 14 * 60 * 1000;
     // ⚠️ ন্যূনতম বিরতি অবশ্যই client-side অ্যানিমেশনের মোট সময়ের (~২.৩ সেকেন্ড) চেয়ে বেশি রাখা জরুরি,
     // নাহলে পরের চাল আসার আগেই আগেরটার অ্যানিমেশন শেষ না হয়ে ছন্দ ভেঙে যাবে
-    const perMoveDelay = Math.max(2400, Math.min(3800, Math.round(targetTotalMs / Math.max(1, solution.length))));
+    // ⚠️ ক্লায়েন্টের অ্যানিমেশন এখন মোট ~৩.০ সেকেন্ড (০.৭s ভাবা + ১.০s বল ওঠা + ১.৩s নেমে বসা)।
+    // দুই চালের ব্যবধান অবশ্যই তার চেয়ে বেশি রাখতে হবে, নাহলে আগেরটা শেষ হওয়ার আগেই পরেরটা এসে
+    // ছন্দ ভেঙে যায়। তাই ন্যূনতম ৩.৩ সেকেন্ড, আর ভেবেচিন্তে খেলার অনুভূতির জন্য সর্বোচ্চ ৫ সেকেন্ড।
+    const perMoveDelay = Math.max(3300, Math.min(5000, Math.round(targetTotalMs / Math.max(1, solution.length))));
     const solveStartedAt = Date.now();
     for (let i = 0; i < solution.length && ballSortLoopActive; i++) {
       const mv = solution[i];
@@ -3107,7 +3110,17 @@ html{background:#0a0e1f;}
 body{margin:0;color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;overflow-y:auto;min-height:100vh;padding:8px;position:relative;}
 .liveFrame{display:grid;grid-template-columns:230px 1fr 230px;gap:10px;height:calc(100vh - 16px);}
-#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.75;filter:brightness(0.85);}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:0;
+transition:opacity 0.8s ease;}
+/* ভিডিওটা একটু ম্লান করার জন্য আগে CSS filter ব্যবহার হতো — সেটা প্রতিটা ভিডিও-ফ্রেমে পুরো পর্দা
+   নতুন করে হিসেব করতে বাধ্য করত (jank-এর বড় কারণ)। এখন তার বদলে একটা স্থির, আধা-স্বচ্ছ কালো
+   পর্দা উপরে বসানো হয়েছে — এটা একবারই আঁকা হয়, প্রতি ফ্রেমে কোনো খরচ নেই। */
+#bgDim{position:fixed;inset:0;z-index:-1;background:rgba(6,9,20,0.22);pointer-events:none;}
+/* ভিডিও না এলে যেন পর্দা মরা-কালো না লাগে — ধীরে রং বদলানো একটা জীবন্ত স্তর সবসময় পেছনে থাকে */
+#bgFallback{position:fixed;inset:0;z-index:-3;background:linear-gradient(135deg,#0d2818,#0a0e1f 45%,#12331f);}
+/* ⚠️ আগে এখানে ৪০ সেকেন্ডের একটা background-position অ্যানিমেশন ছিল। পুরো পর্দাজুড়ে gradient-এর
+   অবস্থান বদলানো মানে ব্রাউজারকে প্রতি ফ্রেমে গোটা স্ক্রিন নতুন করে আঁকতে হওয়া — এটাই সাপের
+   চলায় ধারাবাহিক ঝাঁকুনি তৈরি করছিল। স্থির gradient-এ দেখতে কার্যত একই, কিন্তু খরচ শূন্য। */
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 2px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
@@ -3177,7 +3190,24 @@ background:#0f1526;color:#fff;font-size:13px;margin-top:5px;box-sizing:border-bo
 color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
 #bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
 </style></head><body>
-<video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/snake-bg.mp4" type="video/mp4"></video>
+<div id="bgFallback"></div>
+<div id="bgDim"></div>
+<video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/snake-bg.mp4"></video>
+<script>
+// ব্রাউজার কখনো কখনো নিজে থেকে autoplay শুরু করে না (বিশেষত OBS/PRISM-এর ভেতরে) — তাই বারবার
+// চেষ্টা করা হচ্ছে। ভিডিও কোনো কারণে না এলে নিচের নড়াচড়া করা gradient ব্যাকগ্রাউন্ডটা থেকে যাবে,
+// অন্তত পর্দা একদম ফাঁকা কালো দেখাবে না।
+(function(){
+  var v = document.getElementById("bgVideo");
+  function tryPlay(){ var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+  v.addEventListener("canplay", tryPlay);
+  v.addEventListener("loadeddata", function(){ v.style.opacity = "0.78"; });
+  v.addEventListener("error", function(){ console.warn("ব্যাকগ্রাউন্ড ভিডিও লোড হয়নি — /gaming/assets-check দেখুন"); });
+  document.addEventListener("visibilitychange", tryPlay);
+  setInterval(function(){ if (v.paused) tryPlay(); }, 3000);
+  tryPlay();
+})();
+</script>
 <div class="liveFrame">
 <div class="sideCol">
   <div id="challengerBox">
@@ -3228,6 +3258,8 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
     <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
     <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
     <input type="number" id="loopIntervalInput" min="20" value="90">
+    <label>Background video link (direct .mp4 URL — leave blank to use the repo folder)</label>
+    <input type="text" id="bgVideoUrlInput" placeholder="https://.../background.mp4">
     <button type="submit">Save</button>
     <div id="bgSettingsStatus"></div>
   </form>
@@ -3284,6 +3316,7 @@ const bgMusicEl = new Audio();
 bgMusicEl.loop = true;
 const commentaryAudioEl = new Audio();
 let lastMusicUrl = "";
+let lastVideoUrl = "";
 let commentaryList = [];
 let commentaryIdx = 0;
 let commentaryTimer = null;
@@ -3323,6 +3356,18 @@ async function loadMusicConfig(){
     if (document.activeElement !== document.getElementById("loopIntervalInput")) {
       document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
     }
+    if (document.activeElement !== document.getElementById("bgVideoUrlInput")) {
+      document.getElementById("bgVideoUrlInput").value = cfg.bgVideoUrl || "";
+    }
+    // সেটিংসে আলাদা ভিডিও-ঠিকানা দেওয়া থাকলে সেটাই ব্যবহার হবে — তখন GitHub ফোল্ডারের নাম
+    // ঠিক আছে কিনা তা নিয়ে আর ভাবতে হয় না
+    if (cfg.bgVideoUrl && cfg.bgVideoUrl !== lastVideoUrl) {
+      lastVideoUrl = cfg.bgVideoUrl;
+      var vEl = document.getElementById("bgVideo");
+      vEl.src = cfg.bgVideoUrl;
+      vEl.load();
+      vEl.play().catch(function(){});
+    }
   } catch(e) {}
 }
 loadMusicConfig();
@@ -3343,6 +3388,7 @@ document.getElementById("bgSettingsForm").addEventListener("submit", async (e) =
         bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
         commentaryUrls: lines,
         loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+        bgVideoUrl: document.getElementById("bgVideoUrlInput").value.trim(),
       }) });
     statusEl.textContent = "Saved!";
     lastMusicUrl = ""; // পরের loadMusicConfig() কল-এ নতুন মিউজিক অবিলম্বে লোড হবে
@@ -3377,12 +3423,314 @@ function playEatSound(){
 }
 document.body.addEventListener("click", () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); }, { once: true });
 
-let lastStatus = "", lastScore = 0;
 let lastDir = { r: 0, c: 1 }; // মুখ কোনদিকে হাঁ হবে তার জন্য — শুরুতে ডানদিকে মুখ করা ধরে নেওয়া হচ্ছে
 let mouthOpenUntil = 0; // এই সময় পর্যন্ত মুখ "হাঁ" অ্যানিমেশন চলবে (বল খাওয়ার মুহূর্তে সেট হয়)
-let prevBody = null, curBody = null, curFood = null, lastTickTime = performance.now();
-let lastIntervalMs = 110; // পোল-এর মাঝের real (measured) সময়ের ব্যবধান — fixed TICK_MS ধরে না নিয়ে,
-// প্রতিবার dynamically মাপা হয়, যাতে নেটওয়ার্ক jitter-এও অ্যানিমেশন smooth থাকে
+let prevBody = null, curBody = null, curFood = null;
+
+// ===========================================================================
+// সাপের সম্পূর্ণ ইঞ্জিন — এখন ব্রাউজারেই চলে (আগে সার্ভারে চলত)
+// ---------------------------------------------------------------------------
+// কেন বদলানো হলো: আগে প্রতিটা ধাপের জন্য সার্ভারে HTTP রিকোয়েস্ট যেত। Render-এর ফ্রি সার্ভারে
+// সেই রিকোয়েস্টগুলোর দেরি একেকবার একেকরকম (কখনো ৩০ms, কখনো ৩০০ms) — ফলে সাপ একটু এগিয়ে
+// থমকে যেত, আবার লাফ দিত। এখন হিসেবটাও এখানেই, আঁকাও এখানেই — মাঝখানে নেটওয়ার্ক নেই, তাই
+// গতি একদম সমান ও মসৃণ থাকে, আর গেম ওভার না হওয়া পর্যন্ত এক মুহূর্তের জন্যও থামে না।
+// ===========================================================================
+const TICK_MS = 125;           // প্রতি ধাপের সময় — এক ঘর এগোতে যতক্ষণ লাগে
+const GAMEOVER_PAUSE_MS = 2600; // গেম ওভারের পর নতুন গেম শুরুর আগে সামান্য বিরতি
+let game = null;
+let tickAcc = 0, lastFrameTs = 0, resumeAt = 0;
+let score = 0, highScore = 0, highScoreName = "Grandmaster";
+let scoreSubmitted = false;
+// পরের চাল আগেই ভেবে রাখা হয় — কেন, তার ব্যাখ্যা scheduleThink()-এ
+let pendingDir = null, thinkTimer = null;
+// শেষ কতগুলো চালে সাপ কিছু খায়নি — বোর্ড প্রায় ভরে গেলে সাপ শুধু বেঁচে থাকতে পারে, কিন্তু
+// বাকি ঘরগুলোয় আর পৌঁছাতে পারে না; তখন সে ঘণ্টার পর ঘণ্টা ঘুরতেই থাকবে। সেটা ঠেকাতে এই গণনা।
+let stepsSinceEat = 0;
+
+function inBounds(r, c){ return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+function keyOf(r, c){ return r * COLS + c; }
+
+// ===========================================================================
+// পথ খোঁজার জন্য পুনর্ব্যবহারযোগ্য (reusable) মেমরি
+// ---------------------------------------------------------------------------
+// আগে প্রতিটা চালে ৪-৫ বার নতুন Set / Array / Int32Array তৈরি হতো। সাপ যত বড় হয়
+// (স্কোর ৫০০ মানে ৫০+ পুঁতি), তত বেশি আবর্জনা জমে — ব্রাউজারকে তখন মাঝে মাঝে থেমে
+// garbage collection করতে হয়, আর ঠিক সেই মুহূর্তগুলোতেই সাপ "আটকে" যেত।
+// এখন একবারই বরাদ্দ করা এই কয়েকটা বাফার বারবার ব্যবহার হয় — কোনো নতুন মেমরি লাগে না,
+// তাই GC-জনিত ঝাঁকুনি সম্পূর্ণ বন্ধ।
+// ===========================================================================
+const CELLS = ROWS * COLS;
+const _blocked = new Uint8Array(CELLS);
+const _seen = new Int32Array(CELLS);   // stamp পদ্ধতি — প্রতিবার clear করার দরকার নেই
+const _prevCell = new Int32Array(CELLS);
+const _queue = new Int32Array(CELLS);
+let _stamp = 0;
+const _DR = [-1, 1, 0, 0], _DC = [0, 0, -1, 1];
+
+// সাপের শরীর বাধা হিসেবে চিহ্নিত করা (লেজ বাদ — পরের ধাপে ওটা সরে যাবে)
+function markBlocked(body){
+  _blocked.fill(0);
+  for (let i = 0; i < body.length - 1; i++) _blocked[keyOf(body[i].r, body[i].c)] = 1;
+}
+// এক ধাপ এগোনোর *পরের* অবস্থাটা সরাসরি চিহ্নিত করা — এর জন্য নতুন কোনো array বানাতে হয় না।
+// (নতুন মাথা + পুরনো শরীরের শেষ দুটো ঘর বাদ; কারণ এক ধাপে লেজ এক ঘর এগিয়ে যায়।)
+// সাপ বড় হলে প্রতি চালে হাজার হাজার অবজেক্ট তৈরি হচ্ছিল — সেটাই ছিল সবচেয়ে ভারী কাজ।
+function markBlockedAfterMove(body, nr, nc){
+  _blocked.fill(0);
+  _blocked[keyOf(nr, nc)] = 1;
+  for (let i = 0; i < body.length - 2; i++) _blocked[keyOf(body[i].r, body[i].c)] = 1;
+}
+// start থেকে goal পর্যন্ত সবচেয়ে ছোট পথের প্রথম ঘরটা ফেরত দেয় (-1 = পৌঁছানো যায় না)।
+// markBlocked() আগে থেকে ডাকা থাকতে হবে।
+function bfsFirstStep(sr, sc, gr, gc){
+  const start = keyOf(sr, sc), goal = keyOf(gr, gc);
+  if (start === goal) return start;
+  _stamp++;
+  _seen[start] = _stamp; _prevCell[start] = -1;
+  let qh = 0, qt = 0;
+  _queue[qt++] = start;
+  while (qh < qt) {
+    const cur = _queue[qh++];
+    const cr = (cur / COLS) | 0, cc = cur % COLS;
+    for (let d = 0; d < 4; d++) {
+      const nr = cr + _DR[d], nc = cc + _DC[d];
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const nk = nr * COLS + nc;
+      if (_seen[nk] === _stamp || _blocked[nk]) continue;
+      _seen[nk] = _stamp; _prevCell[nk] = cur; _queue[qt++] = nk;
+      if (nk === goal) {
+        let k = nk;
+        while (_prevCell[k] !== start && _prevCell[k] !== -1) k = _prevCell[k];
+        return k;
+      }
+    }
+  }
+  return -1;
+}
+// start থেকে goal-এর দূরত্ব (কত ঘর) — -1 মানে পৌঁছানো যায় না। markBlocked() আগে ডাকা থাকতে হবে।
+const _dist = new Int32Array(CELLS);
+function bfsDistance(sr, sc, gr, gc){
+  const start = keyOf(sr, sc), goal = keyOf(gr, gc);
+  if (start === goal) return 0;
+  _stamp++;
+  _seen[start] = _stamp; _dist[start] = 0;
+  let qh = 0, qt = 0;
+  _queue[qt++] = start;
+  while (qh < qt) {
+    const cur = _queue[qh++];
+    const cr = (cur / COLS) | 0, cc = cur % COLS, cd = _dist[cur];
+    for (let d = 0; d < 4; d++) {
+      const nr = cr + _DR[d], nc = cc + _DC[d];
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const nk = nr * COLS + nc;
+      if (_seen[nk] === _stamp || _blocked[nk]) continue;
+      _seen[nk] = _stamp; _dist[nk] = cd + 1; _queue[qt++] = nk;
+      if (nk === goal) return cd + 1;
+    }
+  }
+  return -1;
+}
+// একটা ঘর থেকে শুরু করে মোট কত ঘর খোলা আছে (flood fill)। markBlocked() আগে ডাকা থাকতে হবে।
+function floodCount(sr, sc){
+  if (sr < 0 || sr >= ROWS || sc < 0 || sc >= COLS) return -1;
+  const start = keyOf(sr, sc);
+  if (_blocked[start]) return -1;
+  _stamp++;
+  _seen[start] = _stamp;
+  let qh = 0, qt = 0, count = 0;
+  _queue[qt++] = start;
+  while (qh < qt) {
+    const cur = _queue[qh++]; count++;
+    const cr = (cur / COLS) | 0, cc = cur % COLS;
+    for (let d = 0; d < 4; d++) {
+      const nr = cr + _DR[d], nc = cc + _DC[d];
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const nk = nr * COLS + nc;
+      if (_seen[nk] === _stamp || _blocked[nk]) continue;
+      _seen[nk] = _stamp; _queue[qt++] = nk;
+    }
+  }
+  return count;
+}
+
+function randomFood(body){
+  const taken = new Set(body.map((s) => keyOf(s.r, s.c)));
+  const free = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (!taken.has(keyOf(r,c))) free.push({ r, c });
+  if (!free.length) return null;
+  return free[Math.floor(Math.random() * free.length)];
+}
+function newGame(){
+  const r = Math.floor(ROWS/2), c = Math.floor(COLS/3);
+  const body = [{r, c}, {r, c: c-1}, {r, c: c-2}];
+  return { body, dir: {r:0, c:1}, food: randomFood(body) };
+}
+// খাবার পর্যন্ত পুরো পথটা ধরে এগোলে শরীর শেষ পর্যন্ত কেমন দাঁড়াবে — শুধু হিসেবের জন্য।
+// পুরো পথ আবার BFS দিয়ে বের না করে, দূরত্ব দিয়েই ঠিকঠাক আন্দাজ করা যায়: পথে যতগুলো ধাপ,
+// ততগুলো ঘর লেজ থেকে কেটে যাবে আর মাথায় ততগুলো যোগ হবে।
+function simulateAlongPath(body, path, food){
+  const newLen = body.length + (food ? 1 : 0); // খাবার খেলে এক ঘর লম্বা হবে
+  const b = [];
+  for (let i = path.length - 1; i >= 0 && b.length < newLen; i--) b.push({ r: path[i].r, c: path[i].c });
+  for (let i = 0; b.length < newLen && i < body.length; i++) b.push({ r: body[i].r, c: body[i].c });
+  return b;
+}
+// খাবার পর্যন্ত পুরো পথ (ধাপে ধাপে ঘরের তালিকা) — শুধু tail-safety যাচাইয়ের জন্য দরকার হয়
+function bfsFullPath(body, target){
+  if (!target) return null;
+  markBlocked(body);
+  const start = keyOf(body[0].r, body[0].c), goal = keyOf(target.r, target.c);
+  if (start === goal) return [];
+  _stamp++;
+  _seen[start] = _stamp; _prevCell[start] = -1;
+  let qh = 0, qt = 0, found = false;
+  _queue[qt++] = start;
+  while (qh < qt && !found) {
+    const cur = _queue[qh++];
+    const cr = (cur / COLS) | 0, cc = cur % COLS;
+    for (let d = 0; d < 4; d++) {
+      const nr = cr + _DR[d], nc = cc + _DC[d];
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const nk = nr * COLS + nc;
+      if (_seen[nk] === _stamp || _blocked[nk]) continue;
+      _seen[nk] = _stamp; _prevCell[nk] = cur; _queue[qt++] = nk;
+      if (nk === goal) { found = true; break; }
+    }
+  }
+  if (!found) return null;
+  const path = [];
+  let k = goal;
+  while (k !== start) { path.unshift({ r: (k / COLS) | 0, c: k % COLS }); k = _prevCell[k]; }
+  return path;
+}
+// খাবার খাওয়ার পর নিজের লেজ পর্যন্ত পৌঁছানো যাবে কি না — না গেলে সাপ নিজের ফাঁদে আটকে মরে।
+// এই একটা পরীক্ষার জন্যই সাপ অনেক বেশিক্ষণ বাঁচে, স্কোর অনেক বড় হয়, দেখতেও বুদ্ধিমান লাগে।
+function tailSafe(body){
+  if (body.length < 3) return true;
+  markBlocked(body);
+  return bfsFirstStep(body[0].r, body[0].c, body[body.length-1].r, body[body.length-1].c) !== -1;
+}
+function chooseDir(){
+  const body = game.body;
+  const head = body[0];
+  // ১) খাবার পর্যন্ত সোজা পথ আছে? থাকলে সেই পথে গেলে পরে নিজের লেজ পর্যন্ত ফিরতে পারব কি না দেখি
+  const path = bfsFullPath(body, game.food);
+  if (path && path.length) {
+    const after = simulateAlongPath(body, path, game.food);
+    if (tailSafe(after)) {
+      return { r: path[0].r - head.r, c: path[0].c - head.c };
+    }
+  }
+  // ২) খাবারের দিকে যাওয়া এখন নিরাপদ না — তাই "বেঁচে থাকার" চাল।
+  // ⚠️ আগে এখানে সোজা লেজের পিছু পিছু (shortest path to tail) যাওয়া হতো। কিন্তু লেজের সবচেয়ে
+  // কাছের পথ মানে সাপ নিজের গায়ে গা লাগিয়ে কুণ্ডলী পাকিয়ে থাকে — একবার ওই অবস্থায় ঢুকলে সে
+  // ঘণ্টার পর ঘণ্টা শুধু গোল গোল ঘুরতে থাকত, খাবারের দিকে আর কখনো যেত না। পরীক্ষায় দেখা গেছে
+  // ১০টা খেলার প্রতিটাই এভাবে অনন্তকাল আটকে থাকছিল, স্কোর এক জায়গায় থেমে যাচ্ছিল।
+  // এখন উল্টোটা করা হচ্ছে: যে বৈধ চালে (ক) লেজ পর্যন্ত ফেরার পথ খোলা থাকে এবং (খ) লেজ থেকে
+  // দূরত্ব সবচেয়ে বেশি হয়, সেটাই বাছা হয়। এতে কুণ্ডলী ধীরে ধীরে খুলে যায়, জায়গা তৈরি হয়, আর
+  // অল্প কিছু চালের মধ্যেই খাবার পর্যন্ত নিরাপদ পথ আবার খুলে যায় — খেলা থেমে থাকে না।
+  let bestDir = null, bestRank = -1;
+  const newTail = body[body.length - 2] || body[body.length - 1]; // চাল দেওয়ার পর লেজ যেখানে থাকবে
+  for (let d = 0; d < 4; d++) {
+    const nr = head.r + _DR[d], nc = head.c + _DC[d];
+    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+    markBlocked(body);
+    if (_blocked[keyOf(nr, nc)]) continue;
+    markBlockedAfterMove(body, nr, nc);
+    const dTail = bfsDistance(nr, nc, newTail.r, newTail.c);
+    if (dTail === -1) continue;              // লেজ পর্যন্ত ফেরার পথ বন্ধ — এই চাল আত্মহত্যা
+    if (dTail > bestRank) { bestRank = dTail; bestDir = { r: _DR[d], c: _DC[d] }; }
+  }
+  if (bestDir) return bestDir;
+  // ৩) শেষ উপায় — যেদিকে সবচেয়ে বেশি খোলা জায়গা সেদিকে
+  let best = null, bestSpace = 0;
+  for (let d = 0; d < 4; d++) {
+    markBlocked(body);
+    const space = floodCount(head.r + _DR[d], head.c + _DC[d]);
+    if (space > bestSpace) { bestSpace = space; best = { r: _DR[d], c: _DC[d] }; }
+  }
+  return best;
+}
+// ---------------------------------------------------------------------------
+// পরের চাল আগেভাগে ভেবে রাখা — এটাই "আটকে আটকে" চলার শেষ কারণটা দূর করে।
+// আগে ঠিক যে ফ্রেমে সাপ এক ঘর এগোতো, সেই একই ফ্রেমেই পুরো পথ-খোঁজার হিসেবটাও হতো।
+// ফলে ঐ ফ্রেমটা বাকিগুলোর চেয়ে ভারী হয়ে যেত আর প্রতি ধাপে একটা ছোট ঝাঁকুনি দেখা যেত।
+// এখন চাল দেওয়ার সাথে সাথেই পরের চালটা আলাদা করে (setTimeout 0 — অর্থাৎ দুটো ফ্রেমের
+// মাঝের অলস সময়ে) হিসেব করে রাখা হয়। ফলে যে ফ্রেমে সাপ এগোয় সেটায় আঁকা ছাড়া আর কোনো
+// কাজই থাকে না — গতি একদম সমান থাকে।
+// ---------------------------------------------------------------------------
+function scheduleThink(){
+  if (thinkTimer) return;
+  thinkTimer = setTimeout(function(){
+    thinkTimer = null;
+    if (game) { try { pendingDir = chooseDir(); } catch(e) { pendingDir = null; } }
+  }, 0);
+}
+function step(){
+  const dir = (pendingDir !== null) ? pendingDir : chooseDir();
+  pendingDir = null;
+  if (!dir) { endGame(); return; }
+  const head = { r: game.body[0].r + dir.r, c: game.body[0].c + dir.c };
+  const ate = game.food && head.r === game.food.r && head.c === game.food.c;
+  prevBody = game.body.map((s) => ({ r: s.r, c: s.c }));
+  game.body.unshift(head);
+  if (ate) {
+    score += 10;
+    stepsSinceEat = 0;
+    game.food = randomFood(game.body);
+    prevBody.push(prevBody[prevBody.length-1]); // দৈর্ঘ্য মিলিয়ে রাখা, যাতে interpolation-এ ঝাঁকুনি না লাগে
+    playEatSound();
+    mouthOpenUntil = performance.now() + 420;
+    document.getElementById("scoreVal").textContent = score;
+  } else {
+    game.body.pop();
+    stepsSinceEat++;
+  }
+  game.dir = dir; lastDir = dir;
+  updateDpad(dir);
+  curBody = game.body.map((s) => ({ r: s.r, c: s.c }));
+  curFood = game.food;
+  if (!game.food) { endGame(true); return; } // পুরো বোর্ড ভরে গেছে — নিখুঁত গেম!
+  // বোর্ড এত ভরে গেছে যে বাকি খাবারে আর পৌঁছানো যাচ্ছে না — ~৩ মিনিট কিছু না খেলে খেলা শেষ ধরা হয়,
+  // নইলে স্ট্রিমে একই সাপ অনন্তকাল গোল গোল ঘুরতে থাকত আর নতুন খেলা কখনো শুরু হতো না
+  if (stepsSinceEat > 1500) { endGame(true); return; }
+  scheduleThink(); // পরের চালটা এখনই, ফ্রেমের বাইরে ভেবে রাখা হচ্ছে
+}
+function endGame(perfect){
+  const flashEl = document.getElementById("flash");
+  flashEl.textContent = (perfect ? "🏆 Board Mastered — Score: " : "💀 Game Over — Score: ") + score;
+  flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+  if (!scoreSubmitted) {
+    scoreSubmitted = true;
+    fetch("/gaming/snake/highscore", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ score }) })
+      .then((r) => r.json()).then((d) => { highScore = d.score; highScoreName = d.name; paintHighScore(); }).catch(() => {});
+  }
+  resumeAt = performance.now() + GAMEOVER_PAUSE_MS;
+  setTimeout(startFreshGame, GAMEOVER_PAUSE_MS);
+}
+function startFreshGame(){
+  game = newGame(); score = 0; scoreSubmitted = false; tickAcc = 0;
+  pendingDir = null; stepsSinceEat = 0;
+  if (thinkTimer) { clearTimeout(thinkTimer); thinkTimer = null; }
+  prevBody = game.body.map((s) => ({ r: s.r, c: s.c }));
+  curBody = game.body.map((s) => ({ r: s.r, c: s.c }));
+  curFood = game.food;
+  document.getElementById("scoreVal").textContent = "0";
+  scheduleThink(); // প্রথম চালটাও আগেভাগে ভেবে রাখা, যাতে শুরুর ফ্রেমেও ঝাঁকুনি না লাগে
+}
+function paintHighScore(){
+  document.getElementById("highScoreVal").textContent = highScore;
+  document.getElementById("highScoreNameVal").textContent = highScoreName || "Grandmaster";
+}
+// হাই-স্কোর সার্ভার থেকে আনা — এটা গেমের গতির সাথে জড়িত না, তাই ধীরে ধীরে (৮ সেকেন্ডে একবার)
+// আনলেই যথেষ্ট; এতে সাপের চলায় কোনো প্রভাব পড়ে না
+function syncHighScore(){
+  fetch("/gaming/snake/highscore").then((r) => r.json())
+    .then((d) => { if (typeof d.score === "number" && d.score >= highScore) { highScore = d.score; highScoreName = d.name; paintHighScore(); } })
+    .catch(() => {});
+}
+setInterval(syncHighScore, 8000); syncHighScore();
+startFreshGame();
 // রেফারেন্স ভিডিওর মতো রংধনু-রঙের পুঁতির চেইন — মাথা বাদে প্রতিটা পুঁতি এই প্যালেট থেকে ক্রমানুসারে রঙ পায়,
 // সাপ যতই বড় হোক প্রতিটা পুঁতি নিজের রঙ ধরে রাখে (index-ভিত্তিক, তাই বাড়লে re-render-এও অপরিবর্তিত থাকে)
 const SNAKE_RAINBOW = ["#FF2D55","#FF9500","#FFCC00","#8BE28B","#34C759","#00C7BE","#30B0C7","#32ADE6","#5856D6","#AF52DE"];
@@ -3399,6 +3747,26 @@ function updateDpad(dir){
 function render(now){
   requestAnimationFrame(render);
   try {
+  // ---- ধাপ চালানো: স্থির timestep, ফ্রেম-রেট যাই হোক গতি একই থাকবে ----
+  if (!lastFrameTs) lastFrameTs = now;
+  let dt = now - lastFrameTs;
+  lastFrameTs = now;
+  // ট্যাব ব্যাকগ্রাউন্ডে চলে গেলে ব্রাউজার ফ্রেম থামিয়ে দেয় — ফিরে এলে যেন হঠাৎ ২০টা ধাপ
+  // একসাথে না ফেলে (তাতেই "লাফ" দেখা যেত), তাই বড় ফাঁক এলে সেটা এক ধাপে সীমিত করা হচ্ছে
+  if (dt > 400) dt = TICK_MS;
+  if (game && now >= resumeAt) {
+    tickAcc += dt;
+    // একসাথে বড়জোর ২ ধাপ — এর বেশি হলে দর্শক "লাফ" দেখতে পায়, তাই বাড়তিটুকু ফেলে দেওয়া হয়
+    let guard = 0;
+    while (tickAcc >= TICK_MS && guard++ < 2) {
+      tickAcc -= TICK_MS;
+      // একটা ধাপে অপ্রত্যাশিত কিছু ঘটলেও গেম যেন চিরতরে থমকে না যায় — সাথে সাথে নতুন গেম শুরু হবে
+      try { step(); } catch (e) { console.warn("step() error — নতুন গেম শুরু হচ্ছে", e); startFreshGame(); break; }
+    }
+    if (tickAcc > TICK_MS) tickAcc = 0;
+  } else {
+    tickAcc = 0;
+  }
   if (!curBody) {
     // যদি সার্ভার থেকে কোনো state এখনো না এসে থাকে (fresh deploy/সাময়িক নেটওয়ার্ক সমস্যা),
     // অন্তত একটা "Loading..." দেখানো হচ্ছে যাতে বোঝা যায় সমস্যাটা কোথায়, একদম ফাঁকা না থাকে
@@ -3407,10 +3775,10 @@ function render(now){
     ctx.fillText("Loading...", canvas.width/2, canvas.height/2);
     return;
   }
-  // ⚠️ আগে interpolation একটা FIXED TICK_MS (সার্ভারের নির্ধারিত gap) ধরে নিয়ে চলত — নেটওয়ার্কে
-  // সামান্য দেরি/jitter হলেই timing মিলে যেত না, ফলে মাঝেমধ্যে "থমকে যাওয়া" ভাব হতো। এখন প্রতিটা
-  // poll()-এর মাঝের প্রকৃত (measured) সময়ের ব্যবধান ব্যবহার করা হচ্ছে — নেটওয়ার্ক জিটার সহ্য করতে পারে
-  const t = Math.min(1, (now - lastTickTime) / Math.max(60, lastIntervalMs));
+  // প্রতিটা ফ্রেমে ঠিক কতটা সময় পেরিয়েছে সেটা জমিয়ে রেখে ধাপগুলো ফেলা হচ্ছে (accumulator পদ্ধতি)।
+  // ফলে ধাপের সময় সবসময় হুবহু TICK_MS, আর দুই ধাপের মাঝের ভগ্নাংশটাই (t) নিখুঁত interpolation দেয় —
+  // এটাই "আটকে আটকে চলা" পুরোপুরি বন্ধ করে দেয়, কারণ এখানে আর কোনো নেটওয়ার্ক অপেক্ষা নেই।
+  const t = Math.min(1, tickAcc / TICK_MS);
   ctx.clearRect(0,0,canvas.width,canvas.height);
   // ব্যাকগ্রাউন্ড সম্পূর্ণ স্বচ্ছ — সবুজ ফিল আর নেই, ভিডিও ব্যাকগ্রাউন্ড সরাসরি দেখা যাবে (Ball Sort-এর প্যাটার্নে)
 
@@ -3503,32 +3871,8 @@ function render(now){
 }
 requestAnimationFrame(render);
 
-async function poll(){
-  try{
-    const res = await fetch("/gaming/state/snake.json?t="+Date.now());
-    const data = await res.json();
-    prevBody = curBody || data.body;
-    curBody = data.body;
-    curFood = data.food;
-    const nowT = performance.now();
-    lastIntervalMs = Math.min(500, Math.max(60, nowT - lastTickTime)); // পরবর্তী interpolation-এর জন্য প্রকৃত ব্যবধান মাপা হচ্ছে
-    lastTickTime = nowT;
-    updateDpad(data.dir);
-    if (data.dir && (data.dir.r || data.dir.c)) lastDir = data.dir; // মুখ কোনদিকে হাঁ হবে তার জন্য সর্বশেষ দিক মনে রাখা
-    document.getElementById("scoreVal").textContent = data.score;
-    document.getElementById("highScoreVal").textContent = data.highScore;
-    document.getElementById("highScoreNameVal").textContent = data.highScoreName || "Grandmaster";
-    if (data.score > lastScore) { playEatSound(); mouthOpenUntil = performance.now() + 420; } // বল খাওয়ার মুহূর্তে মুখ হাঁ হওয়ার অ্যানিমেশন শুরু
-    lastScore = data.score;
-    if (data.status === "gameover" && lastStatus !== "gameover") {
-      const flashEl = document.getElementById("flash");
-      flashEl.textContent = "💀 Game Over — Score: " + data.score;
-      flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
-    }
-    lastStatus = data.status;
-  }catch(e){}
-}
-setInterval(poll, 110); poll();
+// (আগে এখানে প্রতি ১১০ms-এ সার্ভারে HTTP রিকোয়েস্ট পাঠানোর poll() ছিল — সেটাই ছিল থেমে থেমে
+//  চলার আসল কারণ, তাই সম্পূর্ণ সরিয়ে দেওয়া হয়েছে। গেম এখন ১০০% ব্রাউজারেই চলে।)
 </script></body></html>`;
 
 const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Ball Sort Puzzle — Live</title>
@@ -3539,23 +3883,44 @@ html{background:#0a0e1f;}
 body{margin:0;color:#F5F7FA;
 font-family:'Segoe UI',sans-serif;overflow-y:auto;min-height:100vh;padding:10px;position:relative;}
 .liveFrame{display:grid;grid-template-columns:230px 1fr 230px;gap:10px;height:calc(100vh - 20px);}
-#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:0.75;filter:brightness(0.85);}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:0;
+transition:opacity 0.8s ease;}
+/* ভিডিওটা একটু ম্লান করার জন্য আগে CSS filter ব্যবহার হতো — সেটা প্রতিটা ভিডিও-ফ্রেমে পুরো পর্দা
+   নতুন করে হিসেব করতে বাধ্য করত (jank-এর বড় কারণ)। এখন তার বদলে একটা স্থির, আধা-স্বচ্ছ কালো
+   পর্দা উপরে বসানো হয়েছে — এটা একবারই আঁকা হয়, প্রতি ফ্রেমে কোনো খরচ নেই। */
+#bgDim{position:fixed;inset:0;z-index:-1;background:rgba(6,9,20,0.22);pointer-events:none;}
+/* ভিডিও না এলে যেন পর্দা মরা-কালো না লাগে — ধীরে রং বদলানো একটা জীবন্ত স্তর সবসময় পেছনে থাকে */
+#bgFallback{position:fixed;inset:0;z-index:-3;background:linear-gradient(135deg,#101a3d,#0a0e1f 45%,#241442);}
 .sideCol{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}
 .centerCol{display:flex;flex-direction:column;align-items:center;min-height:0;height:100%;}
 h1{color:#FFD866;font-size:20px;margin:0 0 4px;text-shadow:0 2px 12px rgba(255,216,102,0.35);}
-#statusLine{color:#7C8AAD;font-size:12px;margin-bottom:6px;font-weight:700;min-height:18px;}
+#statusLine{color:#7C8AAD;font-size:12px;margin-bottom:3px;font-weight:700;min-height:16px;}
 #statusLine.solved{color:#8BE28B;}
-#fastestLine{color:#8BE28B;font-size:11px;margin-bottom:10px;font-weight:700;background:#161b2e;
-border:1px solid #2a3352;border-radius:8px;padding:5px 12px;}
+#fastestLine{color:#8BE28B;font-size:11px;margin-bottom:5px;font-weight:700;background:#161b2e;
+border:1px solid #2a3352;border-radius:8px;padding:4px 12px;}
 #fastestLine b{color:#FFD866;}
-/* ২০টা টিউব — উপরে ১০টা, নিচে ১০টা করে দুই সারিতে, আগের চেয়ে লম্বা ও চওড়া */
-#tubesWrap{flex:1;min-height:0;width:100%;display:grid;grid-template-columns:repeat(10,1fr);grid-auto-rows:1fr;
-gap:6px;align-items:center;justify-items:center;padding:4px;}
-/* কাচের মতো টিউব — আধা-স্বচ্ছ, ওপরে-নিচে হালকা রিফ্লেকশন স্ট্রাইপ, পাতলা উজ্জ্বল বর্ডার */
-.tube{width:60px;height:288px;background:linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 8%, rgba(20,26,46,0.55) 20%, rgba(10,14,31,0.68) 100%);
-backdrop-filter:blur(2px);border:2px solid rgba(255,255,255,0.28);border-top:none;border-radius:4px 4px 22px 22px;
-display:flex;flex-direction:column-reverse;padding:5px;gap:3px;
-box-shadow:0 10px 26px rgba(0,0,0,0.55), inset 3px 0 6px rgba(255,255,255,0.12), inset -3px 0 6px rgba(0,0,0,0.35);position:relative;overflow:hidden;}
+/* ১৪টা টিউব — উপরে ৭টা, নিচে ৭টা। আগে ১০-কলামের ছকে ছিল বলে নিচের সারিতে মাত্র ৪টা টিউব থেকে
+   ডানদিকের বিরাট অংশ ফাঁকা পড়ে থাকত। এখন দুই সারিতে সমান ভাগ হওয়ায় পুরো পর্দা ভরে যায়, আর
+   সেই বাড়তি জায়গাটুকু কাজে লাগিয়ে টিউব ও বল দুটোই অনেক বড় করা গেছে। */
+#tubesWrap{flex:1;min-height:0;width:100%;display:grid;grid-template-columns:repeat(7,auto);
+grid-template-rows:1fr 1fr;gap:12px 0;align-items:center;justify-items:center;
+justify-content:space-evenly;padding:2px 0;}
+/* কাচের মতো টিউব — আধা-স্বচ্ছ, ওপরে-নিচে হালকা রিফ্লেকশন স্ট্রাইপ, পাতলা উজ্জ্বল বর্ডার।
+   উচ্চতা এখন সারির পুরোটা নেয়, আর প্রস্থ সেই উচ্চতা থেকেই অনুপাতে হিসেব হয় (aspect-ratio) —
+   ফলে ছোট-বড় যেকোনো পর্দাতেই টিউব যতটা সম্ভব বড় হয়, কখনো উপচে পড়ে না */
+/* aspect-ratio ৪-এর নিচে নামানো যায় না — টিউবে ৪টা বল খাড়াভাবে বসে, তাই উচ্চতা অন্তত
+   ৪ × বলের ব্যাস হতেই হবে। বলকে বড় করার একমাত্র উপায় টিউবকে লম্বা করা, তাই উপরের
+   হেডিং/লাইনগুলো ছোট করে সেই জায়গাটুকু টিউবকে দেওয়া হয়েছে। */
+.tube{height:100%;aspect-ratio:1/4.05;max-width:210px;
+background:linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 8%, rgba(20,26,46,0.55) 20%, rgba(10,14,31,0.68) 100%);
+border:2px solid rgba(255,255,255,0.30);border-top:none;border-radius:5px 5px 26px 26px;
+display:flex;flex-direction:column-reverse;padding:5px;gap:4px;
+box-shadow:0 10px 26px rgba(0,0,0,0.55), inset 3px 0 6px rgba(255,255,255,0.12), inset -3px 0 6px rgba(0,0,0,0.35);position:relative;overflow:hidden;
+transition:box-shadow 0.35s ease, border-color 0.35s ease;}
+/* "ভাবছে" — চাল দেওয়ার ঠিক আগে যে টিউব থেকে বল তোলা হবে সেটা একটু জ্বলে ওঠে, যেন কেউ তাকিয়ে
+   ভাবছে কোনটা তুলবে; দর্শক তখন নিজেও আন্দাজ করার সময় পায় */
+.tube.thinking{border-color:rgba(255,216,102,0.85);box-shadow:0 0 26px rgba(255,216,102,0.55), 0 10px 26px rgba(0,0,0,0.55);}
+.tube.target{border-color:rgba(139,226,139,0.8);box-shadow:0 0 22px rgba(139,226,139,0.45), 0 10px 26px rgba(0,0,0,0.55);}
 .tube::before{content:"";position:absolute;top:0;left:8%;width:14%;height:100%;background:linear-gradient(180deg,rgba(255,255,255,0.35),rgba(255,255,255,0.05));
 border-radius:20px;pointer-events:none;} /* কাচের গায়ে আলোর প্রতিফলনের রেখা */
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 3px 6px rgba(0,0,0,0.45);position:relative;z-index:1;}
@@ -3616,7 +3981,23 @@ background:#0f1526;color:#fff;font-size:13px;margin-top:5px;box-sizing:border-bo
 color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
 #bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
 </style></head><body>
-<video id="bgVideo" autoplay muted loop playsinline><source src="/game-assets/ballsort-bg.mp4" type="video/mp4"></video>
+<div id="bgFallback"></div>
+<div id="bgDim"></div>
+<video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/ballsort-bg.mp4"></video>
+<script>
+// ব্রাউজার কখনো কখনো নিজে থেকে autoplay শুরু করে না (বিশেষত OBS/PRISM-এর ভেতরে) — তাই বারবার
+// চেষ্টা করা হচ্ছে। ভিডিও কোনো কারণে না এলে নিচের নড়াচড়া করা gradient ব্যাকগ্রাউন্ডটা থেকে যাবে।
+(function(){
+  var v = document.getElementById("bgVideo");
+  function tryPlay(){ var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+  v.addEventListener("canplay", tryPlay);
+  v.addEventListener("loadeddata", function(){ v.style.opacity = "0.78"; });
+  v.addEventListener("error", function(){ console.warn("ব্যাকগ্রাউন্ড ভিডিও লোড হয়নি — /gaming/assets-check দেখুন"); });
+  document.addEventListener("visibilitychange", tryPlay);
+  setInterval(function(){ if (v.paused) tryPlay(); }, 3000);
+  tryPlay();
+})();
+</script>
 <div class="liveFrame">
 <div class="sideCol">
   <div id="challengerBox">
@@ -3662,6 +4043,8 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
     <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
     <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
     <input type="number" id="loopIntervalInput" min="20" value="90">
+    <label>Background video link (direct .mp4 URL — leave blank to use the repo folder)</label>
+    <input type="text" id="bgVideoUrlInput" placeholder="https://.../background.mp4">
     <button type="submit">Save</button>
     <div id="bgSettingsStatus"></div>
   </form>
@@ -3712,6 +4095,7 @@ const bgMusicEl = new Audio();
 bgMusicEl.loop = true;
 const commentaryAudioEl = new Audio();
 let lastMusicUrl = "";
+let lastVideoUrl = "";
 let commentaryList = [];
 let commentaryIdx = 0;
 let commentaryTimer = null;
@@ -3750,6 +4134,18 @@ async function loadMusicConfig(){
     if (document.activeElement !== document.getElementById("loopIntervalInput")) {
       document.getElementById("loopIntervalInput").value = cfg.loopIntervalSec || 90;
     }
+    if (document.activeElement !== document.getElementById("bgVideoUrlInput")) {
+      document.getElementById("bgVideoUrlInput").value = cfg.bgVideoUrl || "";
+    }
+    // সেটিংসে আলাদা ভিডিও-ঠিকানা দেওয়া থাকলে সেটাই ব্যবহার হবে — তখন GitHub ফোল্ডারের নাম
+    // ঠিক আছে কিনা তা নিয়ে আর ভাবতে হয় না
+    if (cfg.bgVideoUrl && cfg.bgVideoUrl !== lastVideoUrl) {
+      lastVideoUrl = cfg.bgVideoUrl;
+      var vEl = document.getElementById("bgVideo");
+      vEl.src = cfg.bgVideoUrl;
+      vEl.load();
+      vEl.play().catch(function(){});
+    }
   } catch(e) {}
 }
 loadMusicConfig();
@@ -3770,6 +4166,7 @@ document.getElementById("bgSettingsForm").addEventListener("submit", async (e) =
         bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value) || 0.15,
         commentaryUrls: lines,
         loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
+        bgVideoUrl: document.getElementById("bgVideoUrlInput").value.trim(),
       }) });
     statusEl.textContent = "Saved!";
     lastMusicUrl = "";
@@ -3844,7 +4241,8 @@ function animateMove(mv, tubesAfter, colors){
   if (!fromTubeEl || !toTubeEl) { animating = false; renderStatic(tubesAfter, colors); return; }
   const fromRect = fromTubeEl.getBoundingClientRect();
   const toRect = toTubeEl.getBoundingClientRect();
-  const ballSize = fromRect.width - 10;
+  // টিউবের বর্ডার (২px করে দুইপাশে) + প্যাডিং (৬px করে দুইপাশে) বাদ দিলে যতটুকু থাকে, বলের আকার ঠিক ততটাই
+  const ballSize = Math.max(10, fromRect.width - 16);
 
   const flyBall = document.createElement("div");
   flyBall.className = "ball flyingBall";
@@ -3865,11 +4263,17 @@ function animateMove(mv, tubesAfter, colors){
     document.body.appendChild(tap);
     setTimeout(() => tap.remove(), 500);
   }
-  showTapIndicator(startX + ballSize/2, startY + ballSize/2);
-
-  playPourSound();
+  // ---- "ভাবার" মুহূর্ত ----
+  // চাল দেওয়ার আগে ৭০০ms ধরে উৎস ও গন্তব্য টিউব দুটো জ্বলে ওঠে। এতে দর্শক বুঝতে পারে কোন বলটা
+  // কোথায় যাচ্ছে, আর পুরো ব্যাপারটা তাড়াহুড়ো না লেগে "ভেবেচিন্তে খেলা" মনে হয়।
+  fromTubeEl.classList.add("thinking");
+  toTubeEl.classList.add("target");
+  const THINK_MS = 700;
   const riseTop = Math.min(fromRect.top, toRect.top) - 55;
-  requestAnimationFrame(() => {
+  setTimeout(() => {
+    fromTubeEl.classList.remove("thinking");
+    showTapIndicator(startX + ballSize/2, startY + ballSize/2);
+    playPourSound();
     flyBall.style.transition = "top 1.0s ease-out";
     flyBall.style.top = riseTop + "px";
     setTimeout(() => {
@@ -3881,11 +4285,12 @@ function animateMove(mv, tubesAfter, colors){
       setTimeout(() => {
         showTapIndicator(endX + ballSize/2, endY + ballSize/2); // গন্তব্যে "রাখার" মুহূর্তে আরেকটা ট্যাপ চিহ্ন
         flyBall.remove();
+        toTubeEl.classList.remove("target");
         renderStatic(tubesAfter, colors);
         animating = false;
       }, 1270);
     }, 1020);
-  });
+  }, THINK_MS);
 }
 
 async function poll(){
@@ -3944,11 +4349,43 @@ module.exports = function mountGaming(app) {
   app.use("/gaming/state", express.static(STATE_DIR));
   app.use("/gaming/audio", express.static(AUDIO_DIR));
   app.use("/gaming/uploads", express.static(CHALLENGE_UPLOAD_DIR));
-  // গেমের ব্যাকগ্রাউন্ড ভিডিও (Snake/Ball Sort) — রিপোর মূলে "game-assets" ফোল্ডারে রাখা ফাইল সরাসরি সার্ভ হবে
-  // গেমের ব্যাকগ্রাউন্ড ভিডিও (Snake/Ball Sort) — আসল ফোল্ডারের নাম রিপোতে "gaming assetes" (স্পেস+ভিন্ন বানান
-  // সহ) হয়ে গিয়েছিল, কিন্তু URL path-টা এখনো পরিষ্কার "/game-assets" রাখা হলো — client-এর কোনো
-  // পরিবর্তন লাগছে না, শুধু এখানে সঠিক আসল ফোল্ডারের নাম দেখিয়ে দেওয়া হলো
-  app.use("/game-assets", express.static(path.join(__dirname, "gaming assetes")));
+  // ---------- গেমের ব্যাকগ্রাউন্ড ভিডিও (Snake / Ball Sort) ----------
+  // GitHub-এ ফোল্ডারের নাম কখনো "game-assets", কখনো "gaming assetes" (স্পেস + ভিন্ন বানান) হয়ে
+  // গিয়েছিল — সেই একটামাত্র অক্ষরের গরমিলেই ভিডিও লোড হচ্ছিল না, ব্যাকগ্রাউন্ড কালো দেখাচ্ছিল।
+  // এখন আর কোনো নির্দিষ্ট নামের উপর নির্ভর করা হচ্ছে না: নিচের যেকোনো নামের ফোল্ডার রিপোতে থাকলেই
+  // সেটা /game-assets URL-এ সার্ভ হবে। ভবিষ্যতে ফোল্ডারের নাম বদলে গেলেও ভিডিও আর বন্ধ হবে না।
+  const ASSET_DIR_CANDIDATES = [
+    "game-assets", "gaming assetes", "gaming-assets", "game assets",
+    "gaming assets", "gameassets", "assets", "public/game-assets",
+  ];
+  const foundAssetDirs = [];
+  for (const cand of ASSET_DIR_CANDIDATES) {
+    try {
+      const full = path.join(__dirname, cand);
+      if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+        app.use("/game-assets", express.static(full, { maxAge: "1h" }));
+        foundAssetDirs.push({ dir: cand, files: fs.readdirSync(full) });
+      }
+    } catch (e) { /* এই নামটা নেই — পরেরটা দেখা হবে */ }
+  }
+  if (foundAssetDirs.length) {
+    console.log("🎬 ব্যাকগ্রাউন্ড ভিডিও ফোল্ডার পাওয়া গেছে:", JSON.stringify(foundAssetDirs));
+  } else {
+    console.warn("⚠️ কোনো ব্যাকগ্রাউন্ড-ভিডিও ফোল্ডার পাওয়া যায়নি — /gaming/assets-check খুলে দেখুন রিপোতে কী কী আছে");
+  }
+  // এক ক্লিকে নির্ণয়: এই URL খুললেই দেখা যাবে সার্ভার আসলে কোন ফোল্ডার/ফাইল দেখতে পাচ্ছে
+  app.get("/gaming/assets-check", (req, res) => {
+    let rootListing = [];
+    try {
+      rootListing = fs.readdirSync(__dirname, { withFileTypes: true })
+        .map((d) => (d.isDirectory() ? "[DIR] " : "      ") + d.name);
+    } catch (e) { rootListing = ["পড়া যায়নি: " + e.message]; }
+    res.json({
+      servedFrom: foundAssetDirs,
+      expectedUrls: ["/game-assets/snake-bg.mp4", "/game-assets/ballsort-bg.mp4"],
+      repoRoot: rootListing,
+    });
+  });
   app.get("/gaming/overlay/chess", (req, res) => res.type("html").send(CHESS_OVERLAY_HTML));
   app.get("/gaming/overlay/sports", (req, res) => res.type("html").send(SPORTS_OVERLAY_HTML));
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
@@ -4008,9 +4445,19 @@ module.exports = function mountGaming(app) {
 
   // ---------- Snake ও Ball Sort-এর ব্যাকগ্রাউন্ড মিউজিক + কমেন্ট্রি — প্রতিটা গেমের নিজের পেজেই
   // স্ক্রল করে নিচে সেট করা যায় (ইউজারের স্পষ্ট অনুরোধ অনুযায়ী, আলাদা কোনো admin পেজে না) ----------
+  // ব্যাকগ্রাউন্ড ভিডিওর ঠিকানা — তিন ধাপে খোঁজা হয়:
+  //  ১) Render-এর Environment Variable (SNAKE_BG_VIDEO_URL / BALLSORT_BG_VIDEO_URL)
+  //  ২) সেটিংস প্যানেলে সেভ করা মান
+  //  ৩) কিছুই না থাকলে রিপোর ফোল্ডার থেকে (/game-assets/...mp4)
+  // ⚠️ Render প্রতিবার deploy করলে সার্ভারের নিজের ফাইল মুছে যায়, তাই সেটিংস প্যানেলে সেভ করা
+  // ঠিকানাও মুছে যেতে পারে। স্থায়ীভাবে রাখতে চাইলে Environment Variable-ই সবচেয়ে নিরাপদ।
+  const ENV_BG_VIDEO = { snake: process.env.SNAKE_BG_VIDEO_URL || "", ballsort: process.env.BALLSORT_BG_VIDEO_URL || "" };
   function readMindGameConfig(game) {
-    try { return JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
-    catch (e) { return { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90 }; }
+    let cfg;
+    try { cfg = JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
+    catch (e) { cfg = { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90, bgVideoUrl: "" }; }
+    if (!cfg.bgVideoUrl) cfg.bgVideoUrl = ENV_BG_VIDEO[game] || "";
+    return cfg;
   }
   function writeMindGameConfig(game, cfg) {
     fs.writeFileSync(path.join(STATE_DIR, `${game}-config.json`), JSON.stringify(cfg, null, 2));
@@ -4023,6 +4470,7 @@ module.exports = function mountGaming(app) {
         bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.15)),
         commentaryUrls: Array.isArray(body.commentaryUrls) ? body.commentaryUrls.slice(0, 20).map(s => (s || "").toString().slice(0, 500)) : [],
         loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
+        bgVideoUrl: (body.bgVideoUrl || "").toString().slice(0, 500),
       });
       res.json({ ok: true });
     };
@@ -4140,7 +4588,23 @@ module.exports = function mountGaming(app) {
   // ---------- নতুন গেম: Snake ও Ball Sort Puzzle — সিডিউলারের বাইরে, নিজে থেকেই ২৪/৭ চলবে ----------
   app.get("/gaming/overlay/snake", (req, res) => res.type("html").send(SNAKE_OVERLAY_HTML));
   app.get("/gaming/overlay/ballsort", (req, res) => res.type("html").send(BALLSORT_OVERLAY_HTML));
-  runSnakeLoop().catch((e) => console.error("❌ Snake loop-এ error:", e));
+  // ⚠️ Snake আর সার্ভার থেকে চালানো হয় না। আগে সার্ভার প্রতি ১১০ms-এ এক ধাপ হিসেব করে ফাইলে লিখত
+  // আর ব্রাউজার প্রতি ১১০ms-এ HTTP দিয়ে সেটা টেনে আনত — Render-এর ফ্রি সার্ভারে প্রতিটা রিকোয়েস্টের
+  // দেরি একেকবার একেকরকম হওয়ায় সাপ "আটকে আটকে" চলত। এখন পুরো সাপের ইঞ্জিন ব্রাউজারের ভেতরেই চলে,
+  // তাই নেটওয়ার্কের উপর কোনো নির্ভরতা নেই — সাপ একদম মসৃণভাবে, না থেমে চলতে থাকবে।
+  // শুধু হাই-স্কোরটা নিচের দুটো রুট দিয়ে সার্ভারে জমা থাকে, যাতে রিফ্রেশ/রিস্টার্টেও হারিয়ে না যায়।
+  app.get("/gaming/snake/highscore", (req, res) => {
+    res.json({ score: snakeHighScore, name: snakeHighScoreName || "Grandmaster" });
+  });
+  app.post("/gaming/snake/highscore", express.json(), (req, res) => {
+    const s = parseInt((req.body && req.body.score) || 0, 10) || 0;
+    if (s > snakeHighScore) {
+      snakeHighScore = s;
+      snakeHighScoreName = "Grandmaster"; // challenge সিস্টেম যোগ হলে এখানে বিজয়ীর নাম বসবে
+      try { writeState("snake-highscore", { score: snakeHighScore, name: snakeHighScoreName }); } catch (e) {}
+    }
+    res.json({ score: snakeHighScore, name: snakeHighScoreName });
+  });
   runBallSortLoop().catch((e) => console.error("❌ Ball Sort loop-এ error:", e));
 
   console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess, /gaming/overlay/sports, /gaming/overlay/snake, /gaming/overlay/ballsort, /gaming/challenge/join এ পাওয়া যাবে।");
