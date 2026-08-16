@@ -1629,16 +1629,25 @@ const CHALLENGE_JOIN_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset=
 <style>
 body{margin:0;background:#0a0e1f;color:#F5F7FA;font-family:sans-serif;padding:24px;max-width:460px;margin:0 auto;}
 h1{font-size:22px;text-align:center;color:#FFD866;}
+form{background:rgba(10,14,31,0.72);backdrop-filter:blur(5px);border-radius:14px;padding:16px;}
 label{display:block;margin-top:16px;font-size:13px;color:#7C8AAD;}
 input[type=text],input[type=number]{width:100%;padding:12px;border-radius:8px;border:1px solid #26314f;background:#131a2c;color:#fff;font-size:15px;margin-top:6px;}
 input[type=file]{margin-top:8px;color:#7C8AAD;}
-.tipBox{background:#131a2c;border:1px solid #26314f;border-radius:12px;padding:16px;margin-top:20px;font-size:13px;color:#B8C4D9;text-align:center;}
-.tipBox a{color:#FFD866;font-weight:700;}
-.tipBox img{width:150px;height:150px;border-radius:10px;margin:12px auto;display:block;background:#fff;padding:6px;}
-.disclaimer{font-size:11px;color:#5a6a8a;margin-top:10px;line-height:1.5;text-align:left;background:#0f1526;border-radius:8px;padding:10px;}
+.tipBox{background:rgba(19,26,44,0.9);border:1px solid #26314f;border-radius:12px;padding:16px;margin-top:20px;font-size:13px;color:#B8C4D9;text-align:center;}
+.tipBox b{color:#F5F7FA;}
+/* ⚠️ আগে এখানে একটা QR কোড ছিল। কিন্তু দর্শক তো ইতিমধ্যেই ফোনে এই পেজটাই খুলে বসে আছে —
+   নিজের ফোনের পর্দার QR নিজেই স্ক্যান করা যায় না! তাই QR সরিয়ে সরাসরি একটা বোতাম দেওয়া
+   হলো, এক চাপে পেমেন্ট পেজ খুলে যায়। */
+.helpBtn{display:block;width:100%;box-sizing:border-box;margin:14px 0 4px;padding:14px;
+border-radius:10px;background:linear-gradient(135deg,#FF8A5B,#FFC53D);color:#0a0e1f;
+font-weight:800;font-size:15px;text-decoration:none;text-align:center;}
+.helpBtn small{display:block;font-weight:600;font-size:11px;opacity:0.75;margin-top:3px;}
+.notFee{font-size:12px;color:#8BE28B;font-weight:700;margin-top:10px;line-height:1.5;}
+.disclaimer{font-size:11px;color:#6b7b9c;margin-top:10px;line-height:1.6;text-align:left;background:#0f1526;border-radius:8px;padding:10px;}
 button{width:100%;padding:14px;border-radius:10px;border:none;background:#FFD866;color:#0a0e1f;font-weight:800;
 font-size:16px;margin-top:20px;cursor:pointer;}
 </style></head><body>
+${challengeBgLayer("chess-bg.mp4", "linear-gradient(135deg,#1a1206,#0a0e1f 45%,#0d1a2b)")}
 <h1>♟️ Challenge Nur — Live!</h1>
 <p style="text-align:center;color:#7C8AAD;font-size:14px;">Enter your name and photo to join the queue — when it's your turn, you'll play live on the board.</p>
 <form id="joinForm" enctype="multipart/form-data">
@@ -1647,14 +1656,18 @@ font-size:16px;margin-top:20px;cursor:pointer;}
   <label>Your photo (optional)</label>
   <input type="file" name="photo" accept="image/*">
   <div class="tipBox" id="tipBox" style="display:none;">
-    <b>You can support/tip if you'd like</b>
-    <img id="tipQr" src="" alt="Scan to tip">
-    <div>Scan the QR or click <a id="tipLink" href="#" target="_blank">this link</a></div>
-    <label style="text-align:left;">If you tipped, enter the amount (optional)</label>
+    <b>🙏 Want to help me out?</b>
+    <div class="notFee">খেলতে কোনো টাকা লাগে না — নাম দিয়েই লাইনে দাঁড়ান।<br>
+    You can play completely free. This is only if you'd like to help.</div>
+    <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Help Me — Send a Tip<small>ঐচ্ছিক · Optional · এক চাপে পেমেন্ট পেজ খুলবে</small></a>
+    <label style="text-align:left;">If you did send a tip, enter the amount (optional)</label>
     <input type="number" name="tipAmount" min="0" step="1" placeholder="e.g. 50">
     <div class="disclaimer">
-      ⚠️ This tip is completely voluntary — <b>it has nothing to do with playing the game, you can play without tipping.</b>
-      This is not a tournament fee, entry fee, or gambling. The amount above is only shown next to your name on screen — you type it in yourself, it is not automatically verified as a real payment.
+      ⚠️ This is <b>not</b> an entry fee, tournament fee, or any kind of bet or gambling.
+      Tipping does <b>not</b> improve your chances, your place in the queue, or your score —
+      winning and losing have nothing to do with it. It is purely voluntary support for the
+      streamer. The amount you type is only shown next to your name on screen; it is typed by
+      you and is not automatically verified as a real payment.
     </div>
   </div>
   <button type="submit">Join queue (Skip & Play)</button>
@@ -1663,7 +1676,6 @@ font-size:16px;margin-top:20px;cursor:pointer;}
 fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
   if (d.tipUrl) {
     document.getElementById("tipLink").href = d.tipUrl;
-    document.getElementById("tipQr").src = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(d.tipUrl);
     document.getElementById("tipBox").style.display="block";
   }
 });
@@ -2512,25 +2524,31 @@ function bsHasAdjacentDuplicate(tubes) {
   });
 }
 function bsGeneratePuzzleOnce() {
-  // সমাধানযোগ্যতা নিশ্চিত করতে সমাধান করা অবস্থা থেকে উল্টো দিকে র‍্যান্ডম বৈধ চাল চালিয়ে "শাফল" করা হচ্ছে।
-  // প্রতিটা চালের সময় "গন্তব্যে পরপর একই রঙ হয়ে যাচ্ছে কিনা" যাচাই করে সেই চাল বাদ দেওয়া হয়, যাতে
-  // শাফল শেষে কোথাও দুটো একই রঙের বল সরাসরি গায়ে গায়ে না লেগে থাকে
-  let tubes = [];
-  for (let i = 0; i < BS_COLOR_COUNT; i++) tubes.push(new Array(BS_TUBE_CAPACITY).fill(i));
-  tubes.push([]); tubes.push([]); // ২টা খালি টিউব
-  let done = 0, attempts = 0;
-  while (done < 180 && attempts < 4000) { // ইউজার চেয়েছেন আরও জটিল/কঠিন পাজল — বাড়ানো হলো (memory-safety cap অক্ষত আছে, তাই এখনো নিরাপদ)
-    attempts++;
-    const from = Math.floor(Math.random() * tubes.length);
-    const to = Math.floor(Math.random() * tubes.length);
-    if (from === to || !tubes[from].length || tubes[to].length >= BS_TUBE_CAPACITY) continue;
-    const movingColor = tubes[from][tubes[from].length - 1];
-    if (tubes[to].length > 0 && tubes[to][tubes[to].length - 1] === movingColor) continue; // পরপর একই রঙ হয়ে যেত, এই চাল বাদ
-    tubes[to].push(tubes[from].pop());
-    done++;
+  // ⚠️ আগে এখানে সমাধান করা অবস্থা থেকে ১৮০টা র‍্যান্ডম উল্টো চাল চালিয়ে শাফল করা হতো।
+  // সমস্যা: ওই চালগুলো খালি টিউব দুটোতেও বল ফেলে দিত, তাই শাফল শেষে প্রায়ই **একটাও খালি
+  // টিউব থাকত না** — ১৪টা টিউবেই ২-৪টা করে মেশানো বল। AI solver তবু খুঁজে বের করত, কিন্তু
+  // মানুষের পক্ষে ওই অবস্থায় বৈধ চালই প্রায় থাকে না — স্ক্রিন রেকর্ডিংয়ে ঠিক সেটাই দেখা গেছে,
+  // খেলোয়াড় টিউবে চাপ দিয়েও একটা বলও নাড়াতে পারছিলেন না।
+  //
+  // এখন আসল Ball Sort গেমের মতোই করা হচ্ছে: ৪৮টা বল ভালোভাবে মিশিয়ে প্রথম ১২টা টিউবে
+  // ৪টা করে ভাগ করে দেওয়া হয়, আর শেষ ২টা টিউব **সবসময় সম্পূর্ণ খালি** থাকে। ওই দুটো খালি
+  // টিউবই খেলার জায়গা — প্রথম চাল থেকেই খেলা যায়।
+  const bag = [];
+  for (let c = 0; c < BS_COLOR_COUNT; c++) {
+    for (let n = 0; n < BS_TUBE_CAPACITY; n++) bag.push(c);
   }
+  // Fisher–Yates — প্রতিটা সাজানো সমানভাবে সম্ভব
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = bag[i]; bag[i] = bag[j]; bag[j] = t;
+  }
+  const tubes = [];
+  for (let i = 0; i < BS_COLOR_COUNT; i++) tubes.push(bag.slice(i * BS_TUBE_CAPACITY, (i + 1) * BS_TUBE_CAPACITY));
+  const emptyCount = BS_TUBE_COUNT - BS_COLOR_COUNT;
+  for (let i = 0; i < emptyCount; i++) tubes.push([]);
   return tubes;
 }
+
 function bsGeneratePuzzle() {
   // কালেভদ্রে (কম শাফল-সুযোগ পাওয়া কোনো টিউব) তারপরও adjacent-duplicate থেকে যেতে পারে —
   // সেক্ষেত্রে পুরো পাজলটাই আবার নতুন করে তৈরি করা হচ্ছে, যতক্ষণ না নিয়ম মেনে চলে
@@ -3968,6 +3986,36 @@ setInterval(poll, 500); poll();
 // প্রতিযোগিতাটা রেকর্ডের বিরুদ্ধে (সর্বোচ্চ স্কোর / সবচেয়ে কম সময়) — তাই যত খুশি দর্শক একসাথে
 // নিজের ফোনে খেলতে পারে, আর কেউ রেকর্ড ভাঙলে overlay-তে সাথে সাথে তার নাম বসে যায়।
 // ===========================================================================
+// চ্যালেঞ্জ পেজগুলোর জন্য ব্যাকগ্রাউন্ড-ভিডিও স্তর।
+// overlay-তে যে ভিডিওটা চলছে, চ্যালেঞ্জারের ফোনেও ঠিক সেটাই চলবে — ফলে যে দর্শক
+// স্ট্রিম দেখে লিংকে ঢুকছে, তার কাছে দুটো একই জগতের অংশ মনে হবে। ভিডিও না থাকলে
+// নিচের স্থির gradient-টাই থেকে যায়, পর্দা কখনো ফাঁকা কালো দেখায় না।
+function challengeBgLayer(videoFile, gradient) {
+  return `
+<div class="bgFallback"></div>
+<video class="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/${videoFile}"></video>
+<div class="bgDim"></div>
+<style>
+html{background:#0a0e1f;}
+body{background:transparent !important;}
+.bgFallback{position:fixed;inset:0;z-index:-3;background:${gradient};}
+.bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:0;
+transition:opacity 1s ease;}
+.bgDim{position:fixed;inset:0;z-index:-1;background:rgba(6,9,20,0.55);pointer-events:none;}
+</style>
+<script>
+(function(){
+  var v = document.querySelector(".bgVideo");
+  v.addEventListener("loadeddata", function(){ v.style.opacity = "0.7"; });
+  function go(){ var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+  v.addEventListener("canplay", go);
+  document.addEventListener("visibilitychange", go);
+  setInterval(function(){ if (v.paused) go(); }, 3000);
+  go();
+})();
+</script>`;
+}
+
 const CHALLENGE_SHARED_CSS = `
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 body{margin:0;background:linear-gradient(160deg,#0a0e1f,#12081f 60%,#0a0e1f);color:#F5F7FA;
@@ -3975,7 +4023,8 @@ font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding:14px;displa
 flex-direction:column;align-items:center;}
 h1{color:#FFD866;font-size:20px;margin:2px 0 2px;text-align:center;}
 .sub{color:#7C8AAD;font-size:12px;margin-bottom:12px;text-align:center;line-height:1.5;}
-.card{background:#161b2e;border:1px solid #2a3352;border-radius:16px;padding:16px;width:100%;max-width:420px;}
+.card{background:rgba(22,27,46,0.86);backdrop-filter:blur(6px);border:1px solid #2a3352;
+border-radius:16px;padding:16px;width:100%;max-width:420px;}
 label{display:block;font-size:11px;color:#7C8AAD;font-weight:700;margin-bottom:6px;}
 input[type=text]{width:100%;padding:12px;border-radius:10px;border:1px solid #26314f;background:#0f1526;
 color:#fff;font-size:16px;}
@@ -3985,6 +4034,17 @@ button.ghost{background:#242c48;color:#cfd8ef;}
 .record{color:#8BE28B;font-size:12px;font-weight:700;margin-bottom:10px;text-align:center;}
 .record b{color:#FFD866;}
 .hide{display:none;}
+/* ---- ঐচ্ছিক "Help Me" বক্স — চেস চ্যালেঞ্জ পেজে যেমন, ঠিক তেমনই ---- */
+.tipBox{background:rgba(19,26,44,0.9);border:1px solid #26314f;border-radius:12px;padding:14px;
+margin-top:16px;font-size:13px;color:#B8C4D9;text-align:center;}
+.tipBox b{color:#F5F7FA;}
+.notFee{font-size:12px;color:#8BE28B;font-weight:700;margin-top:8px;line-height:1.5;}
+.helpBtn{display:block;width:100%;box-sizing:border-box;margin:12px 0 4px;padding:13px;
+border-radius:10px;background:linear-gradient(135deg,#FF8A5B,#FFC53D);color:#0a0e1f;
+font-weight:800;font-size:15px;text-decoration:none;text-align:center;}
+.helpBtn small{display:block;font-weight:600;font-size:11px;opacity:0.75;margin-top:3px;}
+.disclaimer{font-size:11px;color:#6b7b9c;margin-top:10px;line-height:1.6;text-align:left;
+background:#0f1526;border-radius:8px;padding:10px;}
 .msg{margin-top:12px;font-size:14px;font-weight:700;text-align:center;min-height:20px;line-height:1.5;}
 .msg.win{color:#8BE28B;} .msg.lose{color:#FF8A80;}
 `;
@@ -3993,7 +4053,7 @@ const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset
 <title>Beat the Grandmaster — Snake</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>${CHALLENGE_SHARED_CSS}
-#board{background:rgba(10,14,31,0.6);border:4px solid #6b4423;border-radius:10px;display:block;margin:0 auto;touch-action:none;}
+#board{background:rgba(10,14,31,0.45);border:4px solid #6b4423;border-radius:10px;display:block;margin:0 auto;touch-action:none;}
 #pad{display:grid;grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px;gap:8px;
 margin:14px auto 0;justify-content:center;}
 .pb{background:#242c48;border:2px solid #38446e;border-radius:12px;display:flex;align-items:center;
@@ -4003,6 +4063,7 @@ justify-content:center;font-size:22px;color:#cfd8ef;user-select:none;}
 #scoreBar{font-size:14px;font-weight:800;margin:10px 0 4px;text-align:center;}
 #scoreBar b{color:#FFD866;font-size:19px;}
 </style></head><body>
+${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#12331f)")}
 <h1>🐍 Beat the Grandmaster</h1>
 <div class="sub">সাপের গেমে গ্র্যান্ডমাস্টারের চেয়ে বেশি স্কোর করুন —<br>পারলে লাইভ স্ট্রিমে আপনার নাম উঠে যাবে।</div>
 
@@ -4010,6 +4071,17 @@ justify-content:center;font-size:22px;color:#cfd8ef;user-select:none;}
   <div class="record">🏆 এখনকার রেকর্ড: <b id="recScore">—</b> — <span id="recName">Grandmaster</span></div>
   <label>আপনার নাম (লাইভে এই নামটাই দেখানো হবে)</label>
   <input type="text" id="nameInput" maxlength="24" placeholder="আপনার নাম লিখুন">
+  <div class="tipBox" id="tipBox" style="display:none;">
+    <b>🙏 Want to help me out?</b>
+    <div class="notFee">খেলতে কোনো টাকা লাগে না — এটা সম্পূর্ণ ফ্রি।<br>
+    Playing is completely free. This is only if you'd like to help.</div>
+    <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Help Me — Send a Tip<small>ঐচ্ছিক · Optional · এক চাপে পেমেন্ট পেজ খুলবে</small></a>
+    <div class="disclaimer">
+      ⚠️ This is <b>not</b> an entry fee or any kind of bet or gambling. Tipping does <b>not</b>
+      change your score, your record, or your chance of beating the Grandmaster — winning and
+      losing have nothing to do with it. It is purely voluntary support for the streamer.
+    </div>
+  </div>
   <button id="startBtn">খেলা শুরু করুন</button>
   <div class="msg" id="startMsg"></div>
 </div>
@@ -4048,6 +4120,14 @@ function loadRecord(){
 loadRecord();
 
 function placeFood(){
+// ঐচ্ছিক টিপস লিংক — সার্ভার থেকে এই চ্যানেলের নিজের পেমেন্ট ঠিকানা আনা হয়
+fetch("/gaming/challenge/tip-info?game=snake").then(function(r){ return r.json(); }).then(function(d){
+  if (d.tipUrl) {
+    document.getElementById("tipLink").href = d.tipUrl;
+    document.getElementById("tipBox").style.display = "block";
+  }
+}).catch(function(){});
+
   var taken = {};
   for (var i = 0; i < snake.length; i++) taken[snake[i].r + ":" + snake[i].c] = 1;
   var free = [];
@@ -4152,7 +4232,7 @@ const BALLSORT_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta char
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>${CHALLENGE_SHARED_CSS}
 #tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 6px;width:100%;max-width:460px;margin:8px auto 0;}
-.tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.10),rgba(10,14,31,0.7));
+.tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.13),rgba(10,14,31,0.55));
 border:2px solid rgba(255,255,255,0.28);border-top:none;border-radius:4px 4px 20px 20px;
 display:flex;flex-direction:column-reverse;padding:4px;gap:3px;position:relative;transition:all 0.15s;}
 .tube.sel{border-color:#FFD866;box-shadow:0 0 16px rgba(255,216,102,0.6);transform:translateY(-8px);}
@@ -4163,6 +4243,7 @@ font-size:14px;font-weight:800;}
 #hud b{color:#FFD866;}
 #btnRow{width:100%;max-width:460px;}
 </style></head><body>
+${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45%,#241442)")}
 <h1>🧪 Beat the Grandmaster</h1>
 <div class="sub">এই পাজলটা গ্র্যান্ডমাস্টারের চেয়ে কম সময়ে সমাধান করুন —<br>পারলে লাইভ স্ট্রিমে আপনার নাম উঠে যাবে।</div>
 
@@ -4170,6 +4251,17 @@ font-size:14px;font-weight:800;}
   <div class="record">🏆 সবচেয়ে কম সময়: <b id="recTime">—</b> — <span id="recName">Grandmaster</span></div>
   <label>আপনার নাম (লাইভে এই নামটাই দেখানো হবে)</label>
   <input type="text" id="nameInput" maxlength="24" placeholder="আপনার নাম লিখুন">
+  <div class="tipBox" id="tipBox" style="display:none;">
+    <b>🙏 Want to help me out?</b>
+    <div class="notFee">খেলতে কোনো টাকা লাগে না — এটা সম্পূর্ণ ফ্রি।<br>
+    Playing is completely free. This is only if you'd like to help.</div>
+    <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Help Me — Send a Tip<small>ঐচ্ছিক · Optional · এক চাপে পেমেন্ট পেজ খুলবে</small></a>
+    <div class="disclaimer">
+      ⚠️ This is <b>not</b> an entry fee or any kind of bet or gambling. Tipping does <b>not</b>
+      change your score, your record, or your chance of beating the Grandmaster — winning and
+      losing have nothing to do with it. It is purely voluntary support for the streamer.
+    </div>
+  </div>
   <button id="startBtn">পাজল শুরু করুন</button>
   <div class="msg" id="startMsg"></div>
 </div>
@@ -4196,6 +4288,14 @@ function loadRecord(){
 }
 function fmt(sec){ var m = Math.floor(sec/60), s = sec % 60; return m + ":" + (s < 10 ? "0" : "") + s; }
 loadRecord();
+// ঐচ্ছিক টিপস লিংক — সার্ভার থেকে এই চ্যানেলের নিজের পেমেন্ট ঠিকানা আনা হয়
+fetch("/gaming/challenge/tip-info?game=ballsort").then(function(r){ return r.json(); }).then(function(d){
+  if (d.tipUrl) {
+    document.getElementById("tipLink").href = d.tipUrl;
+    document.getElementById("tipBox").style.display = "block";
+  }
+}).catch(function(){});
+
 
 function ballGradient(hex){
   return "radial-gradient(circle at 32% 28%, #ffffff 0%, " + hex + " 42%, " + hex + " 70%, rgba(0,0,0,0.45) 100%)";
@@ -5576,7 +5676,14 @@ module.exports = function mountGaming(app) {
   app.get("/gaming/challenge/join", (req, res) => res.type("html").send(CHALLENGE_JOIN_HTML));
   app.get("/gaming/challenge/status", (req, res) => res.type("html").send(CHALLENGE_STATUS_HTML));
   app.get("/gaming/challenge/play", (req, res) => res.type("html").send(CHALLENGE_PLAY_HTML));
-  app.get("/gaming/challenge/tip-info", (req, res) => res.json({ tipUrl: TIP_URL }));
+  // প্রতিটা গেমের টিপস লিংক এখন সার্ভারের নিজের পেমেন্ট রুটেই যায় (/pay/snake, /pay/ballsort,
+  // /pay/chessbattle) — অর্থাৎ কোনো environment variable সেট না করলেও বোতামটা কাজ করবে।
+  // CHALLENGE_TIP_URL সেট করা থাকলে সেটাই অগ্রাধিকার পাবে (পুরনো সেটআপ যেন না ভাঙে)।
+  const TIP_CHANNEL = { snake: "snake", ballsort: "ballsort", chess: "chessbattle", chessbattle: "chessbattle" };
+  app.get("/gaming/challenge/tip-info", (req, res) => {
+    const channel = TIP_CHANNEL[req.query.game] || "chessbattle";
+    res.json({ tipUrl: TIP_URL || "/pay/" + channel });
+  });
 
   // চেস overlay-তে নতুন টিপস এলে তার নাম নিয়ে real voice announcement বাজানোর জন্য —
   // আগে থেকে থাকা edge-tts টেক্সট-টু-স্পিচ সিস্টেমটাই পুনরায় ব্যবহার হচ্ছে (chess commentary-তে যেটা ব্যবহৃত)
