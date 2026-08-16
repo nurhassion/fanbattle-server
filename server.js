@@ -3096,7 +3096,13 @@ try {
   const mountGaming = require('./gaming.js');
   mountGaming(app);
 } catch (e) {
-  console.error('⚠️  gaming.js mount করা যায়নি (gaming.js ফাইলটা server.js এর পাশে আছে কিনা, npm install হয়েছে কিনা চেক করুন):', e.message);
+  // ⚠️ আগে এখানে শুধু e.message ছাপা হতো — কোন লাইনে সমস্যা তা জানা যেত না, আর /gaming/*
+  // সব রুট নীরবে উধাও হয়ে ব্রাউজারে শুধু "Cannot GET /gaming/..." দেখাত। এখন পুরো stack
+  // ছাপা হয়, তাই Render-এর Logs খুললেই আসল কারণটা প্রথম দেখাতেই পাওয়া যায়।
+  console.error('⚠️  gaming.js mount করা যায়নি — নিচের কারণেই /gaming/* সব রুট কাজ করবে না:');
+  console.error('   ', e.message);
+  console.error(e.stack);
+  console.error('   দেখুন: gaming.js ফাইলটা server.js এর পাশে আছে কি না, আর npm install হয়েছে কি না।');
 }
 
 app.listen(PORT, async () => {
