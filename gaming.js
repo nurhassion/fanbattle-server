@@ -286,6 +286,8 @@ function gqPublicQueue(game) {
 // overlay সেটাই পড়ে নিজের বোর্ডে এঁকে দেয় — তাই দর্শক দেখে *তারই* খেলাটা লাইভে চলছে।
 // (ফোনের পর্দা স্ট্রিম করা হচ্ছে না — শুধু খেলার অবস্থাটুকু, তাই খুবই হালকা।)
 const gqMirror = { snake: null, ballsort: null };
+// overlay-র নিজের (AI) খেলার অবস্থা — লাইনে দাঁড়ানো দর্শকদের দেখানোর জন্য
+const gqWatch = { snake: null, ballsort: null };
 
 function gqPublicActive(game) {
   const a = gameQueues[game].active;
@@ -4007,6 +4009,15 @@ function pollMirror(){
   }).catch(function(){});
 }
 setInterval(pollMirror, 200);
+
+// AI যখন খেলছে তখন তার অবস্থাও প্রকাশ করা হয় — লাইনে দাঁড়ানো দর্শক নিজের ফোনেই
+// এই খেলাটা দেখতে পায়, তাই অপেক্ষার সময় তার পর্দা কখনো ফাঁকা থাকে না
+setInterval(function(){
+  if (mirrorMode || !curBody) return;
+  fetch("/gaming/watch/snake", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ state: { body: curBody, food: curFood, score: score, dir: lastDir } })
+  }).catch(function(){});
+}, 220);
 ${celebrationJS("snake")}
 </script></body></html>`;
 
@@ -4398,7 +4409,10 @@ function playPourSound(){
   }catch(e){}
 }
 
+// সবশেষে যে বোর্ডটা আঁকা হয়েছে সেটা মনে রাখা — অপেক্ষমাণ দর্শকদের কাছে এটাই পাঠানো হয়
+var lastTubes = null, lastColors = null;
 function renderStatic(tubes, colors){
+  lastTubes = tubes; lastColors = colors;
   const wrap = document.getElementById("tubesWrap");
   wrap.innerHTML = "";
   tubes.forEach((tube) => {
@@ -4575,6 +4589,14 @@ function pollBsMirror(){
   }).catch(function(){});
 }
 setInterval(pollBsMirror, 250);
+
+// AI-এর পাজলের অবস্থাও প্রকাশ করা — অপেক্ষমাণ দর্শক এটাই দেখবে
+setInterval(function(){
+  if (bsMirror || !lastTubes) return;
+  fetch("/gaming/watch/ballsort", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ state: { tubes: lastTubes, colors: lastColors, capacity: 4, sel: -1 } })
+  }).catch(function(){});
+}, 500);
 ${celebrationJS("ballsort")}
 </script></body></html>`;
 
@@ -4633,7 +4655,10 @@ font-weight:800;cursor:pointer;font-size:15px;width:100%;margin-top:12px;}
 button.ghost{background:#242c48;color:#cfd8ef;}
 .record{color:#8BE28B;font-size:12px;font-weight:700;margin-bottom:10px;text-align:center;}
 .record b{color:#FFD866;}
-.hide{display:none;}
+/* ⚠️ !important জরুরি — নিচে .screen{display:flex} নিয়মটা পরে আসে, আর দুটোর specificity
+   সমান। তাই এটা ছাড়া .screen.hide কখনোই লুকাত না, আর সব পর্দা একসাথে একটার উপর আরেকটা
+   জমে যেত (স্ক্রিনশটে ঠিক সেটাই দেখা গেছে)। */
+.hide{display:none !important;}
 /* ---- ঐচ্ছিক "Help Me" বক্স — চেস চ্যালেঞ্জ পেজে যেমন, ঠিক তেমনই ---- */
 .tipBox{background:rgba(19,26,44,0.9);border:1px solid #26314f;border-radius:12px;padding:14px;
 margin-top:16px;font-size:13px;color:#B8C4D9;text-align:center;}
@@ -4650,6 +4675,66 @@ background:#0f1526;border-radius:8px;padding:10px;}
 `;
 
 // লাইনে দাঁড়ানোর অংশটা দুটো চ্যালেঞ্জ পেজেই এক — তাই একবার লিখে দুই জায়গায় ব্যবহার
+// ===========================================================================
+// চ্যালেঞ্জ পেজের সাধারণ খোলস (তিনটে গেমেই এক)
+// ---------------------------------------------------------------------------
+// দর্শকের যাত্রাটা একদম সরল রাখা হয়েছে:
+//   ১) নাম + ছবি → "Join the queue"
+//   ২) সাথে সাথে একটা ছোট পপআপ — "সাহায্য করতে চান? টিপস দিন" (ঐচ্ছিক, এক চাপে পেমেন্ট)
+//   ৩) তারপর একটাই পর্দা: উপরে ছোট্ট স্ট্যাটাস, মাঝে গেম বোর্ড, নিচে ইউটিউব লাইভ
+//      — অপেক্ষার সময় বোর্ডে এখন যে খেলছে (AI বা অন্য কেউ) তার খেলাই দেখা যায়
+//   ৪) পালা এলে বড় করে "YOUR TURN!", তারপর ৫ সেকেন্ডের ছোট্ট নিয়ম-দেখানো, তারপর খেলা
+// পুরোটাই ফোনের এক পর্দায় — কোথাও স্ক্রল করতে হয় না।
+// ===========================================================================
+const PLAY_SHELL_CSS = `
+html,body{height:100%;overflow:hidden;}
+body{padding:0;display:flex;flex-direction:column;}
+.hdr{padding:6px 12px 4px;text-align:center;flex-shrink:0;}
+.hdr h1{font-size:14px;margin:0;}
+/* ---- ধাপ ১: নাম ও ছবি ---- */
+#joinCard{position:absolute;inset:0;z-index:30;overflow-y:auto;padding:16px;
+display:flex;flex-direction:column;justify-content:center;}
+/* ---- ধাপ ২: টিপসের পপআপ ---- */
+#tipModal{position:absolute;inset:0;z-index:40;background:rgba(4,7,18,0.85);
+display:flex;align-items:center;justify-content:center;padding:20px;}
+#tipModal .box{background:#161b2e;border:1px solid #2a3352;border-radius:18px;padding:22px 20px;
+text-align:center;max-width:340px;width:100%;}
+#tipModal h3{margin:0 0 8px;font-size:18px;color:#FFD866;}
+#tipModal p{font-size:12.5px;color:#B8C4D9;line-height:1.6;margin:0 0 4px;}
+#tipModal .small{font-size:11px;color:#7C8AAD;margin-top:10px;line-height:1.5;}
+/* ---- ধাপ ৩: মূল পর্দা ---- */
+#stage{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 8px 8px;gap:6px;}
+.statusStrip{background:rgba(22,27,46,0.92);border:1px solid #2a3352;border-radius:10px;
+padding:7px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.statusStrip .pos{font-size:13px;font-weight:800;color:#FFD866;}
+.statusStrip .eta{font-size:11px;color:#8BE28B;font-weight:700;}
+.statusStrip.myturn{border-color:#8BE28B;background:rgba(20,60,40,0.92);}
+.statusStrip.myturn .pos{color:#8BE28B;}
+.boardArea{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.watchTag{font-size:10px;color:#7C8AAD;text-align:center;flex-shrink:0;min-height:13px;}
+.liveArea{height:30vh;flex-shrink:0;display:flex;flex-direction:column;}
+.liveArea .cap{font-size:9.5px;color:#FF6B5E;font-weight:800;letter-spacing:0.6px;text-align:center;
+margin-bottom:3px;display:flex;align-items:center;justify-content:center;gap:5px;}
+.liveArea .cap i{width:6px;height:6px;border-radius:50%;background:#FF3B30;display:block;
+animation:liveDot 1.4s ease-in-out infinite;}
+@keyframes liveDot{0%,100%{opacity:1;}50%{opacity:0.25;}}
+.liveArea iframe{flex:1;width:100%;border:0;border-radius:10px;background:#000;}
+/* ---- পালা এলে ---- */
+#turnBanner{position:absolute;inset:0;z-index:45;background:rgba(4,7,18,0.9);display:flex;
+flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;}
+#turnBanner .big{font-size:38px;font-weight:900;color:#8BE28B;line-height:1.1;
+text-shadow:0 4px 20px rgba(139,226,139,0.5);}
+#turnBanner .sub{font-size:14px;color:#F5F7FA;margin-top:10px;}
+#tutorial{position:absolute;inset:0;z-index:44;background:rgba(4,7,18,0.92);display:flex;
+flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;}
+#tutorial h3{color:#FFD866;font-size:19px;margin:0 0 14px;}
+#tutorial .step{font-size:14px;color:#E6ECFF;line-height:1.9;}
+#tutorial .step b{color:#8BE28B;}
+#tutorial .count{margin-top:18px;font-size:34px;font-weight:900;color:#FFD866;}
+#doneCard{position:absolute;inset:0;z-index:35;overflow-y:auto;padding:20px;
+display:flex;flex-direction:column;justify-content:center;}
+`;
+
 const QUEUE_CARDS_CSS = `
 .qRow{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #232b45;}
 .qRow:first-child{border-top:none;}
@@ -4704,103 +4789,141 @@ const QUEUE_CARDS_HTML = `
 `;
 
 // gameKey: "snake" / "ballsort" | startFn: পালা এলে যে ফাংশনটা খেলা চালু করবে
-function queueClientJS(gameKey, startFn) {
+// gameKey: "snake"/"ballsort" | startFn: পালা এলে খেলা চালু করার ফাংশন
+// drawWatch: অপেক্ষার সময় "এখন কে খেলছে" তার অবস্থা বোর্ডে আঁকার ফাংশন
+// tutorialHtml: খেলা শুরুর আগে ৫ সেকেন্ডের নিয়ম দেখানোর লেখা
+function queueClientJS(gameKey, startFn, drawWatch, tutorialHtml) {
   return `
-/* ---------- লাইনে দাঁড়ানো → পালা → একবারই খেলা ---------- */
 ${PUSH_SETUP_JS}
-var myQueueId = null, myTurnStarted = false, pollTimer = null, turnTimer = null;
+var myQueueId = null, myTurnStarted = false, pollTimer = null, watchTimer = null, lastWatchSeq = null;
 
-function showView(which){
-  ["joinCard", "waitView", "playView", "doneCard"].forEach(function(v){
-    document.getElementById(v).classList.toggle("hide", v !== which);
-  });
+function show(id, on){ document.getElementById(id).classList.toggle("hide", !on); }
+
+/* ---------- ধাপ ২: টিপসের পপআপ ----------
+   লাইনে দাঁড়ানোর পর একবারই দেখা যায়। "No thanks" চাপলেই মূল পর্দায় চলে যায় —
+   টাকা না দিলে খেলায় কোনো পার্থক্যই হয় না, সেটা পরিষ্কার লেখাও আছে। */
+function openTipModal(){
+  show("tipModal", true);
+  fetch("/gaming/challenge/tip-info?game=${gameKey}").then(function(r){ return r.json(); })
+    .then(function(d){ if (d.tipUrl) document.getElementById("tipGo").href = d.tipUrl; })
+    .catch(function(){});
 }
-function avatarChip(p, n, extra){
-  var av = p ? '<img src="' + p + '">' : '<div class="f">' + ((n && n[0]) || "?") + '</div>';
-  return '<div class="qChip">' + av + '<span>' + n + '</span>' + (extra || "") + '</div>';
+function closeTipModal(){ show("tipModal", false); enterStage(); }
+
+/* ---------- ধাপ ৩: মূল পর্দা ---------- */
+function enterStage(){
+  show("stage", true);
+  setLiveOn();
+  pollQueue();
+  if (!pollTimer) pollTimer = setInterval(pollQueue, 3000);
+  if (!watchTimer) watchTimer = setInterval(pollWatch, 220);
 }
-function renderStrip(d){
-  var html = "";
-  if (d.nowPlaying){
-    html += avatarChip(d.nowPlaying.photoUrl, "▶ " + d.nowPlaying.name,
-      d.nowPlaying.tipAmount ? '<b>₹' + d.nowPlaying.tipAmount + '</b>' : "");
-  }
-  (d.queue || []).slice(0, 6).forEach(function(q){
-    html += avatarChip(q.photoUrl, "#" + q.position + " " + q.name,
-      q.tipAmount ? '<b>₹' + q.tipAmount + '</b>' : "");
-  });
-  document.getElementById("qMini").innerHTML = html || '<span style="font-size:11px;color:#5a6a8a;">Queue is empty</span>';
-}
-function refreshPublic(){
-  fetch("/gaming/gq/${gameKey}/public").then(function(r){ return r.json(); })
-    .then(renderStrip).catch(function(){});
+// অপেক্ষার সময় বোর্ডে এখন যে খেলছে তার খেলাটাই দেখা যায় — AI হোক বা অন্য কেউ
+function pollWatch(){
+  if (myTurnStarted) return; // নিজের পালা চলছে — তখন নিজের খেলাই আঁকা হয়
+  fetch("/gaming/watch/${gameKey}").then(function(r){ return r.json(); }).then(function(d){
+    var tag = document.getElementById("watchTag");
+    if (!d.active || !d.state){ tag.textContent = ""; return; }
+    tag.textContent = d.source === "player" ? ("▶ " + d.name + " is playing now") : "▶ Grandmaster is playing";
+    if (d.seq !== lastWatchSeq){ lastWatchSeq = d.seq; ${drawWatch}(d.state); }
+  }).catch(function(){});
 }
 function startTurnCountdown(){
-  if (turnTimer) clearInterval(turnTimer);
-  turnTimer = setInterval(function(){
+  if (window.__turnTimer) clearInterval(window.__turnTimer);
+  window.__turnTimer = setInterval(function(){
     fetch("/gaming/gq/${gameKey}/state?id=" + myQueueId).then(function(r){ return r.json(); })
       .then(function(st){
-        var el = document.getElementById("turnClock");
-        if (!el || st.secondsLeft == null) return;
+        if (st.secondsLeft == null) return;
         var m = Math.floor(st.secondsLeft / 60), sec = st.secondsLeft % 60;
-        el.textContent = m + ":" + (sec < 10 ? "0" : "") + sec;
+        document.getElementById("qPos").textContent = "YOUR TURN";
+        document.getElementById("qEta").textContent = m + ":" + (sec < 10 ? "0" : "") + sec + " left";
         if (st.secondsLeft <= 0) endMyTurn("Time is up — next player's turn.");
       }).catch(function(){});
   }, 1000);
 }
+/* ---------- পালা এলে: বড় ঘোষণা → ৫ সেকেন্ডের নিয়ম → খেলা ---------- */
+function beginTurnSequence(){
+  myTurnStarted = true;
+  fetch("/gaming/gq/${gameKey}/ack", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: myQueueId }) }).catch(function(){});
+  show("turnBanner", true);
+  document.getElementById("statusStrip").classList.add("myturn");
+  document.getElementById("qPos").textContent = "YOUR TURN";
+  document.getElementById("qEta").textContent = "get ready…";
+  setTimeout(function(){
+    show("turnBanner", false);
+    // নতুন অ্যাপ ইনস্টল করলে যেমন প্রথমে নিয়মটা দেখিয়ে দেয়, তেমনই — ৫ সেকেন্ড।
+    // নোটিফিকেশনে চাপ দিয়ে সবে পেজে এসেছে, তাই কী করতে হবে জানার সময় দরকার।
+    show("tutorial", true);
+    var n = 5;
+    document.getElementById("tutCount").textContent = n;
+    var iv = setInterval(function(){
+      n--;
+      document.getElementById("tutCount").textContent = n > 0 ? n : "GO!";
+      if (n <= 0){
+        clearInterval(iv);
+        setTimeout(function(){
+          show("tutorial", false);
+          startTurnCountdown();
+          ${startFn}();
+        }, 550);
+      }
+    }, 1000);
+  }, 2000);
+}
 function endMyTurn(message){
-  if (turnTimer) { clearInterval(turnTimer); turnTimer = null; }
+  if (window.__turnTimer) { clearInterval(window.__turnTimer); window.__turnTimer = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
   fetch("/gaming/gq/${gameKey}/finish", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: myQueueId }) }).catch(function(){});
-  setLive("none");
-  showView("doneCard");
+  show("stage", false); show("doneCard", true);
   if (message) document.getElementById("doneMsg").textContent = message;
 }
 function pollQueue(){
   fetch("/gaming/gq/${gameKey}/state?id=" + myQueueId).then(function(r){ return r.json(); })
     .then(function(st){
-      if (st.isYourTurn && !myTurnStarted){
-        myTurnStarted = true;
-        // নোটিফিকেশনের রিং থামাও — খেলোয়াড় পেজে এসে গেছেন
-        fetch("/gaming/gq/${gameKey}/ack", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: myQueueId }) }).catch(function(){});
-        // পালা এলেই পর্দা উল্টে যায়: খেলা উপরে, লাইভ ছোট হয়ে নিচে
-        showView("playView");
-        startTurnCountdown();
-        ${startFn}();
-        return;
-      }
+      if (st.isYourTurn && !myTurnStarted){ beginTurnSequence(); return; }
       if (!st.isYourTurn && !myTurnStarted){
         if (st.position == null){ endMyTurn("Your turn has expired — join again to play."); return; }
-        document.getElementById("qPosition").textContent = "#" + st.position;
-        document.getElementById("qEta").innerHTML = "about <b>" + st.etaMinutes + " min</b> left<br>" + st.total + " in queue";
+        document.getElementById("qPos").textContent = "#" + st.position + " in queue";
+        document.getElementById("qEta").textContent = "about " + st.etaMinutes + " min to go";
       }
     }).catch(function(){});
-  refreshPublic();
 }
 function joinQueue(){
   var name = document.getElementById("nameInput").value.trim();
   if (name.length < 2){ document.getElementById("startMsg").textContent = "Please type your name (2 letters or more)."; return; }
   var btn = document.getElementById("startBtn");
   btn.disabled = true; btn.textContent = "Joining…";
-  // ফ্রি সার্ভার ঘুমিয়ে থাকলে প্রথম রিকোয়েস্টে সময় লাগে — তাই স্পষ্ট বার্তা
   var slow = setTimeout(function(){ btn.textContent = "Waking up the server…"; }, 6000);
-  var fd = new FormData();
-  fd.append("name", name);
+  // ⚠️ ছবি না দিলে FormData পাঠানো হয় না — ইচ্ছে করেই।
+  // FormData মানে multipart, আর multipart পড়তে সার্ভারে multer লাগে। multer ইনস্টল না
+  // থাকলে সার্ভার নামটা পড়তেই পারত না, ফলে সবার নাম নীরবে "Player" হয়ে যেত।
+  // ছবি ছাড়া সাধারণ form-encoded পাঠালে নাম সবসময় ঠিকঠাক পৌঁছায়।
   var photo = document.getElementById("photoInput");
-  if (photo && photo.files[0]) fd.append("photo", photo.files[0]);
-  fetch("/gaming/gq/${gameKey}/join", { method: "POST", body: fd })
+  var hasPhoto = !!(photo && photo.files && photo.files[0]);
+  var req;
+  if (hasPhoto) {
+    var fd = new FormData();
+    fd.append("name", name);
+    fd.append("photo", photo.files[0]);
+    req = { method: "POST", body: fd };
+  } else {
+    req = { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "name=" + encodeURIComponent(name) };
+  }
+  fetch("/gaming/gq/${gameKey}/join", req)
     .then(function(r){ return r.json(); })
     .then(function(d){
       clearTimeout(slow);
       if (!d.id) throw new Error("no id");
       myQueueId = d.id;
-      showView("waitView");
-      setLive("top"); // অপেক্ষার সময় লাইভটাই বড় করে উপরে
-      setupPush(myQueueId, document.getElementById("pushStatus")).catch(function(){});
-      pollQueue();
-      pollTimer = setInterval(pollQueue, 3000);
+      try { sessionStorage.setItem("gq_${gameKey}", d.id); } catch(e){}
+      playerName = name;
+      show("joinCard", false);
+      setupPush(myQueueId, null).catch(function(){});
+      openTipModal();
     })
     .catch(function(){
       clearTimeout(slow);
@@ -4808,132 +4931,121 @@ function joinQueue(){
     });
 }
 document.getElementById("startBtn").addEventListener("click", joinQueue);
+document.getElementById("tipSkip").addEventListener("click", closeTipModal);
+document.getElementById("tipGo").addEventListener("click", function(){
+  // পেমেন্ট পেজ থেকে ফিরে এলে যেন আবার নাম-ছবি দিতে না হয় — তাই id মনে রাখা আছে
+  setTimeout(closeTipModal, 400);
+});
+document.getElementById("againBtn2").addEventListener("click", function(){
+  try { sessionStorage.removeItem("gq_${gameKey}"); } catch(e){}
+  location.reload();
+});
 document.getElementById("leaveBtn").addEventListener("click", function(){
   fetch("/gaming/gq/${gameKey}/leave", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: myQueueId }) }).finally(function(){ location.reload(); });
+    body: JSON.stringify({ id: myQueueId }) }).finally(function(){
+      try { sessionStorage.removeItem("gq_${gameKey}"); } catch(e){}
+      location.reload();
+    });
 });
-document.getElementById("againBtn2").addEventListener("click", function(){ location.reload(); });
-refreshPublic();
+
+/* ---------- পেমেন্ট সেরে ফিরে এলে ----------
+   টাকা দিতে গিয়ে পেজ ছেড়ে যেতে হয়। ফিরে এলে যেন আবার শুরু থেকে নাম-ছবি দিতে না হয়,
+   তাই id মনে রাখা হয় আর সোজা মূল পর্দায় ফেরত নিয়ে যাওয়া হয়। */
+(function restoreAfterPayment(){
+  var saved = null;
+  try { saved = sessionStorage.getItem("gq_${gameKey}"); } catch(e){}
+  if (!saved) return;
+  fetch("/gaming/gq/${gameKey}/state?id=" + saved).then(function(r){ return r.json(); })
+    .then(function(st){
+      if (st.position == null && !st.isYourTurn) { try { sessionStorage.removeItem("gq_${gameKey}"); } catch(e){} return; }
+      myQueueId = saved;
+      show("joinCard", false); show("tipModal", false);
+      enterStage();
+    }).catch(function(){});
+})();
 `;
 }
 
 const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Play Snake Live</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<style>${CHALLENGE_SHARED_CSS}${QUEUE_CARDS_CSS}${LIVE_EMBED_CSS}
-/* ---- সবকিছু এক পর্দাতেই ----
-   আগে পেজটা লম্বা ছিল, খেলার সময় লাইভ দেখতে স্ক্রল করতে হতো — আর স্ক্রল করতে করতেই
-   গেম ওভার হয়ে যেত। এখন body ঠিক পর্দার সমান উঁচু, ভেতরে flex দিয়ে ভাগ করা, স্ক্রল নেই। */
-html,body{height:100%;overflow:hidden;}
-body{padding:0;display:flex;flex-direction:column;}
-.topBar{padding:8px 12px 6px;text-align:center;flex-shrink:0;}
-.topBar h1{font-size:15px;margin:0;}
-.topBar .sub{font-size:10.5px;margin:2px 0 0;}
-.screen{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 10px 8px;gap:8px;}
-.scrollable{overflow-y:auto;}
-.grow{flex:1;min-height:0;}
-.liveBox{min-height:0;display:flex;flex-direction:column;}
-.liveBox iframe{width:100%;height:100%;border:0;border-radius:10px;background:#000;}
-.liveTitle{font-size:9.5px;color:#FF6B5E;font-weight:800;letter-spacing:0.8px;text-align:center;
-margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0;}
-.liveTitle i{width:6px;height:6px;border-radius:50%;background:#FF3B30;display:block;
-animation:liveDot 1.4s ease-in-out infinite;}
-@keyframes liveDot{0%,100%{opacity:1;}50%{opacity:0.25;}}
-.liveSmall{height:26vh;flex-shrink:0;}
-.qStrip{background:rgba(22,27,46,0.9);border:1px solid #2a3352;border-radius:12px;padding:10px 12px;flex-shrink:0;}
-.qHead{display:flex;align-items:center;justify-content:space-between;}
-.qHead .big{font-size:30px;font-weight:900;color:#FFD866;line-height:1;}
-.qHead .lbl{font-size:9.5px;color:#7C8AAD;font-weight:700;letter-spacing:0.8px;}
-.qHead .eta{font-size:11px;color:#8BE28B;font-weight:700;text-align:right;}
-.qMini{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;}
-.qChip{display:flex;align-items:center;gap:5px;background:#0f1526;border:1px solid #232b45;
-border-radius:20px;padding:3px 9px 3px 3px;flex-shrink:0;font-size:11px;}
-.qChip img,.qChip .f{width:20px;height:20px;border-radius:50%;object-fit:cover;}
-.qChip .f{background:#2a3352;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;}
-.qChip b{color:#FFD866;}
-#board{background:rgba(10,14,31,0.45);border:3px solid #6b4423;border-radius:8px;display:block;
-margin:0 auto;touch-action:none;}
-#pad{display:grid;grid-template-columns:46px 46px 46px;grid-template-rows:46px 46px 46px;gap:6px;
-margin:6px auto 0;justify-content:center;flex-shrink:0;}
+<style>${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
+#board{background:rgba(10,14,31,0.45);border:3px solid #6b4423;border-radius:8px;display:block;touch-action:none;}
+#pad{display:grid;grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px;gap:5px;
+margin:5px auto 0;justify-content:center;flex-shrink:0;}
 .pb{background:#242c48;border:2px solid #38446e;border-radius:10px;display:flex;align-items:center;
-justify-content:center;font-size:18px;color:#cfd8ef;user-select:none;}
+justify-content:center;font-size:17px;color:#cfd8ef;user-select:none;}
 .pb:active{background:#FFD866;color:#0a0e1f;}
 #pu{grid-column:2;grid-row:1;} #pl{grid-column:1;grid-row:2;} #pr{grid-column:3;grid-row:2;} #pd{grid-column:2;grid-row:3;}
-.playTop{display:flex;align-items:center;justify-content:space-between;font-size:12px;
-font-weight:800;flex-shrink:0;padding:0 2px;}
-.playTop b{color:#FFD866;font-size:17px;}
-.playTop .clk{color:#8BE28B;}
-#resultMsg{font-size:12px;text-align:center;flex-shrink:0;min-height:16px;}
 </style></head><body>
 ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#12331f)")}
 
-<div class="topBar">
-  <h1>🐍 Beat the Grandmaster</h1>
-  <div class="sub">Score higher than the record to get your name on the live stream</div>
-</div>
+<div class="hdr"><h1>🐍 Beat the Grandmaster</h1></div>
 
-<!-- ============ ১) নাম-ছবি দিয়ে লাইনে দাঁড়ানো ============ -->
-<div class="screen scrollable" id="joinCard">
+<!-- ধাপ ১ — শুধু নাম আর ছবি -->
+<div id="joinCard">
   <div class="card">
     <div class="record">🏆 Record to beat: <b id="recScore">—</b> — <span id="recName">Grandmaster</span></div>
     <label>Your name (shown on the live stream)</label>
     <input type="text" id="nameInput" maxlength="24" placeholder="Type your name">
     <label>Your photo (optional — shown on the live stream)</label>
     <input type="file" id="photoInput" accept="image/*" style="color:#7C8AAD;font-size:13px;">
-    <div class="tipBox" id="tipBox" style="display:none;">
-      <b>🙏 Want to help me out?</b>
-      <div class="notFee">Playing is free. This is only if you want to help.</div>
-      <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Send a Tip<small>Optional · Opens the payment page</small></a>
-      <div class="disclaimer">
-        This is <b>not</b> an entry fee, and not a bet. Tipping does <b>not</b> change your score or
-        your place in the queue. Whatever you actually pay is shown next to your name automatically.
-      </div>
-    </div>
     <button id="startBtn">Join the queue</button>
     <div class="msg" id="startMsg"></div>
   </div>
 </div>
 
-<!-- ============ ২) অপেক্ষা: লাইভ উপরে (বড়), লাইনের তথ্য নিচে ============ -->
-<div class="screen hide" id="waitView">
-  <div class="liveBox grow">
-    <div class="liveTitle"><i></i>LIVE NOW — watch while you wait</div>
-    <iframe id="liveTop" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
-  </div>
-  <div class="qStrip">
-    <div class="qHead">
-      <div><div class="lbl">YOUR POSITION</div><div class="big" id="qPosition">—</div></div>
-      <div class="eta" id="qEta">Joining…</div>
-    </div>
-    <div class="qMini" id="qMini"></div>
-    <div id="pushStatus" style="font-size:10px;color:#7C8AAD;margin-top:6px;"></div>
-    <button class="ghost" id="leaveBtn" style="margin-top:8px;padding:9px;font-size:13px;">Leave the queue</button>
+<!-- ধাপ ২ — ঐচ্ছিক টিপস -->
+<div id="tipModal" class="hide">
+  <div class="box">
+    <h3>🙏 Want to help me out?</h3>
+    <p>You are in the queue. Playing is <b>free</b>.</p>
+    <p>If you'd like, you can send a small tip to support the stream.</p>
+    <a class="helpBtn" id="tipGo" href="#">💛 Send a Tip</a>
+    <button class="ghost" id="tipSkip">No thanks — take me to the game</button>
+    <div class="small">A tip does not change your score, your turn, or your place in the queue.
+    After paying you come straight back here.</div>
   </div>
 </div>
 
-<!-- ============ ৩) আপনার পালা: খেলা উপরে, লাইভ ছোট করে নিচে ============ -->
-<div class="screen hide" id="playView">
-  <div class="playTop">
-    <span>Score: <b id="scoreVal">0</b></span>
-    <span>Record: <span id="recScore2">—</span></span>
-    <span class="clk">⏱ <span id="turnClock">5:00</span></span>
+<!-- ধাপ ৩ — এক পর্দা: স্ট্যাটাস | বোর্ড | লাইভ -->
+<div id="stage" class="hide">
+  <div class="statusStrip" id="statusStrip">
+    <span class="pos" id="qPos">Joining…</span>
+    <span class="eta" id="qEta"></span>
   </div>
-  <div class="grow" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+  <div class="boardArea">
     <canvas id="board"></canvas>
     <div id="pad">
       <div class="pb" id="pu">▲</div><div class="pb" id="pl">◀</div>
       <div class="pb" id="pr">▶</div><div class="pb" id="pd">▼</div>
     </div>
   </div>
-  <div id="resultMsg"></div>
-  <div class="liveBox liveSmall">
-    <div class="liveTitle"><i></i>YOU ARE LIVE — everyone can see this game</div>
-    <iframe id="liveBottom" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+  <div class="watchTag" id="watchTag"></div>
+  <div class="liveArea">
+    <div class="cap"><i></i>LIVE ON YOUTUBE</div>
+    <iframe id="liveFrame" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
   </div>
+  <button class="ghost" id="leaveBtn" style="padding:7px;font-size:12px;flex-shrink:0;">Leave the queue</button>
 </div>
 
-<!-- ============ ৪) শেষ ============ -->
-<div class="screen scrollable hide" id="doneCard">
+<div id="turnBanner" class="hide">
+  <div class="big">YOUR TURN!</div>
+  <div class="sub">Get ready — everyone is watching you now</div>
+</div>
+
+<div id="tutorial" class="hide">
+  <h3>How to play</h3>
+  <div class="step">
+    <b>Swipe</b> on the board to turn<br>
+    …or tap the <b>▲ ◀ ▶ ▼</b> buttons<br>
+    Eat the red dot to grow<br>
+    Don't hit the wall or yourself
+  </div>
+  <div class="count" id="tutCount">5</div>
+</div>
+
+<div id="doneCard" class="hide">
   <div class="card" style="text-align:center;">
     <div style="font-size:34px;">🎉</div>
     <div class="msg" id="doneMsg" style="margin-top:6px;"></div>
@@ -4951,28 +5063,19 @@ var cell = 20, snake = null, dir = null, nextDir = null, food = null, score = 0;
 var timer = null, playerName = "", alive = false;
 var RAINBOW = ["#FF2D55","#FF9500","#FFCC00","#8BE28B","#34C759","#00C7BE","#30B0C7","#32ADE6","#5856D6","#AF52DE"];
 
-// লাইভ ফ্রেম দুটো একই স্ট্রিম দেখায় — কিন্তু একসাথে দুটো চালালে ব্যান্ডউইথ নষ্ট হয়, তাই
-// যেটা দেখা যাচ্ছে শুধু সেটাতেই src বসানো হয়, অন্যটা খালি করে দেওয়া হয়
-var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1";
-function setLive(which){
-  var top = document.getElementById("liveTop"), bot = document.getElementById("liveBottom");
-  if (which === "top"){ if (top.src !== LIVE_SRC) top.src = LIVE_SRC; bot.removeAttribute("src"); }
-  else if (which === "bottom"){ if (bot.src !== LIVE_SRC) bot.src = LIVE_SRC; top.removeAttribute("src"); }
-  else { top.removeAttribute("src"); bot.removeAttribute("src"); }
+// ⚠️ আওয়াজ চালু (mute=0) — লাইনে দাঁড়িয়েও যেন স্ট্রিমের কমেন্ট্রি শোনা যায়।
+// কিছু ব্রাউজার আওয়াজসহ autoplay আটকায়, তাই দর্শককে একবার চাপ দিতে হতে পারে —
+// কিন্তু সে তো "Join" বাটনে চাপ দিয়েই এসেছে, তাই সাধারণত এমনিতেই বাজবে।
+var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=0&playsinline=1";
+function setLiveOn(){
+  var f = document.getElementById("liveFrame");
+  if (f.getAttribute("src") !== LIVE_SRC) f.src = LIVE_SRC;
 }
-
-fetch("/gaming/challenge/tip-info?game=snake").then(function(r){ return r.json(); }).then(function(d){
-  if (d.tipUrl){
-    document.getElementById("tipLink").href = d.tipUrl;
-    document.getElementById("tipBox").style.display = "block";
-  }
-}).catch(function(){});
 
 function loadRecord(){
   fetch("/gaming/snake/highscore").then(function(r){ return r.json(); }).then(function(d){
     document.getElementById("recScore").textContent = d.score;
     document.getElementById("recName").textContent = d.name || "Grandmaster";
-    document.getElementById("recScore2").textContent = d.score;
   }).catch(function(){});
 }
 loadRecord();
@@ -4980,11 +5083,41 @@ loadRecord();
 // বোর্ডটা যতটুকু জায়গা বেঁচে আছে ঠিক ততটুকুতেই বসে — তাই কোনো ফোনেই স্ক্রল লাগে না
 function fitBoard(){
   var host = canvas.parentElement;
-  var padH = document.getElementById("pad").offsetHeight || 150;
-  var availH = host.clientHeight - padH - 10;
-  var availW = host.clientWidth;
-  cell = Math.max(9, Math.floor(Math.min(availW / COLS, availH / ROWS)));
+  var padH = document.getElementById("pad").offsetHeight || 140;
+  var availH = Math.max(80, host.clientHeight - padH - 8);
+  var availW = Math.max(80, host.clientWidth);
+  cell = Math.max(8, Math.floor(Math.min(availW / COLS, availH / ROWS)));
   canvas.width = cell * COLS; canvas.height = cell * ROWS;
+}
+function paint(body, foodPos){
+  if (!ctx) return; // পুরনো/অস্বাভাবিক ব্রাউজারে canvas না থাকলেও যেন পুরো পেজ ভেঙে না যায়
+  fitBoard();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if (foodPos){
+    ctx.fillStyle = "#E8443D";
+    ctx.beginPath(); ctx.arc(foodPos.c*cell+cell/2, foodPos.r*cell+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
+  }
+  if (!body || !body.length) return;
+  for (var i = body.length - 1; i >= 1; i--){
+    ctx.fillStyle = RAINBOW[(i-1) % RAINBOW.length];
+    ctx.beginPath(); ctx.arc(body[i].c*cell+cell/2, body[i].r*cell+cell/2, cell*0.44, 0, Math.PI*2); ctx.fill();
+  }
+  var h = body[0];
+  ctx.fillStyle = "#E8443D";
+  ctx.beginPath(); ctx.arc(h.c*cell+cell/2, h.r*cell+cell/2, cell*0.48, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(h.c*cell+cell/2-cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(h.c*cell+cell/2+cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
+}
+// অপেক্ষার সময় — এখন যে খেলছে তার সাপটাই এই বোর্ডে দেখা যায়
+function drawWatched(st){ paint(st.body, st.food); }
+function draw(){ paint(snake, food); }
+
+function pushMirror(){
+  if (!myQueueId) return;
+  fetch("/gaming/gq/snake/mirror", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ id: myQueueId, state: { body: snake, food: food, score: score, dir: dir } })
+  }).catch(function(){});
 }
 function placeFood(){
   var taken = {};
@@ -4993,31 +5126,6 @@ function placeFood(){
   for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) if (!taken[r + ":" + c]) free.push({r:r,c:c});
   food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
 }
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if (food){
-    ctx.fillStyle = "#E8443D";
-    ctx.beginPath(); ctx.arc(food.c*cell+cell/2, food.r*cell+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
-  }
-  for (var i = snake.length - 1; i >= 1; i--){
-    ctx.fillStyle = RAINBOW[(i-1) % RAINBOW.length];
-    ctx.beginPath(); ctx.arc(snake[i].c*cell+cell/2, snake[i].r*cell+cell/2, cell*0.44, 0, Math.PI*2); ctx.fill();
-  }
-  var h = snake[0];
-  ctx.fillStyle = "#E8443D";
-  ctx.beginPath(); ctx.arc(h.c*cell+cell/2, h.r*cell+cell/2, cell*0.48, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.beginPath(); ctx.arc(h.c*cell+cell/2-cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(h.c*cell+cell/2+cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
-}
-// প্রতিটা চালের পর নিজের খেলার অবস্থা সার্ভারে পাঠানো — overlay ওটাই এঁকে দেখায়,
-// তাই দর্শক দেখে এই খেলাটাই লাইভে চলছে। (ফোনের পর্দা নয়, শুধু খেলার অবস্থা — খুবই হালকা।)
-function pushMirror(){
-  if (!myQueueId) return;
-  fetch("/gaming/gq/snake/mirror", { method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ id: myQueueId, state: { body: snake, food: food, score: score, dir: dir } })
-  }).catch(function(){});
-}
 function tick(){
   if (!alive) return;
   if (nextDir) dir = nextDir;
@@ -5025,8 +5133,9 @@ function tick(){
   if (h.r < 0 || h.r >= ROWS || h.c < 0 || h.c >= COLS) return gameOver();
   for (var i = 0; i < snake.length - 1; i++) if (snake[i].r === h.r && snake[i].c === h.c) return gameOver();
   snake.unshift(h);
-  if (food && h.r === food.r && h.c === food.c){ score += 10; document.getElementById("scoreVal").textContent = score; placeFood(); }
+  if (food && h.r === food.r && h.c === food.c){ score += 10; placeFood(); }
   else snake.pop();
+  document.getElementById("watchTag").textContent = "Your score: " + score;
   draw(); pushMirror();
 }
 function setDir(r, c){
@@ -5037,34 +5146,21 @@ function setDir(r, c){
 function gameOver(){
   alive = false;
   clearInterval(timer);
-  var msg = document.getElementById("resultMsg");
-  msg.textContent = "Game over — your score: " + score;
-  msg.className = "";
   fetch("/gaming/snake/highscore", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ score: score, name: playerName }) })
     .then(function(r){ return r.json(); }).then(function(d){
-      var line = d.beaten
+      endMyTurn(d.beaten
         ? "🎉 New record! " + score + " — your name is on the live stream now."
-        : "Your score: " + score + ". Record is still " + d.score + " by " + d.name + ".";
-      msg.textContent = line;
-      setTimeout(function(){ endMyTurn(line); }, 3500);
+        : "Your score: " + score + ". Record is still " + d.score + " by " + d.name + ".");
     })
-    .catch(function(){ setTimeout(function(){ endMyTurn("Your score: " + score); }, 3500); });
+    .catch(function(){ endMyTurn("Your score: " + score); });
 }
 function startGame(){
   var mid = Math.floor(ROWS/2);
   snake = [{r:mid,c:5},{r:mid,c:4},{r:mid,c:3}];
   dir = {r:0,c:1}; nextDir = null; score = 0; alive = true;
-  document.getElementById("scoreVal").textContent = "0";
-  document.getElementById("resultMsg").textContent = "";
-  placeFood();
-  fitBoard(); draw(); pushMirror();
+  placeFood(); draw(); pushMirror();
   clearInterval(timer); timer = setInterval(tick, TICK);
-}
-function beginMyTurn(){
-  playerName = document.getElementById("nameInput").value.trim() || "Player";
-  setLive("bottom");
-  setTimeout(startGame, 60); // layout বসার পর মাপ নিলে বোর্ড ঠিক জায়গায় বসে
 }
 document.getElementById("pu").addEventListener("click", function(){ setDir(-1,0); });
 document.getElementById("pd").addEventListener("click", function(){ setDir(1,0); });
@@ -5081,113 +5177,82 @@ canvas.addEventListener("touchend", function(e){
   if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
   if (Math.abs(dx) > Math.abs(dy)) setDir(0, dx > 0 ? 1 : -1); else setDir(dy > 0 ? 1 : -1, 0);
 }, {passive:true});
-window.addEventListener("resize", function(){ if (alive){ fitBoard(); draw(); } });
-${queueClientJS("snake", "beginMyTurn")}
+window.addEventListener("resize", function(){ if (alive) draw(); });
+${queueClientJS("snake", "startGame", "drawWatched")}
 </script></body></html>`;
 
 const BALLSORT_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Play Ball Sort Live</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<style>${CHALLENGE_SHARED_CSS}${QUEUE_CARDS_CSS}${LIVE_EMBED_CSS}
-html,body{height:100%;overflow:hidden;}
-body{padding:0;display:flex;flex-direction:column;}
-.topBar{padding:8px 12px 6px;text-align:center;flex-shrink:0;}
-.topBar h1{font-size:15px;margin:0;}
-.topBar .sub{font-size:10.5px;margin:2px 0 0;}
-.screen{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 10px 8px;gap:8px;}
-.scrollable{overflow-y:auto;}
-.grow{flex:1;min-height:0;}
-.liveBox{min-height:0;display:flex;flex-direction:column;}
-.liveBox iframe{width:100%;height:100%;border:0;border-radius:10px;background:#000;}
-.liveTitle{font-size:9.5px;color:#FF6B5E;font-weight:800;letter-spacing:0.8px;text-align:center;
-margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0;}
-.liveTitle i{width:6px;height:6px;border-radius:50%;background:#FF3B30;display:block;
-animation:liveDot 1.4s ease-in-out infinite;}
-@keyframes liveDot{0%,100%{opacity:1;}50%{opacity:0.25;}}
-.liveSmall{height:24vh;flex-shrink:0;}
-.qStrip{background:rgba(22,27,46,0.9);border:1px solid #2a3352;border-radius:12px;padding:10px 12px;flex-shrink:0;}
-.qHead{display:flex;align-items:center;justify-content:space-between;}
-.qHead .big{font-size:30px;font-weight:900;color:#FFD866;line-height:1;}
-.qHead .lbl{font-size:9.5px;color:#7C8AAD;font-weight:700;letter-spacing:0.8px;}
-.qHead .eta{font-size:11px;color:#8BE28B;font-weight:700;text-align:right;}
-.qMini{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;}
-.qChip{display:flex;align-items:center;gap:5px;background:#0f1526;border:1px solid #232b45;
-border-radius:20px;padding:3px 9px 3px 3px;flex-shrink:0;font-size:11px;}
-.qChip img,.qChip .f{width:20px;height:20px;border-radius:50%;object-fit:cover;}
-.qChip .f{background:#2a3352;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;}
-.qChip b{color:#FFD866;}
-#tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:8px 5px;width:100%;align-content:center;}
+<style>${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
+#tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:7px 4px;width:100%;}
 .tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.13),rgba(10,14,31,0.55));
-border:2px solid rgba(255,255,255,0.30);border-top:none;border-radius:4px 4px 18px 18px;
+border:2px solid rgba(255,255,255,0.30);border-top:none;border-radius:4px 4px 16px 16px;
 display:flex;flex-direction:column-reverse;padding:3px;gap:2px;transition:transform 0.15s,box-shadow 0.15s;}
 .tube.sel{border-color:#FFD866;box-shadow:0 0 14px rgba(255,216,102,0.6);transform:translateY(-6px);}
 .tube.done{border-color:rgba(139,226,139,0.75);}
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.45);}
-.playTop{display:flex;align-items:center;justify-content:space-between;font-size:12px;
-font-weight:800;flex-shrink:0;padding:0 2px;}
-.playTop b{color:#FFD866;font-size:17px;}
-.playTop .clk{color:#8BE28B;}
-#resultMsg{font-size:11.5px;text-align:center;flex-shrink:0;min-height:15px;line-height:1.4;}
 </style></head><body>
 ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45%,#241442)")}
 
-<div class="topBar">
-  <h1>🧪 Beat the Grandmaster</h1>
-  <div class="sub">Solve the puzzle faster than the record to get your name on the live stream</div>
-</div>
+<div class="hdr"><h1>🧪 Beat the Grandmaster</h1></div>
 
-<div class="screen scrollable" id="joinCard">
+<div id="joinCard">
   <div class="card">
     <div class="record">🏆 Fastest time: <b id="recTime">—</b> — <span id="recName">Grandmaster</span></div>
     <label>Your name (shown on the live stream)</label>
     <input type="text" id="nameInput" maxlength="24" placeholder="Type your name">
     <label>Your photo (optional — shown on the live stream)</label>
     <input type="file" id="photoInput" accept="image/*" style="color:#7C8AAD;font-size:13px;">
-    <div class="tipBox" id="tipBox" style="display:none;">
-      <b>🙏 Want to help me out?</b>
-      <div class="notFee">Playing is free. This is only if you want to help.</div>
-      <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Send a Tip<small>Optional · Opens the payment page</small></a>
-      <div class="disclaimer">
-        This is <b>not</b> an entry fee, and not a bet. Tipping does <b>not</b> change your time or
-        your place in the queue. Whatever you actually pay is shown next to your name automatically.
-      </div>
-    </div>
     <button id="startBtn">Join the queue</button>
     <div class="msg" id="startMsg"></div>
   </div>
 </div>
 
-<div class="screen hide" id="waitView">
-  <div class="liveBox grow">
-    <div class="liveTitle"><i></i>LIVE NOW — watch while you wait</div>
-    <iframe id="liveTop" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
-  </div>
-  <div class="qStrip">
-    <div class="qHead">
-      <div><div class="lbl">YOUR POSITION</div><div class="big" id="qPosition">—</div></div>
-      <div class="eta" id="qEta">Joining…</div>
-    </div>
-    <div class="qMini" id="qMini"></div>
-    <div id="pushStatus" style="font-size:10px;color:#7C8AAD;margin-top:6px;"></div>
-    <button class="ghost" id="leaveBtn" style="margin-top:8px;padding:9px;font-size:13px;">Leave the queue</button>
+<div id="tipModal" class="hide">
+  <div class="box">
+    <h3>🙏 Want to help me out?</h3>
+    <p>You are in the queue. Playing is <b>free</b>.</p>
+    <p>If you'd like, you can send a small tip to support the stream.</p>
+    <a class="helpBtn" id="tipGo" href="#">💛 Send a Tip</a>
+    <button class="ghost" id="tipSkip">No thanks — take me to the game</button>
+    <div class="small">A tip does not change your time, your turn, or your place in the queue.
+    After paying you come straight back here.</div>
   </div>
 </div>
 
-<div class="screen hide" id="playView">
-  <div class="playTop">
-    <span>⏱ <b id="clock">0:00</b></span>
-    <span>Record: <span id="recTime2">—</span></span>
-    <span class="clk">Turn: <span id="turnClock">5:00</span></span>
+<div id="stage" class="hide">
+  <div class="statusStrip" id="statusStrip">
+    <span class="pos" id="qPos">Joining…</span>
+    <span class="eta" id="qEta"></span>
   </div>
-  <div class="grow" style="display:flex;align-items:center;"><div id="tubes"></div></div>
-  <div id="resultMsg">Tap a tube to pick up the top ball, then tap another tube to drop it.</div>
-  <div class="liveBox liveSmall">
-    <div class="liveTitle"><i></i>YOU ARE LIVE — everyone can see this game</div>
-    <iframe id="liveBottom" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+  <div class="boardArea"><div id="tubes"></div></div>
+  <div class="watchTag" id="watchTag"></div>
+  <div class="liveArea">
+    <div class="cap"><i></i>LIVE ON YOUTUBE</div>
+    <iframe id="liveFrame" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
   </div>
+  <button class="ghost" id="leaveBtn" style="padding:7px;font-size:12px;flex-shrink:0;">Leave the queue</button>
 </div>
 
-<div class="screen scrollable hide" id="doneCard">
+<div id="turnBanner" class="hide">
+  <div class="big">YOUR TURN!</div>
+  <div class="sub">Get ready — everyone is watching you now</div>
+</div>
+
+<div id="tutorial" class="hide">
+  <h3>How to play</h3>
+  <div class="step">
+    <b>Tap a tube</b> to pick up its top ball<br>
+    <b>Tap another tube</b> to drop it<br>
+    A ball only sits on the <b>same colour</b><br>
+    …or in an <b>empty tube</b><br>
+    Fill every tube with one colour to win
+  </div>
+  <div class="count" id="tutCount">5</div>
+</div>
+
+<div id="doneCard" class="hide">
   <div class="card" style="text-align:center;">
     <div style="font-size:34px;">🎉</div>
     <div class="msg" id="doneMsg" style="margin-top:6px;"></div>
@@ -5200,28 +5265,19 @@ ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45
 
 <script>
 var CAP = 4, COLORS = [], tubes = [], sel = -1, startedAt = 0, clockTimer = null, playerName = "", finished = false;
+var myTurnLive = false;
 
-var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1";
-function setLive(which){
-  var top = document.getElementById("liveTop"), bot = document.getElementById("liveBottom");
-  if (which === "top"){ if (top.src !== LIVE_SRC) top.src = LIVE_SRC; bot.removeAttribute("src"); }
-  else if (which === "bottom"){ if (bot.src !== LIVE_SRC) bot.src = LIVE_SRC; top.removeAttribute("src"); }
-  else { top.removeAttribute("src"); bot.removeAttribute("src"); }
+// আওয়াজ চালু — লাইনে দাঁড়িয়েও স্ট্রিমের কমেন্ট্রি শোনা যাবে
+var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=0&playsinline=1";
+function setLiveOn(){
+  var f = document.getElementById("liveFrame");
+  if (f.getAttribute("src") !== LIVE_SRC) f.src = LIVE_SRC;
 }
-
-fetch("/gaming/challenge/tip-info?game=ballsort").then(function(r){ return r.json(); }).then(function(d){
-  if (d.tipUrl){
-    document.getElementById("tipLink").href = d.tipUrl;
-    document.getElementById("tipBox").style.display = "block";
-  }
-}).catch(function(){});
 
 function fmt(sec){ var m = Math.floor(sec/60), s = sec % 60; return m + ":" + (s < 10 ? "0" : "") + s; }
 function loadRecord(){
   fetch("/gaming/ballsort/fastest").then(function(r){ return r.json(); }).then(function(d){
-    var txt = (typeof d.seconds === "number") ? fmt(d.seconds) : "—";
-    document.getElementById("recTime").textContent = txt;
-    document.getElementById("recTime2").textContent = txt;
+    document.getElementById("recTime").textContent = (typeof d.seconds === "number") ? fmt(d.seconds) : "—";
     document.getElementById("recName").textContent = d.name || "Grandmaster";
   }).catch(function(){});
 }
@@ -5233,31 +5289,39 @@ function ballGradient(hex){
 function isDone(t){ return t.length === CAP && t.every(function(c){ return c === t[0]; }); }
 function solved(){ return tubes.every(function(t){ return t.length === 0 || isDone(t); }); }
 
-// প্রতিটা চালের পর নিজের বোর্ডের অবস্থা সার্ভারে — overlay ওটাই দেখায়
+// একই ফাংশন দুই কাজে — অপেক্ষার সময় অন্যের বোর্ড আঁকে, নিজের পালায় নিজের বোর্ড
+function paint(list, colors, selected, clickable){
+  var wrap = document.getElementById("tubes");
+  wrap.style.gridTemplateColumns = "repeat(" + Math.ceil(list.length/2) + ",1fr)";
+  wrap.innerHTML = "";
+  list.forEach(function(tube, idx){
+    var el = document.createElement("div");
+    el.className = "tube" + (idx === selected ? " sel" : "") + (isDone(tube) ? " done" : "");
+    tube.forEach(function(ci){
+      var b = document.createElement("div");
+      b.className = "ball";
+      b.style.background = ballGradient(colors[ci]);
+      el.appendChild(b);
+    });
+    if (clickable) el.addEventListener("click", function(){ tap(idx); });
+    wrap.appendChild(el);
+  });
+}
+function drawWatched(st){
+  if (myTurnLive) return;
+  CAP = st.capacity || 4;
+  paint(st.tubes || [], st.colors || [], typeof st.sel === "number" ? st.sel : -1, false);
+}
+function render(){ paint(tubes, COLORS, sel, true); }
+
 function pushMirror(){
   if (!myQueueId) return;
   fetch("/gaming/gq/ballsort/mirror", { method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({ id: myQueueId, state: { tubes: tubes, colors: COLORS, capacity: CAP, sel: sel } })
   }).catch(function(){});
 }
-function render(){
-  var wrap = document.getElementById("tubes");
-  wrap.innerHTML = "";
-  tubes.forEach(function(tube, idx){
-    var el = document.createElement("div");
-    el.className = "tube" + (idx === sel ? " sel" : "") + (isDone(tube) ? " done" : "");
-    tube.forEach(function(ci){
-      var b = document.createElement("div");
-      b.className = "ball";
-      b.style.background = ballGradient(COLORS[ci]);
-      el.appendChild(b);
-    });
-    el.addEventListener("click", function(){ tap(idx); });
-    wrap.appendChild(el);
-  });
-}
 function tap(idx){
-  if (finished) return;
+  if (finished || !myTurnLive) return;
   if (sel === -1){
     if (!tubes[idx].length) return;
     sel = idx; render(); pushMirror(); return;
@@ -5277,40 +5341,30 @@ function finish(){
   finished = true;
   clearInterval(clockTimer);
   var secs = Math.round((Date.now() - startedAt) / 1000);
-  var msg = document.getElementById("resultMsg");
-  msg.textContent = "Solved in " + fmt(secs) + " — sending…";
   fetch("/gaming/ballsort/fastest", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ seconds: secs, name: playerName }) })
     .then(function(r){ return r.json(); }).then(function(d){
-      var line = d.beaten
+      endMyTurn(d.beaten
         ? "🎉 New record! " + fmt(secs) + " — your name is on the live stream now."
-        : "Your time: " + fmt(secs) + ". Record is still " + fmt(d.seconds) + " by " + d.name + ".";
-      msg.textContent = line;
-      setTimeout(function(){ endMyTurn(line); }, 3500);
+        : "Your time: " + fmt(secs) + ". Record is still " + fmt(d.seconds) + " by " + d.name + ".");
     })
-    .catch(function(){ setTimeout(function(){ endMyTurn("Solved in " + fmt(secs)); }, 3500); });
+    .catch(function(){ endMyTurn("Solved in " + fmt(secs)); });
 }
-function newPuzzle(){
-  finished = false; sel = -1;
+function startGame(){
+  myTurnLive = true; finished = false; sel = -1;
   fetch("/gaming/ballsort/new-challenge").then(function(r){ return r.json(); }).then(function(d){
     tubes = d.tubes; COLORS = d.colors; CAP = d.capacity;
-    document.getElementById("tubes").style.gridTemplateColumns = "repeat(" + Math.ceil(tubes.length/2) + ",1fr)";
     render(); pushMirror();
     startedAt = Date.now();
     clearInterval(clockTimer);
     clockTimer = setInterval(function(){
-      document.getElementById("clock").textContent = fmt(Math.round((Date.now() - startedAt)/1000));
+      document.getElementById("watchTag").textContent = "Your time: " + fmt(Math.round((Date.now() - startedAt)/1000));
     }, 1000);
   }).catch(function(){
-    document.getElementById("resultMsg").textContent = "Could not load a puzzle — please try again.";
+    document.getElementById("watchTag").textContent = "Could not load a puzzle — please try again.";
   });
 }
-function beginMyTurn(){
-  playerName = document.getElementById("nameInput").value.trim() || "Player";
-  setLive("bottom");
-  setTimeout(newPuzzle, 60);
-}
-${queueClientJS("ballsort", "beginMyTurn")}
+${queueClientJS("ballsort", "startGame", "drawWatched")}
 </script></body></html>`;
 
 
@@ -6928,6 +6982,31 @@ module.exports = function mountGaming(app) {
     delete pushSubscriptions[id];
     gqNotifyPositions(game);
     res.json({ ok: true });
+  });
+
+  // ---------------------------------------------------------------------------
+  // "এখন লাইভে কী চলছে" ফিড
+  // ---------------------------------------------------------------------------
+  // লাইনে দাঁড়ানো দর্শক নিজের ফোনেই দেখতে পায় এই মুহূর্তে বোর্ডে কী চলছে — AI খেলছে না
+  // অন্য কেউ খেলছে, দুটোই। overlay নিজের AI-খেলার অবস্থা এখানে পাঠায়; কোনো মানুষ খেললে
+  // তার নিজের অবস্থাই (gqMirror) অগ্রাধিকার পায়। ফলে অপেক্ষা করার সময় পর্দা ফাঁকা থাকে না।
+  app.post("/gaming/watch/:game", express.json({ limit: "64kb" }), (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    const prev = gqWatch[game];
+    gqWatch[game] = { seq: (prev ? prev.seq : 0) + 1, state: (req.body || {}).state, at: Date.now() };
+    res.json({ ok: true });
+  });
+  app.get("/gaming/watch/:game", (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    const m = gqMirror[game];
+    if (m && Date.now() - m.at < 8000) {
+      return res.json({ active: true, source: "player", seq: "p" + m.seq, name: m.name, photoUrl: m.photoUrl, state: m.state });
+    }
+    const w = gqWatch[game];
+    if (w && Date.now() - w.at < 8000) {
+      return res.json({ active: true, source: "ai", seq: "a" + w.seq, name: "Grandmaster", photoUrl: "", state: w.state });
+    }
+    res.json({ active: false });
   });
 
   // চ্যালেঞ্জারের ফোন প্রতিটা চালের পর তার খেলার অবস্থা এখানে পাঠায়
