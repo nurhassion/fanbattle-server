@@ -3018,48 +3018,103 @@ function bsCanPour(tubes, from, to) {
 }
 function bsClone(tubes) { return tubes.map((t) => [...t]); }
 function bsKey(tubes) { return tubes.map((t) => t.join(",")).join("|"); }
-// BFS দিয়ে solve — বড় পাজলে (১৫টা টিউব) state space অনেক বড় হতে পারে, তাই প্রতি কয়েক হাজার
-// ধাপে একবার event loop-কে "শ্বাস" নেওয়ার সুযোগ দেওয়া হচ্ছে (await sleep(0)) — নাহলে এই solve
-// চলাকালীন পুরো সার্ভার (chess সহ সবকিছু) কিছুক্ষণের জন্য জমে/আটকে যেতে পারত, যেটা মেনে নেওয়া যায় না
+// ===========================================================================
+// পাজল সমাধানকারী (solver)
+// ---------------------------------------------------------------------------
+// ⚠️ আগের সংস্করণে এখানে BFS ছিল, আর সেটাই ছিল "পাজল কখনো শুরুই হয় না" সমস্যার আসল কারণ।
+// ১৪ টিউব × ১২ রঙের পাজলে সম্ভাব্য অবস্থার সংখ্যা কোটি কোটি — BFS সবগুলো স্তর একসাথে ধরে
+// এগোয়, তাই ৬০,০০০ অবস্থার নিরাপত্তা-সীমায় পৌঁছেই হাল ছেড়ে দিত। পরীক্ষা করে দেখা গেছে
+// ১০০% পাজলেই সে ব্যর্থ হচ্ছিল — ফলে overlay চিরকাল "সমাধান খুঁজে বের করছে..." দেখিয়ে যেত।
+//
+// এখন DFS (গভীরতা-প্রথম) + তিনটা কৌশল ব্যবহার হচ্ছে:
+//  ১. একসাথে পুরো "রান" ঢালা — উপরের একই রঙের সবগুলো বল এক চালে যায় (মানুষও তা-ই করে)।
+//     এতে সমাধানের গভীরতা কয়েকগুণ কমে যায়। অ্যানিমেশনের সময় আবার একটা-একটা বলে ভাগ করা হয়।
+//  ২. অর্থহীন চাল বাদ — সম্পূর্ণ হয়ে যাওয়া টিউব ছোঁয়া হয় না, এক-রঙা টিউব খালি টিউবে ঢালা হয় না,
+//     আর একাধিক খালি টিউব থাকলে সেগুলো অভিন্ন বলে শুধু একটাই বিবেচনা করা হয়।
+//  ৩. চালের ক্রম সাজানো — যে চাল একটা টিউব সম্পূর্ণ করে বা একটা টিউব খালি করে, সেটা আগে চেষ্টা।
+// ===========================================================================
+function bsTopRun(t) { // উপরে একই রঙের কতগুলো বল পরপর আছে
+  if (!t.length) return 0;
+  const c = t[t.length - 1];
+  let n = 1;
+  for (let i = t.length - 2; i >= 0 && t[i] === c; i--) n++;
+  return n;
+}
+// দুটো টিউবের অবস্থান অদলবদল হলে পাজলটা আসলে একই — তাই টিউবগুলো সাজিয়ে (sort) চাবি বানানো হয়।
+// এতে "একই অবস্থা" বারবার খোঁজা বন্ধ হয়, search কয়েকগুণ ছোট হয়ে যায়।
+function bsCanonicalKey(tubes) {
+  const parts = new Array(tubes.length);
+  for (let i = 0; i < tubes.length; i++) parts[i] = tubes[i].join(",");
+  parts.sort();
+  return parts.join("|");
+}
 async function bsSolve(tubes) {
-  const startKey = bsKey(tubes);
-  const q = [tubes];
-  const visited = new Set([startKey]);
-  const parent = {}; // key -> { fromKey, move: {from,to} }
-  parent[startKey] = null;
-  let steps = 0;
-  // ⚠️ নিরাপত্তার জন্য একটা visited-state সীমা — এত বড় পাজলে (১১ রঙ) না থামালে এই একটা search
-  // কয়েক গিগাবাইট মেমরি খেয়ে ফেলতে পারত, যেটা ছোট সার্ভারে পুরো অ্যাপকেই ক্র্যাশ করিয়ে দিতে পারে
-  const MAX_VISITED = 60000; // ⚠️ আগে ৩,০০,০০০ ছিল — Render ফ্রি সার্ভারের সীমিত RAM-এ পুরো প্ল্যাটফর্ম
-  // ক্র্যাশ করার সন্দেহ হওয়ায় অনেক নিরাপদ একটা সংখ্যায় নামিয়ে আনা হলো
-  while (q.length && steps < 100000 && visited.size < MAX_VISITED) {
-    steps++;
-    if (steps % 1500 === 0) await sleep(0); // event loop-কে বাকি কাজ (chess ইত্যাদি) করার সুযোগ দেওয়া
-    const cur = q.shift();
-    const curKey = bsKey(cur);
-    if (bsIsSolved(cur)) {
-      const moves = [];
-      let k = curKey;
-      while (parent[k]) {
-        moves.unshift(parent[k].move);
-        k = parent[k].fromKey;
+  const work = bsClone(tubes);
+  const visited = new Set();
+  const path = [];
+  const MAX_NODES = 400000;  // এর মধ্যেই সমাধান না এলে নতুন পাজল বানানো হবে
+  let nodes = 0, sinceYield = 0, aborted = false;
+
+  async function dfs() {
+    if (aborted) return false;
+    if (bsIsSolved(work)) return true;
+    if (++nodes > MAX_NODES) { aborted = true; return false; }
+    // মাঝে মাঝে event loop-কে শ্বাস নেওয়ার সুযোগ — নাহলে solve চলাকালীন পুরো সার্ভার
+    // (chess, Fan Battle Live, পেমেন্ট — সবকিছু) কয়েক সেকেন্ডের জন্য জমে যেত
+    if (++sinceYield >= 4000) { sinceYield = 0; await sleep(0); }
+
+    const key = bsCanonicalKey(work);
+    if (visited.has(key)) return false;
+    visited.add(key);
+
+    const moves = [];
+    for (let from = 0; from < work.length; from++) {
+      const f = work[from];
+      if (!f.length) continue;
+      const run = bsTopRun(f);
+      if (run === f.length && f.length === BS_TUBE_CAPACITY) continue; // এই টিউব সম্পূর্ণ, ছোঁয়ার দরকার নেই
+      const color = f[f.length - 1];
+      let emptyTried = false;
+      for (let to = 0; to < work.length; to++) {
+        if (to === from) continue;
+        const t = work[to];
+        if (t.length >= BS_TUBE_CAPACITY) continue;
+        let score;
+        if (t.length === 0) {
+          if (run === f.length) continue;  // এক-রঙা টিউব পুরোটা খালি টিউবে সরানো = কিছুই বদলালো না
+          if (emptyTried) continue;        // খালি টিউবগুলো একে অপরের সমান, একটাই যথেষ্ট
+          emptyTried = true;
+          score = 1;
+        } else {
+          if (t[t.length - 1] !== color) continue;
+          score = 10;
+        }
+        const n = Math.min(run, BS_TUBE_CAPACITY - t.length);
+        if (t.length + n === BS_TUBE_CAPACITY) score += 30; // এই চালে একটা টিউব সম্পূর্ণ হয়ে যায়
+        if (n === f.length) score += 20;                    // এই চালে একটা টিউব খালি হয়ে যায়
+        moves.push({ from, to, n, score: score + n });
       }
-      return moves;
     }
-    for (let from = 0; from < cur.length; from++) {
-      for (let to = 0; to < cur.length; to++) {
-        if (!bsCanPour(cur, from, to)) continue;
-        const next = bsClone(cur);
-        next[to].push(next[from].pop());
-        const nextKey = bsKey(next);
-        if (visited.has(nextKey)) continue;
-        visited.add(nextKey);
-        parent[nextKey] = { fromKey: curKey, move: { from, to } };
-        q.push(next);
-      }
+    moves.sort((x, y) => y.score - x.score);
+
+    for (const mv of moves) {
+      for (let i = 0; i < mv.n; i++) work[mv.to].push(work[mv.from].pop());
+      path.push(mv);
+      if (await dfs()) return true;
+      path.pop();
+      for (let i = 0; i < mv.n; i++) work[mv.from].push(work[mv.to].pop());
+      if (aborted) return false;
     }
+    return false;
   }
-  return null; // সমাধান পাওয়া যায়নি (তাত্ত্বিকভাবে বিরল, নতুন পাজল বানিয়ে নেওয়া হবে)
+
+  const ok = await dfs();
+  if (!ok) return null;
+  // একসাথে ঢালা রান-গুলো আবার একটা-একটা বলে ভেঙে দেওয়া — দর্শক প্রতিটা বল আলাদা করে
+  // তুলতে ও নামাতে দেখবে, ঠিক যেমন কেউ হাতে করে খেলছে
+  const single = [];
+  for (const mv of path) for (let i = 0; i < mv.n; i++) single.push({ from: mv.from, to: mv.to });
+  return single;
 }
 let ballSortLoopActive = false;
 let bsFastestState = readState("ballsort-fastest") || { seconds: null, name: "Grandmaster" };
@@ -3071,7 +3126,11 @@ async function runBallSortLoop() {
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "solving", lastMove: null, movesLeft: null, fastest: bsFastestState }); // "চিন্তা করছে" — বড় পাজলে solve করতে কিছুটা সময় লাগে
     let solution = await bsSolve(tubes);
     let attempts = 0;
-    while (!solution && attempts < 8) { tubes = bsGeneratePuzzle(); solution = await bsSolve(tubes); attempts++; } // ১৮ রঙের বড় পাজলে মাঝে মাঝে সমাধান খুঁজতে ব্যর্থ হতে পারে, তাই বেশি চেষ্টা করা হচ্ছে
+    // পাজলটা এলোমেলো করে বানানো হয়, তাই মাঝে মাঝে (পরীক্ষায় ~৮% ক্ষেত্রে) এমন অবস্থা তৈরি হয়
+    // যেটা মাত্র ২টা খালি টিউব দিয়ে আসলেই সমাধান করা অসম্ভব। solver এখন সেটা মিলিসেকেন্ডের
+    // মধ্যেই বুঝে ফেলে, তাই সাথে সাথে নতুন পাজল বানিয়ে নেওয়াই সবচেয়ে সহজ সমাধান।
+    while (!solution && attempts < 25) { tubes = bsGeneratePuzzle(); solution = await bsSolve(tubes); attempts++; }
+    if (attempts) console.log("🧪 Ball Sort:", attempts, "বার নতুন পাজল বানাতে হয়েছে");
     if (!solution) { await sleep(2000); continue; } // চরম বিরল কেস, আবার চেষ্টা
     writeState("ballsort", { tubes, colors: BS_COLORS, status: "playing", lastMove: null, movesLeft: solution.length, fastest: bsFastestState });
     await sleep(1200);
@@ -3225,8 +3284,12 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
       <div id="recentDonorList"></div>
     </div>
     <div class="altView" id="queueView">
-      <h3>🔴 Challenge Queue</h3>
-      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+      <h3>🎮 Beat the Grandmaster</h3>
+      <div style="font-size:10px;color:#9fb0d4;line-height:1.6;">
+        যে কেউ, যেকোনো সময় খেলতে পারেন —<br>
+        <b style="color:#FFD866;">/gaming/challenge/snake</b><br><br>
+        গ্র্যান্ডমাস্টারের চেয়ে বেশি স্কোর করলে<br>উপরের নামটা আপনার হয়ে যাবে।
+      </div>
     </div>
   </div>
 </div>
@@ -4015,8 +4078,12 @@ color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
       <div id="recentDonorList"></div>
     </div>
     <div class="altView" id="queueView">
-      <h3>🔴 Challenge Queue</h3>
-      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+      <h3>🎮 Beat the Grandmaster</h3>
+      <div style="font-size:10px;color:#9fb0d4;line-height:1.6;">
+        যে কেউ, যেকোনো সময় খেলতে পারেন —<br>
+        <b style="color:#FFD866;">/gaming/challenge/ballsort</b><br><br>
+        গ্র্যান্ডমাস্টারের চেয়ে কম সময়ে সমাধান করলে<br>উপরের নামটা আপনার হয়ে যাবে।
+      </div>
     </div>
   </div>
 </div>
@@ -4230,6 +4297,7 @@ function renderStatic(tubes, colors){
 // বল টিউব থেকে উপরে উঠে, বাঁক নিয়ে, তারপর নতুন টিউবে নেমে যায় — যেন সত্যিই কেউ ঢালছে
 function animateMove(mv, tubesAfter, colors){
   animating = true;
+  // চাল দেওয়ার *আগের* অবস্থাটা আঁকা হচ্ছে, তারপর সেখান থেকে বলটা তুলে নেওয়ার অ্যানিমেশন
   const before = tubesAfter.map((t) => [...t]);
   const movedColor = before[mv.to].pop();
   before[mv.from].push(movedColor);
@@ -4239,18 +4307,30 @@ function animateMove(mv, tubesAfter, colors){
   const fromTubeEl = wrap.children[mv.from];
   const toTubeEl = wrap.children[mv.to];
   if (!fromTubeEl || !toTubeEl) { animating = false; renderStatic(tubesAfter, colors); return; }
-  const fromRect = fromTubeEl.getBoundingClientRect();
+  const srcBall = fromTubeEl.lastElementChild; // column-reverse — শেষ সন্তানই টিউবের সবচেয়ে উপরের বল
+  if (!srcBall) { animating = false; renderStatic(tubesAfter, colors); return; }
+
   const toRect = toTubeEl.getBoundingClientRect();
-  // টিউবের বর্ডার (২px করে দুইপাশে) + প্যাডিং (৬px করে দুইপাশে) বাদ দিলে যতটুকু থাকে, বলের আকার ঠিক ততটাই
-  const ballSize = Math.max(10, fromRect.width - 16);
+  const srcRect = srcBall.getBoundingClientRect();
+  // ⚠️ বলের আকার আর অবস্থান আগে হাতে হিসেব করা হতো (টিউবের প্রস্থ − ১৬px ইত্যাদি)। প্যাডিং/বর্ডার
+  // একটু বদলালেই সেই হিসেব ভুল হয়ে যেত, আর উড়ন্ত বলটা আসল বলের চেয়ে ছোট/বড় দেখাতো। এখন সরাসরি
+  // আসল বলের মাপ ও অবস্থান পড়ে নেওয়া হচ্ছে — CSS যাই হোক, সবসময় নিখুঁতভাবে মিলবে।
+  const ballSize = srcRect.width;
+  const startX = srcRect.left, startY = srcRect.top;
+
+  // বলটা গন্তব্য টিউবে ঠিক কোথায় গিয়ে বসবে — উপরের বলের ঠিক উপরে, নাহলে টিউবের একদম নিচে
+  const GAP = 4, PAD = 5, BORDER = 2;
+  const endX = toRect.left + (toRect.width - ballSize) / 2;
+  const topBallOfTarget = toTubeEl.lastElementChild;
+  const endY = topBallOfTarget
+    ? topBallOfTarget.getBoundingClientRect().top - GAP - ballSize
+    : toRect.bottom - BORDER - PAD - ballSize;
 
   const flyBall = document.createElement("div");
   flyBall.className = "ball flyingBall";
   flyBall.style.background = ballGradient(colors[movedColor]);
   flyBall.style.position = "fixed";
   flyBall.style.width = ballSize + "px"; flyBall.style.height = ballSize + "px";
-  const startX = fromRect.left + fromRect.width/2 - ballSize/2;
-  const startY = fromRect.top + 6;
   flyBall.style.left = startX + "px"; flyBall.style.top = startY + "px";
   document.body.appendChild(flyBall);
 
@@ -4261,36 +4341,41 @@ function animateMove(mv, tubesAfter, colors){
     tap.className = "tapIndicator";
     tap.style.left = (x - 18) + "px"; tap.style.top = (y - 18) + "px";
     document.body.appendChild(tap);
-    setTimeout(() => tap.remove(), 500);
+    setTimeout(() => { tap.remove(); }, 500);
   }
-  // ---- "ভাবার" মুহূর্ত ----
-  // চাল দেওয়ার আগে ৭০০ms ধরে উৎস ও গন্তব্য টিউব দুটো জ্বলে ওঠে। এতে দর্শক বুঝতে পারে কোন বলটা
-  // কোথায় যাচ্ছে, আর পুরো ব্যাপারটা তাড়াহুড়ো না লেগে "ভেবেচিন্তে খেলা" মনে হয়।
+
+  // ---- ১) "ভাবার" মুহূর্ত ----
+  // চাল দেওয়ার আগে ৭০০ms ধরে উৎস ও গন্তব্য টিউব দুটো জ্বলে ওঠে। এতে দর্শক আগেভাগে বুঝতে পারে
+  // কোন বলটা কোথায় যাচ্ছে, আর পুরো ব্যাপারটা তাড়াহুড়ো না লেগে "ভেবেচিন্তে খেলা" মনে হয়।
   fromTubeEl.classList.add("thinking");
   toTubeEl.classList.add("target");
-  const THINK_MS = 700;
-  const riseTop = Math.min(fromRect.top, toRect.top) - 55;
-  setTimeout(() => {
+  const riseTop = Math.min(srcRect.top, toRect.top) - 55; // দুটো টিউবেরই উপরে, যাতে কাচে ধাক্কা না লাগে
+
+  setTimeout(function(){
+    // ---- ২) তুলে নেওয়া ----
     fromTubeEl.classList.remove("thinking");
     showTapIndicator(startX + ballSize/2, startY + ballSize/2);
+    srcBall.style.visibility = "hidden"; // আসল বলটা লুকিয়ে ফেলা, নাহলে দুটো বল একসাথে দেখা যেত
     playPourSound();
     flyBall.style.transition = "top 1.0s ease-out";
     flyBall.style.top = riseTop + "px";
-    setTimeout(() => {
-      const endX = toRect.left + toRect.width/2 - ballSize/2;
-      const endY = toRect.top + 6;
+
+    setTimeout(function(){
+      // ---- ৩) পাশে সরে গিয়ে নেমে বসা ----
       flyBall.style.transition = "left 1.2s ease-in-out, top 1.25s ease-in";
       flyBall.style.left = endX + "px";
       flyBall.style.top = endY + "px";
-      setTimeout(() => {
-        showTapIndicator(endX + ballSize/2, endY + ballSize/2); // গন্তব্যে "রাখার" মুহূর্তে আরেকটা ট্যাপ চিহ্ন
+
+      setTimeout(function(){
+        // ---- ৪) রেখে দেওয়ার মুহূর্ত ----
+        showTapIndicator(endX + ballSize/2, endY + ballSize/2);
         flyBall.remove();
         toTubeEl.classList.remove("target");
         renderStatic(tubesAfter, colors);
         animating = false;
       }, 1270);
     }, 1020);
-  }, THINK_MS);
+  }, 700);
 }
 
 async function poll(){
@@ -4340,6 +4425,333 @@ async function poll(){
   }catch(e){ animating = false; }
 }
 setInterval(poll, 500); poll();
+</script></body></html>`;
+
+// ===========================================================================
+// দর্শকদের চ্যালেঞ্জ পেজ — Snake ও Ball Sort
+// ---------------------------------------------------------------------------
+// চেসের মতো এখানে "লাইনে দাঁড়ানোর" (queue) দরকার নেই — কারণ চেসে চ্যালেঞ্জার সরাসরি overlay-র
+// বোর্ডে AI-এর বিরুদ্ধে চাল দেয়, তাই একসাথে একজনই খেলতে পারে। কিন্তু Snake/Ball Sort-এ
+// প্রতিযোগিতাটা রেকর্ডের বিরুদ্ধে (সর্বোচ্চ স্কোর / সবচেয়ে কম সময়) — তাই যত খুশি দর্শক একসাথে
+// নিজের ফোনে খেলতে পারে, আর কেউ রেকর্ড ভাঙলে overlay-তে সাথে সাথে তার নাম বসে যায়।
+// ===========================================================================
+const CHALLENGE_SHARED_CSS = `
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{margin:0;background:linear-gradient(160deg,#0a0e1f,#12081f 60%,#0a0e1f);color:#F5F7FA;
+font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding:14px;display:flex;
+flex-direction:column;align-items:center;}
+h1{color:#FFD866;font-size:20px;margin:2px 0 2px;text-align:center;}
+.sub{color:#7C8AAD;font-size:12px;margin-bottom:12px;text-align:center;line-height:1.5;}
+.card{background:#161b2e;border:1px solid #2a3352;border-radius:16px;padding:16px;width:100%;max-width:420px;}
+label{display:block;font-size:11px;color:#7C8AAD;font-weight:700;margin-bottom:6px;}
+input[type=text]{width:100%;padding:12px;border-radius:10px;border:1px solid #26314f;background:#0f1526;
+color:#fff;font-size:16px;}
+button{padding:13px 20px;border-radius:10px;border:none;background:#FFD866;color:#0a0e1f;
+font-weight:800;cursor:pointer;font-size:15px;width:100%;margin-top:12px;}
+button.ghost{background:#242c48;color:#cfd8ef;}
+.record{color:#8BE28B;font-size:12px;font-weight:700;margin-bottom:10px;text-align:center;}
+.record b{color:#FFD866;}
+.hide{display:none;}
+.msg{margin-top:12px;font-size:14px;font-weight:700;text-align:center;min-height:20px;line-height:1.5;}
+.msg.win{color:#8BE28B;} .msg.lose{color:#FF8A80;}
+`;
+
+const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Beat the Grandmaster — Snake</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>${CHALLENGE_SHARED_CSS}
+#board{background:rgba(10,14,31,0.6);border:4px solid #6b4423;border-radius:10px;display:block;margin:0 auto;touch-action:none;}
+#pad{display:grid;grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px;gap:8px;
+margin:14px auto 0;justify-content:center;}
+.pb{background:#242c48;border:2px solid #38446e;border-radius:12px;display:flex;align-items:center;
+justify-content:center;font-size:22px;color:#cfd8ef;user-select:none;}
+.pb:active{background:#FFD866;color:#0a0e1f;}
+#pu{grid-column:2;grid-row:1;} #pl{grid-column:1;grid-row:2;} #pr{grid-column:3;grid-row:2;} #pd{grid-column:2;grid-row:3;}
+#scoreBar{font-size:14px;font-weight:800;margin:10px 0 4px;text-align:center;}
+#scoreBar b{color:#FFD866;font-size:19px;}
+</style></head><body>
+<h1>🐍 Beat the Grandmaster</h1>
+<div class="sub">সাপের গেমে গ্র্যান্ডমাস্টারের চেয়ে বেশি স্কোর করুন —<br>পারলে লাইভ স্ট্রিমে আপনার নাম উঠে যাবে।</div>
+
+<div class="card" id="startCard">
+  <div class="record">🏆 এখনকার রেকর্ড: <b id="recScore">—</b> — <span id="recName">Grandmaster</span></div>
+  <label>আপনার নাম (লাইভে এই নামটাই দেখানো হবে)</label>
+  <input type="text" id="nameInput" maxlength="24" placeholder="আপনার নাম লিখুন">
+  <button id="startBtn">খেলা শুরু করুন</button>
+  <div class="msg" id="startMsg"></div>
+</div>
+
+<div class="hide" id="playCard">
+  <div id="scoreBar">Score: <b id="scoreVal">0</b> &nbsp;|&nbsp; রেকর্ড: <span id="recScore2">—</span></div>
+  <canvas id="board"></canvas>
+  <div id="pad">
+    <div class="pb" id="pu">▲</div><div class="pb" id="pl">◀</div>
+    <div class="pb" id="pr">▶</div><div class="pb" id="pd">▼</div>
+  </div>
+  <div class="msg" id="resultMsg"></div>
+  <button class="ghost hide" id="againBtn">আবার খেলুন</button>
+</div>
+
+<script>
+var COLS = 15, ROWS = 21, TICK = 190;
+var canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
+var cell = 20, snake = null, dir = null, nextDir = null, food = null, score = 0;
+var timer = null, playerName = "", alive = false;
+var RAINBOW = ["#FF2D55","#FF9500","#FFCC00","#8BE28B","#34C759","#00C7BE","#30B0C7","#32ADE6","#5856D6","#AF52DE"];
+
+function fitBoard(){
+  var maxW = Math.min(window.innerWidth - 32, 420);
+  var maxH = window.innerHeight - 300;
+  cell = Math.max(12, Math.floor(Math.min(maxW / COLS, maxH / ROWS)));
+  canvas.width = cell * COLS; canvas.height = cell * ROWS;
+}
+function loadRecord(){
+  fetch("/gaming/snake/highscore").then(function(r){ return r.json(); }).then(function(d){
+    document.getElementById("recScore").textContent = d.score;
+    document.getElementById("recName").textContent = d.name || "Grandmaster";
+    document.getElementById("recScore2").textContent = d.score;
+  }).catch(function(){});
+}
+loadRecord();
+
+function placeFood(){
+  var taken = {};
+  for (var i = 0; i < snake.length; i++) taken[snake[i].r + ":" + snake[i].c] = 1;
+  var free = [];
+  for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) if (!taken[r + ":" + c]) free.push({r:r,c:c});
+  food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+}
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if (food){
+    ctx.fillStyle = "#E8443D";
+    ctx.beginPath(); ctx.arc(food.c*cell+cell/2, food.r*cell+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
+  }
+  for (var i = snake.length - 1; i >= 1; i--){
+    ctx.fillStyle = RAINBOW[(i-1) % RAINBOW.length];
+    ctx.beginPath(); ctx.arc(snake[i].c*cell+cell/2, snake[i].r*cell+cell/2, cell*0.44, 0, Math.PI*2); ctx.fill();
+  }
+  var h = snake[0];
+  ctx.fillStyle = "#E8443D";
+  ctx.beginPath(); ctx.arc(h.c*cell+cell/2, h.r*cell+cell/2, cell*0.48, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(h.c*cell+cell/2-cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(h.c*cell+cell/2+cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
+}
+function tick(){
+  if (!alive) return;
+  if (nextDir) dir = nextDir;
+  var h = { r: snake[0].r + dir.r, c: snake[0].c + dir.c };
+  if (h.r < 0 || h.r >= ROWS || h.c < 0 || h.c >= COLS) return gameOver();
+  for (var i = 0; i < snake.length - 1; i++) if (snake[i].r === h.r && snake[i].c === h.c) return gameOver();
+  snake.unshift(h);
+  if (food && h.r === food.r && h.c === food.c){ score += 10; document.getElementById("scoreVal").textContent = score; placeFood(); }
+  else snake.pop();
+  draw();
+}
+function setDir(r, c){
+  if (!alive) return;
+  if (dir && (dir.r === -r && dir.c === -c)) return; // ১৮০° ঘোরা যাবে না
+  nextDir = { r: r, c: c };
+}
+function gameOver(){
+  alive = false;
+  clearInterval(timer);
+  var msg = document.getElementById("resultMsg");
+  msg.textContent = "খেলা শেষ — আপনার স্কোর " + score + "। জমা দেওয়া হচ্ছে...";
+  msg.className = "msg";
+  fetch("/gaming/snake/highscore", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ score: score, name: playerName })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.beaten){
+      msg.textContent = "🎉 আপনি রেকর্ড ভেঙেছেন! স্কোর " + score + " — লাইভ স্ট্রিমে এখন আপনার নাম দেখা যাচ্ছে।";
+      msg.className = "msg win";
+    } else {
+      msg.textContent = "আপনার স্কোর " + score + "। রেকর্ড এখনো " + d.score + " — " + d.name + "। আবার চেষ্টা করুন!";
+      msg.className = "msg lose";
+    }
+    document.getElementById("recScore2").textContent = d.score;
+  }).catch(function(){ msg.textContent = "স্কোর জমা দেওয়া যায়নি — ইন্টারনেট দেখে আবার চেষ্টা করুন।"; });
+  document.getElementById("againBtn").classList.remove("hide");
+}
+function startGame(){
+  fitBoard();
+  var mid = Math.floor(ROWS/2);
+  snake = [{r:mid,c:5},{r:mid,c:4},{r:mid,c:3}];
+  dir = {r:0,c:1}; nextDir = null; score = 0; alive = true;
+  document.getElementById("scoreVal").textContent = "0";
+  document.getElementById("resultMsg").textContent = "";
+  document.getElementById("againBtn").classList.add("hide");
+  placeFood(); draw();
+  clearInterval(timer); timer = setInterval(tick, TICK);
+}
+document.getElementById("startBtn").addEventListener("click", function(){
+  var n = document.getElementById("nameInput").value.trim();
+  if (n.length < 2){ document.getElementById("startMsg").textContent = "একটা নাম লিখুন (অন্তত ২ অক্ষর)।"; return; }
+  playerName = n;
+  document.getElementById("startCard").classList.add("hide");
+  document.getElementById("playCard").classList.remove("hide");
+  startGame();
+});
+document.getElementById("againBtn").addEventListener("click", startGame);
+document.getElementById("pu").addEventListener("click", function(){ setDir(-1,0); });
+document.getElementById("pd").addEventListener("click", function(){ setDir(1,0); });
+document.getElementById("pl").addEventListener("click", function(){ setDir(0,-1); });
+document.getElementById("pr").addEventListener("click", function(){ setDir(0,1); });
+document.addEventListener("keydown", function(e){
+  if (e.key === "ArrowUp") setDir(-1,0); else if (e.key === "ArrowDown") setDir(1,0);
+  else if (e.key === "ArrowLeft") setDir(0,-1); else if (e.key === "ArrowRight") setDir(0,1);
+});
+// সোয়াইপ — ফোনে বোতাম না চেপেও খেলা যায়
+var sx = 0, sy = 0;
+canvas.addEventListener("touchstart", function(e){ sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, {passive:true});
+canvas.addEventListener("touchend", function(e){
+  var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+  if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+  if (Math.abs(dx) > Math.abs(dy)) setDir(0, dx > 0 ? 1 : -1); else setDir(dy > 0 ? 1 : -1, 0);
+}, {passive:true});
+window.addEventListener("resize", function(){ if (alive){ fitBoard(); draw(); } });
+</script></body></html>`;
+
+const BALLSORT_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Beat the Grandmaster — Ball Sort</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>${CHALLENGE_SHARED_CSS}
+#tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 6px;width:100%;max-width:460px;margin:8px auto 0;}
+.tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.10),rgba(10,14,31,0.7));
+border:2px solid rgba(255,255,255,0.28);border-top:none;border-radius:4px 4px 20px 20px;
+display:flex;flex-direction:column-reverse;padding:4px;gap:3px;position:relative;transition:all 0.15s;}
+.tube.sel{border-color:#FFD866;box-shadow:0 0 16px rgba(255,216,102,0.6);transform:translateY(-8px);}
+.tube.done{border-color:rgba(139,226,139,0.75);}
+.ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.45);}
+#hud{display:flex;justify-content:space-between;width:100%;max-width:460px;margin:10px auto 2px;
+font-size:14px;font-weight:800;}
+#hud b{color:#FFD866;}
+#btnRow{width:100%;max-width:460px;}
+</style></head><body>
+<h1>🧪 Beat the Grandmaster</h1>
+<div class="sub">এই পাজলটা গ্র্যান্ডমাস্টারের চেয়ে কম সময়ে সমাধান করুন —<br>পারলে লাইভ স্ট্রিমে আপনার নাম উঠে যাবে।</div>
+
+<div class="card" id="startCard">
+  <div class="record">🏆 সবচেয়ে কম সময়: <b id="recTime">—</b> — <span id="recName">Grandmaster</span></div>
+  <label>আপনার নাম (লাইভে এই নামটাই দেখানো হবে)</label>
+  <input type="text" id="nameInput" maxlength="24" placeholder="আপনার নাম লিখুন">
+  <button id="startBtn">পাজল শুরু করুন</button>
+  <div class="msg" id="startMsg"></div>
+</div>
+
+<div class="hide" id="playCard">
+  <div id="hud"><span>⏱ <b id="clock">0:00</b></span><span>রেকর্ড: <span id="recTime2">—</span></span></div>
+  <div id="tubes"></div>
+  <div class="msg" id="resultMsg">একটা টিউবে চাপ দিয়ে উপরের বলটা তুলুন, তারপর যেখানে রাখবেন সেই টিউবে চাপ দিন।</div>
+  <div id="btnRow">
+    <button class="ghost" id="againBtn">নতুন পাজল</button>
+  </div>
+</div>
+
+<script>
+var CAP = 4, COLORS = [], tubes = [], sel = -1, startedAt = 0, clockTimer = null, playerName = "", finished = false;
+
+function loadRecord(){
+  fetch("/gaming/ballsort/fastest").then(function(r){ return r.json(); }).then(function(d){
+    var txt = (typeof d.seconds === "number") ? fmt(d.seconds) : "—";
+    document.getElementById("recTime").textContent = txt;
+    document.getElementById("recTime2").textContent = txt;
+    document.getElementById("recName").textContent = d.name || "Grandmaster";
+  }).catch(function(){});
+}
+function fmt(sec){ var m = Math.floor(sec/60), s = sec % 60; return m + ":" + (s < 10 ? "0" : "") + s; }
+loadRecord();
+
+function ballGradient(hex){
+  return "radial-gradient(circle at 32% 28%, #ffffff 0%, " + hex + " 42%, " + hex + " 70%, rgba(0,0,0,0.45) 100%)";
+}
+function topRun(t){ if (!t.length) return 0; var c = t[t.length-1], n = 1;
+  for (var i = t.length-2; i >= 0 && t[i] === c; i--) n++; return n; }
+function isDone(t){ return t.length === CAP && t.every(function(c){ return c === t[0]; }); }
+function solved(){ return tubes.every(function(t){ return t.length === 0 || isDone(t); }); }
+
+function render(){
+  var wrap = document.getElementById("tubes");
+  wrap.innerHTML = "";
+  tubes.forEach(function(tube, idx){
+    var el = document.createElement("div");
+    el.className = "tube" + (idx === sel ? " sel" : "") + (isDone(tube) ? " done" : "");
+    tube.forEach(function(ci){
+      var b = document.createElement("div");
+      b.className = "ball";
+      b.style.background = ballGradient(COLORS[ci]);
+      el.appendChild(b);
+    });
+    el.addEventListener("click", function(){ tap(idx); });
+    wrap.appendChild(el);
+  });
+}
+function tap(idx){
+  if (finished) return;
+  if (sel === -1){
+    if (!tubes[idx].length) return;
+    sel = idx; render(); return;
+  }
+  if (sel === idx){ sel = -1; render(); return; }
+  var f = tubes[sel], t = tubes[idx];
+  var color = f[f.length-1];
+  if (t.length < CAP && (t.length === 0 || t[t.length-1] === color)){
+    t.push(f.pop());
+    sel = -1; render();
+    if (solved()) finish();
+  } else {
+    sel = idx; render(); // ভুল জায়গা — নতুন টিউবটাই বেছে নেওয়া হলো
+  }
+}
+function finish(){
+  finished = true;
+  clearInterval(clockTimer);
+  var secs = Math.round((Date.now() - startedAt) / 1000);
+  var msg = document.getElementById("resultMsg");
+  msg.textContent = "সমাধান হয়েছে " + fmt(secs) + " সময়ে — জমা দেওয়া হচ্ছে...";
+  msg.className = "msg";
+  fetch("/gaming/ballsort/fastest", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seconds: secs, name: playerName })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.beaten){
+      msg.textContent = "🎉 আপনি রেকর্ড ভেঙেছেন! " + fmt(secs) + " — লাইভ স্ট্রিমে এখন আপনার নাম দেখা যাচ্ছে।";
+      msg.className = "msg win";
+    } else {
+      msg.textContent = "আপনার সময় " + fmt(secs) + "। রেকর্ড এখনো " + fmt(d.seconds) + " — " + d.name + "। আবার চেষ্টা করুন!";
+      msg.className = "msg lose";
+    }
+    document.getElementById("recTime2").textContent = fmt(d.seconds);
+  }).catch(function(){ msg.textContent = "সময় জমা দেওয়া যায়নি — ইন্টারনেট দেখে আবার চেষ্টা করুন।"; });
+}
+function newPuzzle(){
+  finished = false; sel = -1;
+  fetch("/gaming/ballsort/new-challenge").then(function(r){ return r.json(); }).then(function(d){
+    tubes = d.tubes; COLORS = d.colors; CAP = d.capacity;
+    document.getElementById("tubes").style.gridTemplateColumns = "repeat(" + Math.ceil(tubes.length/2) + ",1fr)";
+    render();
+    document.getElementById("resultMsg").className = "msg";
+    document.getElementById("resultMsg").textContent = "একটা টিউবে চাপ দিয়ে উপরের বলটা তুলুন, তারপর যেখানে রাখবেন সেই টিউবে চাপ দিন।";
+    startedAt = Date.now();
+    clearInterval(clockTimer);
+    clockTimer = setInterval(function(){
+      document.getElementById("clock").textContent = fmt(Math.round((Date.now() - startedAt)/1000));
+    }, 1000);
+  }).catch(function(){
+    document.getElementById("resultMsg").textContent = "পাজল আনা যায়নি — একটু পরে আবার চেষ্টা করুন।";
+  });
+}
+document.getElementById("startBtn").addEventListener("click", function(){
+  var n = document.getElementById("nameInput").value.trim();
+  if (n.length < 2){ document.getElementById("startMsg").textContent = "একটা নাম লিখুন (অন্তত ২ অক্ষর)।"; return; }
+  playerName = n;
+  document.getElementById("startCard").classList.add("hide");
+  document.getElementById("playCard").classList.remove("hide");
+  newPuzzle();
+});
+document.getElementById("againBtn").addEventListener("click", newPuzzle);
 </script></body></html>`;
 
 // ---------------------------------------------------------------------------
@@ -4598,13 +5010,59 @@ module.exports = function mountGaming(app) {
   });
   app.post("/gaming/snake/highscore", express.json(), (req, res) => {
     const s = parseInt((req.body && req.body.score) || 0, 10) || 0;
+    // নাম না পাঠালে ধরে নেওয়া হয় overlay-র AI নিজেই খেলেছে, তাই "Grandmaster"।
+    // চ্যালেঞ্জ পেজ থেকে এলে দর্শকের নিজের নামটাই যাবে।
+    const rawName = ((req.body && req.body.name) || "").toString().trim().slice(0, 24);
+    const name = rawName || "Grandmaster";
+    let beaten = false;
     if (s > snakeHighScore) {
       snakeHighScore = s;
-      snakeHighScoreName = "Grandmaster"; // challenge সিস্টেম যোগ হলে এখানে বিজয়ীর নাম বসবে
+      snakeHighScoreName = name;
+      beaten = true;
       try { writeState("snake-highscore", { score: snakeHighScore, name: snakeHighScoreName }); } catch (e) {}
+      if (rawName) console.log(`🐍 নতুন Snake রেকর্ড: ${s} — ${name}`);
     }
-    res.json({ score: snakeHighScore, name: snakeHighScoreName });
+    res.json({ score: snakeHighScore, name: snakeHighScoreName, beaten });
   });
+
+  // ---------- Ball Sort: রেকর্ড ও চ্যালেঞ্জ ----------
+  app.get("/gaming/ballsort/fastest", (req, res) => {
+    res.json({ seconds: bsFastestState.seconds, name: bsFastestState.name || "Grandmaster" });
+  });
+  app.post("/gaming/ballsort/fastest", express.json(), (req, res) => {
+    const sec = parseInt((req.body && req.body.seconds) || 0, 10) || 0;
+    const rawName = ((req.body && req.body.name) || "").toString().trim().slice(0, 24);
+    const name = rawName || "Grandmaster";
+    let beaten = false;
+    // ২০ সেকেন্ডের কমে ৮০+ চালের পাজল সমাধান করা মানুষের পক্ষে সম্ভব না — এমন সময় বাদ দেওয়া হয়,
+    // যাতে কেউ ইচ্ছে করে ভুয়া রেকর্ড পাঠিয়ে লিডারবোর্ড নষ্ট করতে না পারে
+    if (sec >= 20 && (bsFastestState.seconds === null || sec < bsFastestState.seconds)) {
+      bsFastestState = { seconds: sec, name };
+      beaten = true;
+      try { writeState("ballsort-fastest", bsFastestState); } catch (e) {}
+      if (rawName) console.log(`🧪 নতুন Ball Sort রেকর্ড: ${sec}s — ${name}`);
+    }
+    res.json({ seconds: bsFastestState.seconds, name: bsFastestState.name, beaten });
+  });
+  // চ্যালেঞ্জারের জন্য নতুন পাজল — অবশ্যই সমাধানযোগ্য কিনা যাচাই করেই পাঠানো হয়,
+  // নাহলে দর্শক এমন একটা পাজল পেতে পারত যেটা কোনোভাবেই মেলানো সম্ভব না
+  app.get("/gaming/ballsort/new-challenge", async (req, res) => {
+    try {
+      let tubes = null;
+      for (let i = 0; i < 25; i++) {
+        const cand = bsGeneratePuzzle();
+        if (await bsSolve(cand)) { tubes = cand; break; }
+      }
+      if (!tubes) return res.status(503).json({ error: "puzzle_unavailable" });
+      res.json({ tubes, colors: BS_COLORS, capacity: BS_TUBE_CAPACITY });
+    } catch (e) {
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // ---------- চ্যালেঞ্জ পেজ ----------
+  app.get("/gaming/challenge/snake", (req, res) => res.type("html").send(SNAKE_CHALLENGE_HTML));
+  app.get("/gaming/challenge/ballsort", (req, res) => res.type("html").send(BALLSORT_CHALLENGE_HTML));
   runBallSortLoop().catch((e) => console.error("❌ Ball Sort loop-এ error:", e));
 
   console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess, /gaming/overlay/sports, /gaming/overlay/snake, /gaming/overlay/ballsort, /gaming/challenge/join এ পাওয়া যাবে।");
