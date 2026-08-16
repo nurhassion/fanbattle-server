@@ -9,7 +9,7 @@
 // এই ফাইল যা করে:
 //   - config/schedule.json এর বদলে নিচের SCHEDULE অবজেক্ট থেকে সময়সূচি পড়ে
 //     (এই ফাইলের ভেতরেই এডিট করবেন, আলাদা ফাইল না)
-//   - /gaming/overlay/chess ও /gaming/overlay/sports রুট চালু করে (HTML এই
+//   - /gaming/overlay/chess ইত্যাদি রুট চালু করে (HTML এই
 //     ফাইলের ভেতরেই লেখা, আলাদা .html ফাইল লাগে না)
 //   - Stockfish দিয়ে চেস ইঞ্জিন ব্যাটেল চালায়, chess.js দিয়ে বৈধতা যাচাই করে
 //   - CricAPI/football-data.org থেকে লাইভ স্কোর টানে
@@ -53,7 +53,6 @@ const upload = multer ? multer({ dest: CHALLENGE_UPLOAD_DIR, limits: { fileSize:
 const SCHEDULE = {
   timezone: "Asia/Kolkata",
   channels: {
-    sportsgaming: { youtubeChannelId: "PUT_YOUR_SPORTS_CHANNEL_ID_HERE" },
     boardgames: { youtubeChannelId: "PUT_YOUR_GAMING_CHANNEL_ID_HERE" },
   },
   blocks: [
@@ -67,16 +66,6 @@ const SCHEDULE = {
       title: "🔥 AI vs AI Chess Battle LIVE | Stockfish vs Stockfish | চাল বিশ্লেষণ সহ",
       description:
         "দুটো Stockfish ইঞ্জিন নিজেদের মধ্যে লড়ছে — প্রতিটা গেম শেষে বাংলায় চাল বিশ্লেষণ ও নিয়ম ব্যাখ্যা।\n\n#chess #ai #livestream",
-    },
-    {
-      id: "midday-sports",
-      channel: "sportsgaming",
-      days: [0, 1, 2, 3, 4, 5, 6],
-      start: "00:00",
-      end: "23:59",
-      game: "sports",
-      title: "🏆 LIVE Score Update | সবচেয়ে বড় ম্যাচ",
-      description: "লাইভ স্কোর আপডেট — নিজস্ব অ্যানিমেটেড স্কোরবোর্ডে।\n\n#cricket #football #livescore",
     },
   ],
 };
@@ -106,8 +95,6 @@ function readState(name) {
 // ⚠️ এই দুটো key সরাসরি কোডে বসানো আছে টেস্টিং সহজ করতে। এটা কখনো public
 // repo-তে না রাখাই ভালো অভ্যাস — পরে VPS-এ deploy করার সময় Environment
 // Variables-এ সরিয়ে নেবেন (README-তে বলা আছে)।
-const CRICAPI_KEY = process.env.CRICAPI_KEY || "0640b807-8962-4662-b00b-cd0c6f42a437";
-const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY || "6de99c89e60241018c28622a9e441c9f";
 
 const VOICE = process.env.TTS_VOICE || "bn-BD-NabanitaNeural";
 function textToSpeech(text) {
@@ -615,205 +602,6 @@ async function playOneChessGame(Chess) {
   } catch (e) {
     console.error("TTS সমস্যা (edge-tts ইনস্টল আছে কিনা চেক করুন):", e.message);
   }
-}
-
-// ---------------------------------------------------------------------------
-// ৫. স্পোর্টস — CricAPI + football-data.org
-// ---------------------------------------------------------------------------
-let sportsTrackerInterval = null;
-
-async function findLiveCricketMatch() {
-  const key = CRICAPI_KEY;
-  if (!key) return null;
-  const res = await fetch(`https://api.cricapi.com/v1/currentMatches?apikey=${key}&offset=0`);
-  const json = await res.json();
-  const matches = (json.data || []).filter((m) => m.matchStarted && !m.matchEnded);
-  if (matches.length === 0) return null;
-  const m = matches[0];
-  return {
-    sport: "cricket",
-    sportEmoji: "🏏",
-    matchId: m.id,
-    teamA: m.teams?.[0] || "Team A",
-    teamB: m.teams?.[1] || "Team B",
-    competition: m.name || "লাইভ ক্রিকেট ম্যাচ",
-  };
-}
-async function findLiveFootballMatch() {
-  const key = FOOTBALL_DATA_KEY;
-  if (!key) return null;
-  const res = await fetch("https://api.football-data.org/v4/matches?status=LIVE", {
-    headers: { "X-Auth-Token": key },
-  });
-  const json = await res.json();
-  const matches = json.matches || [];
-  if (matches.length === 0) return null;
-  const m = matches[0];
-  return {
-    sport: "football",
-    sportEmoji: "⚽",
-    matchId: m.id,
-    teamA: m.homeTeam?.shortName || "Team A",
-    teamB: m.awayTeam?.shortName || "Team B",
-    competition: m.competition?.name || "লাইভ ফুটবল ম্যাচ",
-  };
-}
-async function fetchCricketScore(matchId) {
-  const key = CRICAPI_KEY;
-  const res = await fetch(`https://api.cricapi.com/v1/match_info?apikey=${key}&id=${matchId}`);
-  const json = await res.json();
-  const d = json.data;
-  if (!d) return null;
-  return {
-    matchEnded: !!d.matchEnded,
-    scores: (d.score || []).map((s) => ({ runs: s.r, wickets: s.w, overs: s.o })),
-  };
-}
-
-// ব্যাটসম্যান/বোলারের বিস্তারিত (রান, বল, স্ট্রাইক রেট, ওভার, ইকোনমি) — CricAPI-র সংস্করণভেদে
-// field-এর নাম আলাদা হতে পারে, তাই একাধিক সম্ভাব্য key চেষ্টা করা হয়। এই কল fail করলে বা
-// কোনো ডেটা না মিললে শুধু null রিটার্ন করে — বাকি scoreboard-এ কোনো প্রভাব পড়ে না।
-async function fetchCricketScorecard(matchId) {
-  try {
-    const key = CRICAPI_KEY;
-    const res = await fetch(`https://api.cricapi.com/v1/match_scorecard?apikey=${key}&id=${matchId}`);
-    const json = await res.json();
-    const d = json.data;
-    if (!d || !d.scorecard || !d.scorecard.length) return null;
-    const inn = d.scorecard[d.scorecard.length - 1];
-
-    const battingList = inn.batting || inn.batsmen || [];
-    const allBatters = battingList.map((b) => {
-      const dis = b.dismissal || b["dismissal-text"] || b.dismissal_text || "";
-      const isOut = dis && !dis.toLowerCase().includes("not out") && !dis.toLowerCase().includes("batting");
-      return {
-        name: b.name || b.batsman?.name || "—",
-        runs: b.r ?? b.runs ?? 0,
-        balls: b.b ?? b.balls ?? 0,
-        sr: b.sr ?? (b.b || b.balls ? (((b.r ?? b.runs ?? 0) / (b.b || b.balls)) * 100).toFixed(1) : "0"),
-        out: isOut,
-      };
-    });
-    // এখনো ব্যাট করছে এমন (২ জনের বেশি না, top-এ), বাকিরা "আউট হওয়া" তালিকায়
-    const notOut = allBatters.filter((b) => !b.out).slice(0, 2);
-    const outBatters = allBatters.filter((b) => b.out);
-
-    const bowlingList = inn.bowling || inn.bowlers || [];
-    const allBowlers = bowlingList.map((bw) => ({
-      name: bw.name || bw.bowler?.name || "—",
-      overs: bw.o ?? bw.overs ?? 0,
-      runs: bw.r ?? bw.runs ?? 0,
-      wickets: bw.w ?? bw.wickets ?? 0,
-      economy: bw.eco ?? bw.economy ?? "-",
-    }));
-    const currentBowler = allBowlers[allBowlers.length - 1] || null;
-
-    return { batters: notOut, outBatters, bowler: currentBowler, allBowlers };
-  } catch (e) {
-    return null; // scorecard না পেলেও মূল স্কোরবোর্ড ঠিকই কাজ করবে
-  }
-}
-async function fetchFootballScore(matchId) {
-  const key = FOOTBALL_DATA_KEY;
-  const res = await fetch(`https://api.football-data.org/v4/matches/${matchId}`, {
-    headers: { "X-Auth-Token": key },
-  });
-  const m = await res.json();
-  return { minute: m.minute, homeGoals: m.score?.fullTime?.home ?? 0, awayGoals: m.score?.fullTime?.away ?? 0 };
-}
-
-// দেশ/টিমের নাম থেকে flag emoji বের করার হেল্পার — "Tanzania Women", "India U19" ইত্যাদি
-// suffix বাদ দিয়ে মূল দেশের নাম মিলিয়ে flag emoji রিটার্ন করে। না মিললে খালি স্ট্রিং (কোনো flag দেখাবে না)।
-const COUNTRY_FLAGS = {
-  india: "🇮🇳", australia: "🇦🇺", england: "🏴", pakistan: "🇵🇰", "sri lanka": "🇱🇰",
-  bangladesh: "🇧🇩", "new zealand": "🇳🇿", "south africa": "🇿🇦", "west indies": "🏴",
-  afghanistan: "🇦🇫", zimbabwe: "🇿🇼", ireland: "🇮🇪", scotland: "🏴", netherlands: "🇳🇱",
-  nepal: "🇳🇵", uae: "🇦🇪", oman: "🇴🇲", usa: "🇺🇸", canada: "🇨🇦", namibia: "🇳🇦",
-  uganda: "🇺🇬", tanzania: "🇹🇿", kenya: "🇰🇪", rwanda: "🇷🇼", nigeria: "🇳🇬",
-};
-function getFlagEmoji(teamName) {
-  if (!teamName) return "";
-  const cleaned = teamName.toLowerCase().replace(/\b(women|men|u-?19|u-?23|xi|a team|emerging)\b/g, "").trim();
-  return COUNTRY_FLAGS[cleaned] || "";
-}
-
-async function startSportsTracking() {
-  if (sportsTrackerInterval) clearInterval(sportsTrackerInterval);
-
-  const [cricket, football] = await Promise.all([findLiveCricketMatch().catch(() => null), findLiveFootballMatch().catch(() => null)]);
-  const context = cricket || football || {
-    sport: null,
-    sportEmoji: "📺",
-    teamA: "কোনো",
-    teamB: "লাইভ ম্যাচ নেই",
-    competition: "এই মুহূর্তে কোনো বড় ম্যাচ চলছে না",
-  };
-  context.flagA = getFlagEmoji(context.teamA);
-  context.flagB = getFlagEmoji(context.teamB);
-  writeState("sports", { ...context, score: null });
-  if (!context.matchId) return;
-
-  let prevScore = null;
-  const fetchAndUpdate = async () => {
-    try {
-      const score = context.sport === "cricket" ? await fetchCricketScore(context.matchId) : await fetchFootballScore(context.matchId);
-      if (!score) return;
-
-      // ম্যাচ শেষ হয়ে গেলে — এই ট্র্যাকার বন্ধ করে নতুন লাইভ ম্যাচ খোঁজা শুরু করা,
-      // যাতে স্কোরবোর্ড কখনো "আটকে" থেকে না যায়
-      if (context.sport === "cricket" && score.matchEnded) {
-        console.log(`[sportsgaming] ম্যাচ শেষ হয়ে গেছে (${context.teamA} vs ${context.teamB}) — নতুন ম্যাচ খোঁজা হচ্ছে...`);
-        clearInterval(sportsTrackerInterval);
-        startSportsTracking(); // পুনরায় শুরু, নতুন ম্যাচ detect করবে
-        return;
-      }
-
-      let event = null;
-      if (context.sport === "cricket" && prevScore) {
-        const p = prevScore.scores?.[prevScore.scores.length - 1];
-        const n = score.scores?.[score.scores.length - 1];
-        if (p && n) {
-          if (n.wickets > p.wickets) event = { type: "wicket", textBn: "উইকেট পড়ল! বড় ধাক্কা।" };
-          else if (n.runs - p.runs === 6) event = { type: "six", textBn: "ছক্কা! বল সীমানার বাইরে।" };
-          else if (n.runs - p.runs === 4) event = { type: "four", textBn: "চার! দারুণ শট।" };
-        }
-      } else if (context.sport === "football" && prevScore) {
-        if (score.homeGoals + score.awayGoals > prevScore.homeGoals + prevScore.awayGoals) {
-          event = { type: "goal", textBn: "গোওল!! দুর্দান্ত ফিনিশ।" };
-        }
-      }
-      const state = { ...context, score, updatedAt: Date.now() };
-      if (context.sport === "cricket") {
-        const scorecard = await fetchCricketScorecard(context.matchId);
-        if (scorecard) {
-          state.batters = scorecard.batters;
-          state.outBatters = scorecard.outBatters;
-          state.bowler = scorecard.bowler;
-          state.allBowlers = scorecard.allBowlers;
-        }
-      }
-      if (event) {
-        try {
-          event.audioUrl = await textToSpeech(event.textBn);
-          event.at = Date.now();
-          state.lastEvent = event;
-        } catch (e) {
-          console.error("event TTS সমস্যা:", e.message);
-        }
-      }
-      writeState("sports", state);
-      prevScore = score;
-    } catch (e) {
-      console.error("sports fetch সমস্যা:", e.message);
-    }
-  };
-
-  await fetchAndUpdate(); // প্রথম স্কোর সাথে সাথেই আনা হয় — ৩ মিনিট অপেক্ষা করতে হয় না
-  sportsTrackerInterval = setInterval(fetchAndUpdate, 180000); // এরপর থেকে প্রতি ৩ মিনিটে একবার (ফ্রি API সীমা বাঁচাতে)
-}
-function stopSportsTracking() {
-  if (sportsTrackerInterval) clearInterval(sportsTrackerInterval);
-  sportsTrackerInterval = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1715,263 +1503,10 @@ function showDonorCelebration(name, amount, photo){
 }
 </script></body></html>`;
 
-const SPORTS_OVERLAY_HTML = `<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><title>Sports</title>
-<style>
-*{box-sizing:border-box;}
-body{margin:0;background:linear-gradient(160deg,#0a0e1f 0%,#0d1a12 60%,#0a0e1f 100%);color:#F5F7FA;font-family:'Segoe UI',sans-serif;min-height:100vh;padding:0 0 24px;}
-.scorebar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:20px 32px;
-background:#12182b;border-bottom:3px solid #FFD866;box-shadow:0 6px 20px rgba(0,0,0,0.6);}
-.teamBlock{display:flex;align-items:center;gap:12px;}
-.teamBlock.right{justify-content:flex-end;}
-.flagBig{font-size:34px;}
-.team{font-size:24px;font-weight:800;color:#fff;}
-.score{font-family:'Consolas',monospace;font-size:42px;color:#FFD866;font-weight:800;}
-.mid{text-align:center;font-size:14px;color:#7C8AAD;padding:0 24px;}
-.competition{text-align:center;padding:10px;color:#7C8AAD;font-size:15px;background:#0d1220;font-weight:600;}
-
-.mainGrid{display:grid;grid-template-columns:280px 1fr 280px;gap:22px;max-width:1360px;margin:22px auto 0;padding:0 22px;}
-.statCard{background:#131a2c;border:1px solid #26314f;border-radius:16px;padding:18px;
-box-shadow:0 12px 28px rgba(0,0,0,0.55);}
-.statCard h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:#FFD866;font-weight:800;}
-.batterRow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;
-border-bottom:1px solid #202a44;}
-.batterRow:last-child{border-bottom:none;}
-.batterRow.out{opacity:0.45;}
-.batterName{font-size:14px;font-weight:700;color:#fff;}
-.batterFigs{font-family:monospace;color:#4FC3F7;font-size:15px;text-align:right;font-weight:700;}
-.batterSR{color:#7C8AAD;font-size:10px;}
-.bowlerBox{text-align:center;padding:8px 0;border-bottom:1px solid #202a44;}
-.bowlerBox:last-child{border-bottom:none;}
-.bowlerBox.current{background:rgba(255,216,102,0.08);border-radius:8px;}
-.bowlerName{font-size:15px;font-weight:700;color:#fff;}
-.bowlerFigs{font-family:monospace;color:#4FC3F7;font-size:20px;margin-top:4px;font-weight:800;}
-.bowlerEco{color:#7C8AAD;font-size:11px;margin-top:2px;}
-
-.videoSlot{width:100%;max-width:640px;margin:0 auto 14px;height:120px;border:2px dashed #26314f;border-radius:12px;
-display:flex;align-items:center;justify-content:center;color:#4a5578;font-size:13px;text-align:center;padding:10px;}
-
-.groundWrap{display:flex;justify-content:center;}
-.ground{position:relative;width:100%;max-width:640px;height:400px;
-background:radial-gradient(ellipse at 50% 45%,#2f8a44 0%,#1d5c2e 55%,#0f2e17 100%);
-border-radius:50%;box-shadow:0 20px 50px rgba(0,0,0,0.65), inset 0 0 60px rgba(0,0,0,0.4);
-border:4px solid #1a2338;}
-.pitchStrip{position:absolute;left:50%;top:32%;transform:translateX(-50%);width:52px;height:36%;
-background:linear-gradient(180deg,#e0cd9a,#c8b077);border-radius:3px;box-shadow:0 4px 10px rgba(0,0,0,0.5);}
-.fielder{position:absolute;width:16px;height:16px;border-radius:50%;background:#4FC3F7;
-box-shadow:0 3px 4px rgba(0,0,0,0.5);transform:translate(-50%,-50%);}
-.fielder::after{content:"";position:absolute;left:50%;top:110%;width:14px;height:5px;
-background:rgba(0,0,0,0.4);border-radius:50%;transform:translateX(-50%);}
-.player{position:absolute;transition:left 0.6s ease, top 0.6s ease;transform:translate(-50%,-50%);}
-.player svg{overflow:visible;filter:drop-shadow(0 6px 4px rgba(0,0,0,0.5));}
-.playerShadow{position:absolute;width:26px;height:8px;background:rgba(0,0,0,0.4);border-radius:50%;
-left:50%;bottom:-4px;transform:translateX(-50%);filter:blur(1px);}
-#bowler{left:50%;top:70%;}
-#striker{left:50%;top:30%;}
-
-@keyframes bowlArm{0%{transform:rotate(-40deg);}55%{transform:rotate(-40deg);}75%{transform:rotate(120deg);}100%{transform:rotate(160deg);}}
-.anim-bowl .arm{animation:bowlArm 0.6s ease-out forwards;transform-origin:0px -12px;}
-@keyframes batSwing{0%,40%{transform:rotate(70deg);}60%{transform:rotate(70deg);}78%{transform:rotate(-35deg);}100%{transform:rotate(-55deg);}}
-.anim-bat .bat{animation:batSwing 0.7s ease-out forwards;transform-origin:2px -2px;}
-
-.ball{position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 6px rgba(255,255,255,0.9);
-left:50%;top:66%;opacity:0;}
-@keyframes flyBall{0%{left:50%;top:66%;opacity:0;}10%{opacity:1;}50%{left:50%;top:48%;}100%{left:50%;top:32%;opacity:1;}}
-.ball.fly{animation:flyBall 0.7s cubic-bezier(.4,0,.2,1) forwards;}
-
-.recentBalls{display:flex;gap:7px;justify-content:center;margin-top:16px;flex-wrap:wrap;max-width:640px;margin-left:auto;margin-right:auto;}
-.ballChip{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-font-size:13px;font-weight:800;background:#1c2a42;color:#7C8AAD;border:1px solid #26314f;}
-.ballChip.four{background:#4FC3F7;color:#0a0e1f;}
-.ballChip.six{background:#FFD866;color:#0a0e1f;}
-.ballChip.wicket{background:#E5484D;color:#fff;}
-
-.flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);
-font-size:96px;font-weight:900;opacity:0;pointer-events:none;}
-.flash.show{animation:pop 1.6s ease-out forwards;}
-@keyframes pop{0%{opacity:0;transform:scale(.5) rotate(-8deg);}25%{opacity:1;transform:scale(1.1) rotate(2deg);}
-55%{transform:scale(1) rotate(0);}100%{opacity:0;}}
-</style></head><body>
-<div class="scorebar">
-  <div class="teamBlock"><span class="flagBig" id="flagA"></span><span class="team" id="teamA">—</span></div>
-  <div class="mid"><div style="font-size:18px;" id="sportEmoji">🏆</div><div class="score" id="scoreA">-</div></div>
-  <div class="teamBlock right"><span class="team" id="teamB">—</span><span class="flagBig" id="flagB"></span></div>
-</div>
-<div class="scorebar" style="grid-template-columns:1fr;padding:6px;">
-<div class="score" id="scoreB" style="text-align:center;font-size:22px;">-</div></div>
-<div class="competition" id="competition">লাইভ ম্যাচ খোঁজা হচ্ছে...</div>
-
-<div class="mainGrid">
-  <div class="statCard" id="battingCard">
-    <h3>🏏 BATTING</h3>
-    <div id="battersList"><div style="color:#5a6a8a;font-size:13px;">তথ্য আসছে...</div></div>
-  </div>
-
-  <div>
-    <!-- এখানে চাইলে মাঠের real ভিডিও/ফুটেজ embed করা যাবে (iframe/video ট্যাগ বসিয়ে) —
-         নিজস্ব কনটেন্ট ছাড়া real broadcast embed করলে কপিরাইট সমস্যা হতে পারে, তাই এই
-         জায়গাটা ইচ্ছাকৃতভাবে খালি/placeholder রাখা হলো, আপনি নিজের পছন্দমতো ভরে দিতে পারবেন -->
-    <div class="videoSlot">🎥 এখানে চাইলে নিজস্ব ভিডিও/ইমেজ embed করা যাবে (video/iframe ট্যাগ)</div>
-    <div class="groundWrap"><div class="ground" id="pitch">
-      <div class="pitchStrip"></div>
-      <div class="fielder" style="left:50%;top:38%;" title="উইকেটকিপার"></div>
-      <div class="fielder" style="left:44%;top:36%;" title="স্লিপ"></div>
-      <div class="fielder" style="left:30%;top:45%;" title="কভার"></div>
-      <div class="fielder" style="left:22%;top:60%;" title="পয়েন্ট"></div>
-      <div class="fielder" style="left:28%;top:78%;" title="মিড-উইকেট"></div>
-      <div class="fielder" style="left:42%;top:88%;" title="মিড-অন"></div>
-      <div class="fielder" style="left:58%;top:88%;" title="মিড-অফ"></div>
-      <div class="fielder" style="left:72%;top:78%;" title="কভার পয়েন্ট"></div>
-      <div class="fielder" style="left:78%;top:60%;" title="থার্ড ম্যান"></div>
-      <div class="fielder" style="left:70%;top:45%;" title="গালি"></div>
-      <div class="fielder" style="left:56%;top:36%;" title="ফাইন লেগ"></div>
-      <div class="player" id="bowler">
-        <div class="playerShadow"></div>
-        <svg width="46" height="60" viewBox="-20 -20 40 60">
-          <g><line x1="0" y1="20" x2="-5" y2="34" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/>
-          <line x1="0" y1="20" x2="5" y2="34" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/>
-          <rect x="-5" y="4" width="10" height="17" rx="3" fill="#4FC3F7"/>
-          <g transform="translate(0,8)"><line class="arm" x1="0" y1="0" x2="12" y2="-6" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/></g>
-          <circle cx="0" cy="-3" r="5.5" fill="#E8B48A"/></g>
-        </svg>
-        <div style="font-size:10px;color:#fff;background:rgba(0,0,0,0.5);border-radius:3px;padding:1px 4px;margin-top:2px;">বোলার</div>
-      </div>
-      <div class="player" id="striker">
-        <div class="playerShadow"></div>
-        <svg width="46" height="60" viewBox="-20 -20 40 60">
-          <g><line x1="0" y1="20" x2="-4" y2="34" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/>
-          <line x1="0" y1="20" x2="4" y2="34" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/>
-          <rect x="-5" y="4" width="10" height="17" rx="3" fill="#FFD866"/>
-          <line x1="0" y1="8" x2="-8" y2="18" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/>
-          <g transform="translate(0,8)"><line x1="0" y1="0" x2="9" y2="-14" stroke="#E8B48A" stroke-width="3" stroke-linecap="round"/></g>
-          <g transform="translate(9,-6)"><rect class="bat" x="-1.5" y="0" width="3" height="16" rx="1.5" fill="#D8B26A"/></g>
-          <circle cx="0" cy="-3" r="5.5" fill="#E8B48A"/></g>
-        </svg>
-        <div style="font-size:10px;color:#fff;background:rgba(0,0,0,0.5);border-radius:3px;padding:1px 4px;margin-top:2px;">ব্যাটসম্যান</div>
-      </div>
-      <div class="ball" id="ball"></div>
-    </div></div>
-    <div class="recentBalls" id="recentBalls"></div>
-  </div>
-
-  <div class="statCard" id="bowlingCard">
-    <h3>⚾ BOWLING</h3>
-    <div id="bowlersList"><div style="color:#5a6a8a;font-size:13px;">তথ্য আসছে...</div></div>
-  </div>
-</div>
-
-<div class="flash" id="flash"></div><audio id="narrator" autoplay></audio>
-<button id="soundBtn" style="position:fixed;top:12px;right:12px;background:#FFD866;border:none;
-border-radius:6px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:700;z-index:50;">🔊 সাউন্ড ও মাঠের আবহ চালু করুন</button>
-<script>
-let audioCtx = null, crowdNode = null;
-// মাঠের হালকা আবহ-শব্দ (crowd murmur) — ফিল্টার করা white noise দিয়ে generate,
-// কোনো কপিরাইটেড অডিও ফাইল লাগে না, সম্পূর্ণ ব্রাউজারে তৈরি
-function startCrowdAmbience() {
-  if (crowdNode) return;
-  const bufferSize = 2 * audioCtx.sampleRate;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer; noise.loop = true;
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = "bandpass"; filter.frequency.value = 700; filter.Q.value = 0.6;
-  const gain = audioCtx.createGain(); gain.gain.value = 0.025;
-  noise.connect(filter).connect(gain).connect(audioCtx.destination);
-  noise.start();
-  crowdNode = { noise, gain };
-}
-document.getElementById("soundBtn").addEventListener("click",()=>{
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  audioCtx.resume();
-  const a=document.getElementById("narrator"); a.play().catch(()=>{});
-  startCrowdAmbience();
-  document.getElementById("soundBtn").style.display="none";
-});
-let lastEventAt=0;const audioEl=document.getElementById("narrator");const flashEl=document.getElementById("flash");
-const FLASH={wicket:{t:"OUT!",c:"#E5484D"},six:{t:"SIX!",c:"#FFD866"},four:{t:"FOUR!",c:"#4FC3F7"},goal:{t:"GOAL!",c:"#2ECC71"}};
-function showFlash(type){const cfg=FLASH[type];if(!cfg)return;flashEl.textContent=cfg.t;flashEl.style.color=cfg.c;
-flashEl.classList.remove("show");void flashEl.offsetWidth;flashEl.classList.add("show");}
-
-function playBallAnimation() {
-  const bowlerEl = document.getElementById("bowler");
-  const strikerEl = document.getElementById("striker");
-  const ballEl = document.getElementById("ball");
-  bowlerEl.classList.remove("anim-bowl"); void bowlerEl.offsetWidth; bowlerEl.classList.add("anim-bowl");
-  strikerEl.classList.remove("anim-bat"); void strikerEl.offsetWidth; strikerEl.classList.add("anim-bat");
-  ballEl.classList.remove("fly"); void ballEl.offsetWidth; ballEl.classList.add("fly");
-}
-
-function renderBatters(notOut, out) {
-  const el = document.getElementById("battersList");
-  const all = [...(notOut||[]), ...((out||[]).slice(0,4))];
-  if (!all.length) { el.innerHTML = '<div style="color:#5a6a8a;font-size:13px;">তথ্য পাওয়া যায়নি</div>'; return; }
-  el.innerHTML = all.map(b =>
-    '<div class="batterRow'+(b.out?" out":"")+'"><div class="batterName">'+b.name+(b.out?" (out)":" *")+'</div>' +
-    '<div><div class="batterFigs">'+b.runs+'('+b.balls+')</div><div class="batterSR">SR '+b.sr+'</div></div></div>'
-  ).join("");
-}
-function renderBowlers(allBowlers) {
-  const el = document.getElementById("bowlersList");
-  if (!allBowlers || !allBowlers.length) { el.innerHTML = '<div style="color:#5a6a8a;font-size:13px;">তথ্য পাওয়া যায়নি</div>'; return; }
-  const list = allBowlers.slice(-4).reverse();
-  el.innerHTML = list.map((bw,i) =>
-    '<div class="bowlerBox'+(i===0?" current":"")+'"><div class="bowlerName">'+bw.name+'</div>' +
-    '<div class="bowlerFigs">'+bw.wickets+'-'+bw.runs+'</div>' +
-    '<div class="bowlerEco">'+bw.overs+' ov · Eco '+bw.economy+'</div></div>'
-  ).join("");
-}
-
-let lastScoreSnapshot = "";
-async function poll(){try{
-  const res=await fetch("/gaming/state/sports.json?t="+Date.now());const data=await res.json();
-  document.getElementById("sportEmoji").textContent=data.sportEmoji||"🏆";
-  document.getElementById("teamA").textContent=data.teamA||"—";
-  document.getElementById("teamB").textContent=data.teamB||"—";
-  document.getElementById("flagA").textContent=data.flagA||"";
-  document.getElementById("flagB").textContent=data.flagB||"";
-  document.getElementById("competition").textContent=data.competition||"";
-  document.getElementById("pitch").style.display = data.sport === "cricket" ? "block" : "none";
-  document.getElementById("battingCard").style.display = data.sport === "cricket" ? "block" : "none";
-  document.getElementById("bowlingCard").style.display = data.sport === "cricket" ? "block" : "none";
-
-  let scoreSnapshot = "";
-  if(data.sport==="cricket"&&data.score&&data.score.scores&&data.score.scores.length){
-    const inn=data.score.scores[data.score.scores.length-1];
-    document.getElementById("scoreA").textContent=inn.runs+"/"+inn.wickets;
-    document.getElementById("scoreB").textContent="("+inn.overs+" ov)";
-    scoreSnapshot = inn.runs+"-"+inn.wickets+"-"+inn.overs;
-  }else if(data.sport==="football"&&data.score){
-    document.getElementById("scoreA").textContent=data.score.homeGoals+" - "+data.score.awayGoals;
-    document.getElementById("scoreB").textContent=data.score.minute?(data.score.minute+"'"):"";
-  }
-  renderBatters(data.batters, data.outBatters);
-  renderBowlers(data.allBowlers);
-
-  if (scoreSnapshot && lastScoreSnapshot && scoreSnapshot !== lastScoreSnapshot) {
-    playBallAnimation();
-  }
-  lastScoreSnapshot = scoreSnapshot || lastScoreSnapshot;
-
-  if(data.lastEvent&&data.lastEvent.at!==lastEventAt){
-    lastEventAt=data.lastEvent.at;showFlash(data.lastEvent.type);
-    playBallAnimation();
-    const chip = document.createElement("div");
-    chip.className = "ballChip " + data.lastEvent.type;
-    chip.textContent = data.lastEvent.type === "six" ? "6" : data.lastEvent.type === "four" ? "4" : data.lastEvent.type === "wicket" ? "W" : "•";
-    const rb = document.getElementById("recentBalls");
-    rb.appendChild(chip);
-    while (rb.children.length > 12) rb.removeChild(rb.firstChild);
-    if(data.lastEvent.audioUrl){audioEl.src=data.lastEvent.audioUrl;audioEl.play().catch(()=>{});}
-  }
-}catch(e){}}
-setInterval(poll,3000);poll();
-</script></body></html>`;
-
 // ---------------------------------------------------------------------------
 // ৭. Scheduler — প্রতি মিনিটে চেক করে কোন block এখন active
 // ---------------------------------------------------------------------------
-let activeBlockId = { boardgames: null, sportsgaming: null };
+let activeBlockId = { boardgames: null };
 
 function nowInTZ(timezone) {
   try {
@@ -2005,13 +1540,11 @@ async function schedulerTick() {
 
     // ব্লক বদলাচ্ছে — আগেরটা বন্ধ করো
     if (channelKey === "boardgames") stopChessLoop();
-    if (channelKey === "sportsgaming") stopSportsTracking();
     activeBlockId[channelKey] = blockId;
 
     if (block) {
       console.log(`[${channelKey}] ব্লক শুরু: ${block.id} (${block.game})`);
       if (block.game === "chess") runChessLoop();
-      else if (block.game === "sports") startSportsTracking();
       // এখানে ভবিষ্যতে YouTube broadcast auto-start যোগ করা যাবে (youtubeClient অংশ)
     }
   }
@@ -4754,6 +4287,1147 @@ document.getElementById("startBtn").addEventListener("click", function(){
 document.getElementById("againBtn").addEventListener("click", newPuzzle);
 </script></body></html>`;
 
+
+// ===========================================================================
+// ৯. Code Live — "একটা অ্যাপ তৈরি হওয়া" লাইভ চ্যানেল
+// ---------------------------------------------------------------------------
+// পর্দায় একটা ল্যাপটপ। ভেতরে বাঁ পাশে কোড এডিটর — অক্ষর ধরে ধরে কোড টাইপ হতে থাকে, লাইন
+// ভরে গেলে উপরে উঠে যায়। ডান পাশে একটা ফোন, আর সেই কোড অনুযায়ী ধাপে ধাপে অ্যাপের স্ক্রিন
+// তৈরি হয় — লগইন, হোম, সার্চ, প্রোফাইল ইত্যাদি। একটা অ্যাপ শেষ হলে পরেরটা শুরু হয়, ২৪/৭।
+//
+// ⚠️ অ্যাপগুলো ইচ্ছে করেই কোনো আসল ব্র্যান্ডের নকল নয় — ধরন (মেসেজিং, খাবার ডেলিভারি,
+// রাইড, ব্যাংকিং...) এক, কিন্তু নাম/লোগো/রঙ সব নিজস্ব। আসল অ্যাপের ইন্টারফেস হুবহু নকল
+// করলে ট্রেডমার্ক/কপিরাইট সমস্যা হতে পারত, আর YouTube-এ স্ট্রাইকও আসতে পারত।
+// ===========================================================================
+const CODELIVE_APPS = [
+  {
+    name: "ChatWave", tag: "Messaging App", accent: "#4F8CFF", lang: "React Native",
+    screens: [
+      { file: "LoginScreen.jsx", label: "লগইন স্ক্রিন", ui: [
+          {t:"status"},{t:"hero",title:"ChatWave",sub:"Talk to anyone, anywhere"},
+          {t:"input",ph:"Phone number"},{t:"input",ph:"Password"},
+          {t:"btn",label:"Log in"},{t:"note",text:"New here? Create an account"}],
+        code: [
+          "import React, { useState } from 'react';",
+          "import { View, Text, TextInput, Pressable } from 'react-native';",
+          "",
+          "export default function LoginScreen({ navigation }) {",
+          "  const [phone, setPhone] = useState('');",
+          "  const [pass, setPass] = useState('');",
+          "  const [busy, setBusy] = useState(false);",
+          "",
+          "  async function handleLogin() {",
+          "    setBusy(true);",
+          "    const res = await api.post('/auth/login', { phone, pass });",
+          "    if (res.ok) navigation.replace('Home');",
+          "    setBusy(false);",
+          "  }",
+          "",
+          "  return (",
+          "    <View style={styles.wrap}>",
+          "      <Text style={styles.brand}>ChatWave</Text>",
+          "      <TextInput placeholder='Phone number' onChangeText={setPhone} />",
+          "      <TextInput placeholder='Password' secureTextEntry onChangeText={setPass} />",
+          "      <Pressable style={styles.cta} onPress={handleLogin}>",
+          "        <Text>{busy ? 'Please wait...' : 'Log in'}</Text>",
+          "      </Pressable>",
+          "    </View>",
+          "  );",
+          "}"] },
+      { file: "ChatList.jsx", label: "চ্যাট তালিকা", ui: [
+          {t:"status"},{t:"appbar",title:"Chats"},{t:"search",ph:"Search messages"},
+          {t:"row",icon:"A",title:"Ayesha",sub:"See you at 8 tonight!",meta:"2m"},
+          {t:"row",icon:"R",title:"Rahul",sub:"Sent the files ✓",meta:"14m"},
+          {t:"row",icon:"T",title:"Team Standup",sub:"Mira: pushed the fix",meta:"1h"},
+          {t:"row",icon:"N",title:"Nadia",sub:"Typing...",meta:"3h"},
+          {t:"tabbar",items:["Chats","Calls","You"]}],
+        code: [
+          "function ChatList() {",
+          "  const { data: threads, loading } = useThreads();",
+          "",
+          "  const renderItem = ({ item }) => (",
+          "    <Pressable onPress={() => open(item.id)}>",
+          "      <Avatar uri={item.photo} online={item.online} />",
+          "      <View>",
+          "        <Text style={styles.name}>{item.name}</Text>",
+          "        <Text numberOfLines={1}>{item.lastMessage}</Text>",
+          "      </View>",
+          "      <Text style={styles.time}>{ago(item.updatedAt)}</Text>",
+          "    </Pressable>",
+          "  );",
+          "",
+          "  if (loading) return <Skeleton rows={6} />;",
+          "  return <FlatList data={threads} renderItem={renderItem} />;",
+          "}"] },
+      { file: "ChatRoom.jsx", label: "মেসেজ স্ক্রিন", ui: [
+          {t:"status"},{t:"appbar",title:"Ayesha",sub:"online"},
+          {t:"bubble",side:"in",text:"Are we still on for tonight?"},
+          {t:"bubble",side:"out",text:"Yes! 8pm at the usual place"},
+          {t:"bubble",side:"in",text:"Perfect 🎉"},
+          {t:"bubble",side:"out",text:"Booking a table now"},
+          {t:"composer",ph:"Message"}],
+        code: [
+          "function ChatRoom({ threadId }) {",
+          "  const socket = useSocket();",
+          "  const [messages, setMessages] = useState([]);",
+          "",
+          "  useEffect(() => {",
+          "    socket.on('message:new', (msg) => {",
+          "      setMessages((prev) => [...prev, msg]);",
+          "    });",
+          "    return () => socket.off('message:new');",
+          "  }, [threadId]);",
+          "",
+          "  function send(text) {",
+          "    const optimistic = { id: uid(), text, mine: true, pending: true };",
+          "    setMessages((prev) => [...prev, optimistic]);",
+          "    socket.emit('message:send', { threadId, text });",
+          "  }",
+          "",
+          "  return <Bubbles data={messages} onSend={send} />;",
+          "}"] },
+    ],
+  },
+  {
+    name: "QuickBite", tag: "Food Delivery", accent: "#FF7A45", lang: "Flutter",
+    screens: [
+      { file: "home_page.dart", label: "রেস্টুরেন্ট হোম", ui: [
+          {t:"status"},{t:"appbar",title:"Deliver to Home",sub:"12 min away"},
+          {t:"search",ph:"Search for biryani, pizza..."},
+          {t:"chips",items:["Nearby","Fast","Offers","Veg"]},
+          {t:"card",title:"Spice Route",sub:"Biryani · 4.6 ★ · 25 min"},
+          {t:"card",title:"Green Bowl",sub:"Healthy · 4.4 ★ · 18 min"},
+          {t:"tabbar",items:["Home","Cart","Orders"]}],
+        code: [
+          "class HomePage extends StatefulWidget {",
+          "  @override",
+          "  State<HomePage> createState() => _HomePageState();",
+          "}",
+          "",
+          "class _HomePageState extends State<HomePage> {",
+          "  late Future<List<Restaurant>> _nearby;",
+          "",
+          "  @override",
+          "  void initState() {",
+          "    super.initState();",
+          "    _nearby = RestaurantApi.nearby(radiusKm: 5);",
+          "  }",
+          "",
+          "  @override",
+          "  Widget build(BuildContext context) {",
+          "    return Scaffold(",
+          "      body: FutureBuilder(",
+          "        future: _nearby,",
+          "        builder: (ctx, snap) => RestaurantList(snap.data),",
+          "      ),",
+          "    );",
+          "  }",
+          "}"] },
+      { file: "cart_page.dart", label: "কার্ট", ui: [
+          {t:"status"},{t:"appbar",title:"Your Cart"},
+          {t:"row",icon:"🍛",title:"Chicken Biryani",sub:"Large · x1",meta:"₹320"},
+          {t:"row",icon:"🥗",title:"Garden Salad",sub:"Regular · x2",meta:"₹180"},
+          {t:"line",label:"Delivery",value:"₹40"},
+          {t:"line",label:"Total",value:"₹540",strong:true},
+          {t:"btn",label:"Place order"}],
+        code: [
+          "class CartModel extends ChangeNotifier {",
+          "  final List<CartItem> _items = [];",
+          "",
+          "  int get subtotal =>",
+          "      _items.fold(0, (sum, i) => sum + i.price * i.qty);",
+          "",
+          "  int get total => subtotal + deliveryFee - discount;",
+          "",
+          "  void add(MenuItem item) {",
+          "    final found = _items.indexWhere((i) => i.id == item.id);",
+          "    if (found >= 0) {",
+          "      _items[found].qty++;",
+          "    } else {",
+          "      _items.add(CartItem.from(item));",
+          "    }",
+          "    notifyListeners();",
+          "  }",
+          "}"] },
+      { file: "tracking_page.dart", label: "অর্ডার ট্র্যাকিং", ui: [
+          {t:"status"},{t:"appbar",title:"Order #4821"},
+          {t:"map"},
+          {t:"steps",items:["Order placed","Being prepared","Out for delivery","Delivered"],active:2},
+          {t:"row",icon:"🛵",title:"Imran is on the way",sub:"Arriving in 8 minutes"}],
+        code: [
+          "class TrackingPage extends StatelessWidget {",
+          "  final String orderId;",
+          "",
+          "  Stream<OrderStatus> get _stream =>",
+          "      FirebaseFirestore.instance",
+          "          .collection('orders')",
+          "          .doc(orderId)",
+          "          .snapshots()",
+          "          .map(OrderStatus.fromDoc);",
+          "",
+          "  @override",
+          "  Widget build(BuildContext context) {",
+          "    return StreamBuilder<OrderStatus>(",
+          "      stream: _stream,",
+          "      builder: (ctx, snap) {",
+          "        if (!snap.hasData) return const LoadingMap();",
+          "        return DeliveryMap(status: snap.data!);",
+          "      },",
+          "    );",
+          "  }",
+          "}"] },
+    ],
+  },
+  {
+    name: "RideNow", tag: "Ride Hailing", accent: "#22C39A", lang: "Kotlin",
+    screens: [
+      { file: "MapActivity.kt", label: "রাইড বুকিং", ui: [
+          {t:"status"},{t:"map"},
+          {t:"input",ph:"Where to?"},
+          {t:"row",icon:"🏠",title:"Home",sub:"Ring Road, Block C"},
+          {t:"row",icon:"💼",title:"Office",sub:"Tech Park, Gate 2"},
+          {t:"btn",label:"Confirm pickup"}],
+        code: [
+          "class MapActivity : AppCompatActivity(), OnMapReadyCallback {",
+          "",
+          "    private lateinit var map: GoogleMap",
+          "    private val viewModel: RideViewModel by viewModels()",
+          "",
+          "    override fun onMapReady(googleMap: GoogleMap) {",
+          "        map = googleMap",
+          "        map.isMyLocationEnabled = true",
+          "        viewModel.nearbyDrivers.observe(this) { drivers ->",
+          "            drivers.forEach { addCarMarker(it) }",
+          "        }",
+          "    }",
+          "",
+          "    private fun addCarMarker(driver: Driver) {",
+          "        map.addMarker(",
+          "            MarkerOptions()",
+          "                .position(driver.latLng)",
+          "                .icon(carIcon)",
+          "        )",
+          "    }",
+          "}"] },
+      { file: "FareEstimator.kt", label: "ভাড়া ও গাড়ি", ui: [
+          {t:"status"},{t:"map"},
+          {t:"pick",icon:"🚗",title:"Standard",sub:"4 seats · 6 min",meta:"₹180",on:true},
+          {t:"pick",icon:"🚙",title:"Comfort",sub:"4 seats · 9 min",meta:"₹265"},
+          {t:"pick",icon:"🛺",title:"Mini",sub:"3 seats · 4 min",meta:"₹95"},
+          {t:"btn",label:"Book Standard"}],
+        code: [
+          "object FareEstimator {",
+          "",
+          "    private const val BASE = 35.0",
+          "    private const val PER_KM = 12.5",
+          "    private const val PER_MIN = 1.8",
+          "",
+          "    fun estimate(route: Route, tier: Tier): Fare {",
+          "        val distance = route.distanceKm * PER_KM",
+          "        val time = route.durationMin * PER_MIN",
+          "        val raw = (BASE + distance + time) * tier.multiplier",
+          "        val surge = SurgeEngine.factorFor(route.origin)",
+          "        return Fare(",
+          "            amount = (raw * surge).roundToInt(),",
+          "            surged = surge > 1.0",
+          "        )",
+          "    }",
+          "}"] },
+    ],
+  },
+  {
+    name: "PulseFit", tag: "Fitness Tracker", accent: "#FF4D6D", lang: "SwiftUI",
+    screens: [
+      { file: "DashboardView.swift", label: "ড্যাশবোর্ড", ui: [
+          {t:"status"},{t:"appbar",title:"Today"},
+          {t:"rings"},
+          {t:"grid",items:[["8,420","Steps"],["512","Calories"],["6.1 km","Distance"],["72","Avg BPM"]]},
+          {t:"tabbar",items:["Today","Workouts","You"]}],
+        code: [
+          "import SwiftUI",
+          "import HealthKit",
+          "",
+          "struct DashboardView: View {",
+          "    @StateObject private var health = HealthStore()",
+          "",
+          "    var body: some View {",
+          "        ScrollView {",
+          "            ActivityRings(",
+          "                move: health.moveProgress,",
+          "                exercise: health.exerciseProgress,",
+          "                stand: health.standProgress",
+          "            )",
+          "            StatGrid(metrics: health.todayMetrics)",
+          "        }",
+          "        .task { await health.requestAuthorization() }",
+          "    }",
+          "}"] },
+      { file: "WorkoutSession.swift", label: "ওয়ার্কআউট", ui: [
+          {t:"status"},{t:"appbar",title:"Outdoor Run"},
+          {t:"big",value:"28:14",label:"Elapsed"},
+          {t:"grid",items:[["5.42 km","Distance"],["5'12\"","Pace"],["148","Heart rate"]]},
+          {t:"chart"},
+          {t:"btn",label:"End workout"}],
+        code: [
+          "final class WorkoutSession: ObservableObject {",
+          "",
+          "    @Published var elapsed: TimeInterval = 0",
+          "    @Published var distance: Double = 0",
+          "    private var timer: AnyCancellable?",
+          "",
+          "    func start() {",
+          "        timer = Timer.publish(every: 1, on: .main, in: .common)",
+          "            .autoconnect()",
+          "            .sink { [weak self] _ in",
+          "                self?.elapsed += 1",
+          "                self?.sampleLocation()",
+          "            }",
+          "    }",
+          "",
+          "    func end() -> WorkoutSummary {",
+          "        timer?.cancel()",
+          "        return WorkoutSummary(time: elapsed, distance: distance)",
+          "    }",
+          "}"] },
+    ],
+  },
+  {
+    name: "Vaultly", tag: "Banking & Wallet", accent: "#7C6BFF", lang: "React Native",
+    screens: [
+      { file: "WalletHome.jsx", label: "ওয়ালেট হোম", ui: [
+          {t:"status"},{t:"appbar",title:"Vaultly"},
+          {t:"balance",value:"₹ 48,250.00",label:"Available balance"},
+          {t:"chips",items:["Send","Request","Top up","Bills"]},
+          {t:"row",icon:"↗",title:"Rent transfer",sub:"Today · 09:12",meta:"−₹12,000"},
+          {t:"row",icon:"↙",title:"Salary credited",sub:"Yesterday",meta:"+₹64,000"},
+          {t:"tabbar",items:["Home","Cards","History"]}],
+        code: [
+          "export function WalletHome() {",
+          "  const { balance, txns, refresh } = useWallet();",
+          "  const [hidden, setHidden] = useState(false);",
+          "",
+          "  useFocusEffect(",
+          "    useCallback(() => {",
+          "      refresh();",
+          "    }, [])",
+          "  );",
+          "",
+          "  return (",
+          "    <SafeAreaView>",
+          "      <BalanceCard",
+          "        amount={hidden ? '••••••' : format(balance)}",
+          "        onToggle={() => setHidden(!hidden)}",
+          "      />",
+          "      <QuickActions actions={ACTIONS} />",
+          "      <TransactionList data={txns} />",
+          "    </SafeAreaView>",
+          "  );",
+          "}"] },
+      { file: "SendMoney.jsx", label: "টাকা পাঠানো", ui: [
+          {t:"status"},{t:"appbar",title:"Send money"},
+          {t:"row",icon:"S",title:"Sadia Rahman",sub:"•••• 4821"},
+          {t:"big",value:"₹ 2,500",label:"Amount"},
+          {t:"input",ph:"Add a note"},
+          {t:"keypad"},
+          {t:"btn",label:"Slide to pay"}],
+        code: [
+          "async function sendMoney({ to, amount, note }) {",
+          "  if (amount <= 0) throw new Error('INVALID_AMOUNT');",
+          "  if (amount > dailyLimitLeft()) throw new Error('LIMIT_EXCEEDED');",
+          "",
+          "  const idempotencyKey = uuid();",
+          "  const signed = await signPayload({ to, amount, idempotencyKey });",
+          "",
+          "  const res = await api.post('/transfers', signed, {",
+          "    headers: { 'Idempotency-Key': idempotencyKey },",
+          "  });",
+          "",
+          "  if (res.status === 'PENDING') {",
+          "    return pollUntilSettled(res.transferId);",
+          "  }",
+          "  return res;",
+          "}"] },
+    ],
+  },
+  {
+    name: "Soundrift", tag: "Music Player", accent: "#1DD3A0", lang: "React Native",
+    screens: [
+      { file: "Library.jsx", label: "লাইব্রেরি", ui: [
+          {t:"status"},{t:"appbar",title:"Your Library"},
+          {t:"chips",items:["Playlists","Artists","Albums"]},
+          {t:"row",icon:"🎧",title:"Late Night Drive",sub:"32 songs"},
+          {t:"row",icon:"🌧",title:"Rainy Day Acoustic",sub:"18 songs"},
+          {t:"row",icon:"🔥",title:"Workout Boost",sub:"45 songs"},
+          {t:"miniplayer",title:"Midnight Echo",sub:"Aria Lane"}],
+        code: [
+          "export default function Library() {",
+          "  const playlists = useSelector(selectPlaylists);",
+          "  const dispatch = useDispatch();",
+          "",
+          "  useEffect(() => {",
+          "    dispatch(fetchPlaylists());",
+          "  }, [dispatch]);",
+          "",
+          "  return (",
+          "    <FlatList",
+          "      data={playlists}",
+          "      keyExtractor={(p) => p.id}",
+          "      renderItem={({ item }) => (",
+          "        <PlaylistRow",
+          "          playlist={item}",
+          "          onPress={() => dispatch(playPlaylist(item.id))}",
+          "        />",
+          "      )}",
+          "    />",
+          "  );",
+          "}"] },
+      { file: "PlayerScreen.jsx", label: "প্লেয়ার", ui: [
+          {t:"status"},{t:"art"},
+          {t:"hero",title:"Midnight Echo",sub:"Aria Lane · Neon Hours"},
+          {t:"seek"},
+          {t:"controls"},
+          {t:"chips",items:["Lyrics","Queue","Devices"]}],
+        code: [
+          "function PlayerScreen() {",
+          "  const { track, position, duration, playing } = usePlayer();",
+          "",
+          "  const progress = duration ? position / duration : 0;",
+          "",
+          "  async function toggle() {",
+          "    if (playing) await TrackPlayer.pause();",
+          "    else await TrackPlayer.play();",
+          "  }",
+          "",
+          "  return (",
+          "    <View style={styles.player}>",
+          "      <Artwork uri={track.artwork} spinning={playing} />",
+          "      <Text style={styles.title}>{track.title}</Text>",
+          "      <Seekbar value={progress} onSeek={TrackPlayer.seekTo} />",
+          "      <Controls playing={playing} onToggle={toggle} />",
+          "    </View>",
+          "  );",
+          "}"] },
+    ],
+  },
+  {
+    name: "Shopr", tag: "E-Commerce", accent: "#FFB020", lang: "React Native",
+    screens: [
+      { file: "ProductList.jsx", label: "প্রোডাক্ট তালিকা", ui: [
+          {t:"status"},{t:"appbar",title:"Shopr"},{t:"search",ph:"Search products"},
+          {t:"chips",items:["All","Shoes","Bags","Watches"]},
+          {t:"tiles",items:[["Runner X","₹2,499"],["Canvas Tote","₹1,199"],["Steel Watch","₹4,850"],["Daypack","₹1,750"]]},
+          {t:"tabbar",items:["Shop","Cart","Account"]}],
+        code: [
+          "function ProductList() {",
+          "  const [query, setQuery] = useState('');",
+          "  const [category, setCategory] = useState('all');",
+          "",
+          "  const { items, fetchNextPage, hasNextPage } = useInfiniteQuery({",
+          "    queryKey: ['products', query, category],",
+          "    queryFn: ({ pageParam = 1 }) =>",
+          "      api.products({ q: query, category, page: pageParam }),",
+          "  });",
+          "",
+          "  return (",
+          "    <FlatList",
+          "      numColumns={2}",
+          "      data={items}",
+          "      onEndReached={() => hasNextPage && fetchNextPage()}",
+          "      renderItem={({ item }) => <ProductCard product={item} />}",
+          "    />",
+          "  );",
+          "}"] },
+      { file: "Checkout.jsx", label: "চেকআউট", ui: [
+          {t:"status"},{t:"appbar",title:"Checkout"},
+          {t:"row",icon:"📍",title:"Delivery address",sub:"House 14, Lake Road"},
+          {t:"row",icon:"💳",title:"Payment",sub:"Card ending 4821"},
+          {t:"line",label:"Items (3)",value:"₹6,448"},
+          {t:"line",label:"Shipping",value:"Free"},
+          {t:"line",label:"Total",value:"₹6,448",strong:true},
+          {t:"btn",label:"Pay now"}],
+        code: [
+          "async function createOrder(cart, address, paymentMethod) {",
+          "  const order = await api.post('/orders', {",
+          "    lines: cart.map((c) => ({ sku: c.sku, qty: c.qty })),",
+          "    addressId: address.id,",
+          "  });",
+          "",
+          "  const intent = await payments.createIntent({",
+          "    orderId: order.id,",
+          "    amount: order.total,",
+          "    method: paymentMethod,",
+          "  });",
+          "",
+          "  const result = await payments.confirm(intent);",
+          "  if (result.status !== 'succeeded') {",
+          "    await api.post('/orders/' + order.id + '/cancel');",
+          "    throw new PaymentError(result.reason);",
+          "  }",
+          "  return order;",
+          "}"] },
+    ],
+  },
+  {
+    name: "SkyCast", tag: "Weather App", accent: "#38BDF8", lang: "SwiftUI",
+    screens: [
+      { file: "WeatherView.swift", label: "আবহাওয়া", ui: [
+          {t:"status"},
+          {t:"big",value:"29°",label:"Partly cloudy · Feels like 32°"},
+          {t:"chips",items:["Now","Hourly","7 days"]},
+          {t:"chart"},
+          {t:"grid",items:[["68%","Humidity"],["12 km/h","Wind"],["6","UV index"],["18:41","Sunset"]]}],
+        code: [
+          "struct WeatherView: View {",
+          "    @StateObject private var vm = WeatherViewModel()",
+          "",
+          "    var body: some View {",
+          "        VStack(spacing: 20) {",
+          "            Text(vm.temperatureText)",
+          "                .font(.system(size: 72, weight: .thin))",
+          "            Text(vm.conditionText)",
+          "            HourlyStrip(hours: vm.hourly)",
+          "            DetailGrid(details: vm.details)",
+          "        }",
+          "        .refreshable { await vm.reload() }",
+          "        .task { await vm.load(for: .currentLocation) }",
+          "    }",
+          "}"] },
+    ],
+  },
+  {
+    name: "Loop", tag: "Social Feed", accent: "#E879F9", lang: "React Native",
+    screens: [
+      { file: "Feed.jsx", label: "ফিড", ui: [
+          {t:"status"},{t:"appbar",title:"Loop"},
+          {t:"stories",items:["You","Mira","Zain","Ayan","Nila"]},
+          {t:"post",title:"Mira Sen",sub:"2 hours ago"},
+          {t:"post",title:"Zain Ahmed",sub:"5 hours ago"},
+          {t:"tabbar",items:["Feed","Search","Profile"]}],
+        code: [
+          "function Feed() {",
+          "  const { posts, refreshing, onRefresh } = useFeed();",
+          "  const viewability = useRef({ itemVisiblePercentThreshold: 60 });",
+          "",
+          "  const onViewable = useCallback(({ viewableItems }) => {",
+          "    viewableItems.forEach((v) => analytics.impression(v.item.id));",
+          "  }, []);",
+          "",
+          "  return (",
+          "    <FlatList",
+          "      data={posts}",
+          "      refreshing={refreshing}",
+          "      onRefresh={onRefresh}",
+          "      viewabilityConfig={viewability.current}",
+          "      onViewableItemsChanged={onViewable}",
+          "      renderItem={({ item }) => <PostCard post={item} />}",
+          "    />",
+          "  );",
+          "}"] },
+    ],
+  },
+  {
+    name: "Taskly", tag: "Notes & Tasks", accent: "#34D399", lang: "React Native",
+    screens: [
+      { file: "TaskBoard.jsx", label: "টাস্ক বোর্ড", ui: [
+          {t:"status"},{t:"appbar",title:"Today",sub:"4 of 7 done"},
+          {t:"progress",value:0.57},
+          {t:"check",title:"Review pull request",done:true},
+          {t:"check",title:"Write release notes",done:true},
+          {t:"check",title:"Call the design team",done:false},
+          {t:"check",title:"Ship v2.4 to beta",done:false},
+          {t:"btn",label:"Add task"}],
+        code: [
+          "export function TaskBoard() {",
+          "  const [tasks, setTasks] = useState([]);",
+          "",
+          "  const done = tasks.filter((t) => t.done).length;",
+          "  const progress = tasks.length ? done / tasks.length : 0;",
+          "",
+          "  function toggle(id) {",
+          "    setTasks((prev) =>",
+          "      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))",
+          "    );",
+          "    db.tasks.update(id, { done: !find(id).done });",
+          "  }",
+          "",
+          "  return (",
+          "    <View>",
+          "      <ProgressBar value={progress} />",
+          "      {tasks.map((t) => (",
+          "        <TaskRow key={t.id} task={t} onToggle={toggle} />",
+          "      ))}",
+          "    </View>",
+          "  );",
+          "}"] },
+    ],
+  },
+];
+
+const CODELIVE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Code Live — Building Apps</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box;}
+html{background:#05070f;}
+body{margin:0;color:#E6ECFF;font-family:'Segoe UI',system-ui,sans-serif;overflow-y:auto;
+min-height:100vh;padding:0;position:relative;}
+#bgFallback{position:fixed;inset:0;z-index:-3;background:linear-gradient(135deg,#0b1030,#05070f 45%,#141033);}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:0;transition:opacity 1s ease;}
+#bgDim{position:fixed;inset:0;z-index:-1;background:rgba(4,6,16,0.46);pointer-events:none;}
+
+/* ---- ল্যাপটপ ---- */
+.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;}
+.laptop{width:100%;max-width:1580px;}
+.lid{background:linear-gradient(180deg,#2a2f42,#171a28);border-radius:16px 16px 4px 4px;
+padding:14px 14px 10px;box-shadow:0 30px 70px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.10);}
+.cam{width:6px;height:6px;border-radius:50%;background:#3D4562;margin:0 auto 9px;}
+.screen{background:#0c1020;border-radius:8px;overflow:hidden;border:1px solid #1e2540;
+display:flex;flex-direction:column;height:76vh;min-height:420px;}
+.base{height:14px;background:linear-gradient(180deg,#20243a,#0e1120);border-radius:0 0 18px 18px;
+margin:0 auto;width:104%;max-width:none;position:relative;left:-2%;
+box-shadow:0 16px 30px rgba(0,0,0,0.6);}
+.base::after{content:"";position:absolute;left:50%;transform:translateX(-50%);top:0;
+width:120px;height:5px;border-radius:0 0 6px 6px;background:#0a0d18;}
+
+/* ---- এডিটরের টাইটেল বার ---- */
+.titlebar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#121729;
+border-bottom:1px solid #1e2540;flex-shrink:0;}
+.dots{display:flex;gap:6px;}
+.dot{width:11px;height:11px;border-radius:50%;}
+.tab{font-size:12px;color:#8FA3CC;background:#0c1020;border:1px solid #1e2540;border-radius:6px;
+padding:4px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;}
+.tab b{color:#E6ECFF;font-weight:600;}
+.brandChip{margin-left:auto;font-size:11px;font-weight:800;letter-spacing:0.4px;
+padding:4px 11px;border-radius:20px;}
+.langChip{font-size:10px;color:#8FA3CC;border:1px solid #1e2540;border-radius:20px;padding:4px 10px;}
+
+/* ---- কাজের জায়গা ---- */
+.work{flex:1;display:grid;grid-template-columns:1fr 400px;min-height:0;}
+.editor{display:flex;min-height:0;overflow:hidden;position:relative;background:#0c1020;}
+.gutter{padding:14px 10px 14px 16px;text-align:right;color:#33406b;font-size:13px;line-height:1.62;
+font-family:ui-monospace,Menlo,Consolas,monospace;user-select:none;flex-shrink:0;}
+.code{padding:14px 16px 14px 6px;font-size:13.5px;line-height:1.62;white-space:pre;flex:1;
+font-family:ui-monospace,Menlo,Consolas,monospace;overflow:hidden;}
+.k{color:#C792EA;} .s{color:#C3E88D;} .c{color:#4A5578;font-style:italic;}
+.n{color:#F78C6C;} .f{color:#82AAFF;} .p{color:#89DDFF;}
+.cursor{display:inline-block;width:8px;height:15px;background:#FFD866;vertical-align:-2px;
+animation:blink 1.05s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ---- ফোন ---- */
+.side{border-left:1px solid #1e2540;background:#0a0d1a;display:flex;flex-direction:column;
+align-items:center;justify-content:center;gap:12px;padding:14px;min-height:0;}
+.phone{width:250px;height:100%;max-height:520px;background:#000;border-radius:32px;padding:9px;
+border:2px solid #262d47;box-shadow:0 22px 46px rgba(0,0,0,0.7);flex-shrink:1;}
+.pscreen{width:100%;height:100%;background:#0F1320;border-radius:24px;overflow:hidden;
+display:flex;flex-direction:column;position:relative;}
+.pscreen.swap{animation:swapIn 0.55s ease-out;}
+@keyframes swapIn{from{opacity:0;transform:scale(0.97) translateY(8px);}to{opacity:1;transform:none;}}
+.caption{font-size:11px;color:#8FA3CC;text-align:center;line-height:1.5;flex-shrink:0;}
+.caption b{color:#FFD866;}
+
+/* ফোনের ভেতরের উপাদান */
+.w{padding:0 12px;}
+.pstatus{display:flex;justify-content:space-between;padding:7px 14px 3px;font-size:9px;color:#8FA3CC;flex-shrink:0;}
+.pbar{padding:10px 14px 8px;flex-shrink:0;}
+.pbar .t{font-size:15px;font-weight:800;}
+.pbar .st{font-size:9.5px;color:#7C8AAD;margin-top:2px;}
+.psearch{margin:6px 12px;background:#1A2136;border-radius:9px;padding:8px 11px;font-size:10.5px;color:#6C7BA0;}
+.phero{padding:22px 16px 12px;text-align:center;}
+.phero .t{font-size:19px;font-weight:800;}
+.phero .st{font-size:10px;color:#7C8AAD;margin-top:4px;}
+.pinput{margin:6px 12px;background:#161C2E;border:1px solid #232B45;border-radius:9px;
+padding:9px 11px;font-size:10.5px;color:#5F6D91;}
+.pbtn{margin:9px 12px 4px;border-radius:9px;padding:10px;text-align:center;font-size:11.5px;
+font-weight:800;color:#08101f;}
+.pnote{text-align:center;font-size:9.5px;color:#6C7BA0;margin-top:8px;}
+.prow{display:flex;align-items:center;gap:9px;padding:8px 13px;}
+.pic{width:29px;height:29px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+font-size:12px;font-weight:800;color:#08101f;flex-shrink:0;}
+.prow .tx{flex:1;min-width:0;}
+.prow .t{font-size:11.5px;font-weight:700;}
+.prow .st{font-size:9.5px;color:#7C8AAD;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prow .mt{font-size:9.5px;color:#8FA3CC;flex-shrink:0;font-weight:700;}
+.pchips{display:flex;gap:6px;padding:7px 12px;flex-wrap:wrap;}
+.pchip{font-size:9.5px;padding:4px 10px;border-radius:20px;background:#1A2136;color:#9FB0D4;}
+.pchip.on{color:#08101f;font-weight:800;}
+.pcard{margin:6px 12px;background:#161C2E;border-radius:11px;overflow:hidden;}
+.pcard .im{height:52px;}
+.pcard .bd{padding:8px 10px;}
+.pcard .t{font-size:11.5px;font-weight:700;}
+.pcard .st{font-size:9.5px;color:#7C8AAD;margin-top:2px;}
+.ptab{margin-top:auto;display:flex;border-top:1px solid #1E2540;flex-shrink:0;}
+.ptab div{flex:1;text-align:center;padding:9px 0;font-size:9.5px;color:#5F6D91;font-weight:700;}
+.pbub{max-width:75%;padding:8px 11px;border-radius:14px;font-size:10.5px;margin:5px 13px;line-height:1.45;}
+.pbub.in{background:#1A2136;border-bottom-left-radius:4px;}
+.pbub.out{margin-left:auto;color:#08101f;border-bottom-right-radius:4px;}
+.pcomp{margin-top:auto;display:flex;gap:7px;padding:9px 12px;border-top:1px solid #1E2540;flex-shrink:0;}
+.pcomp .f{flex:1;background:#1A2136;border-radius:18px;padding:8px 12px;font-size:10px;color:#6C7BA0;}
+.pcomp .s{width:30px;height:30px;border-radius:50%;flex-shrink:0;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:8px 12px;}
+.pcell{background:#161C2E;border-radius:10px;padding:9px;}
+.pcell .v{font-size:14px;font-weight:800;}
+.pcell .l{font-size:8.5px;color:#7C8AAD;margin-top:2px;}
+.pbig{text-align:center;padding:18px 12px 10px;}
+.pbig .v{font-size:33px;font-weight:200;letter-spacing:-1px;}
+.pbig .l{font-size:9.5px;color:#7C8AAD;margin-top:3px;}
+.pbal{margin:10px 12px;border-radius:13px;padding:15px;}
+.pbal .v{font-size:22px;font-weight:800;color:#08101f;}
+.pbal .l{font-size:9.5px;color:rgba(8,16,31,0.65);margin-top:2px;font-weight:700;}
+.pmap{height:112px;margin:8px 12px;border-radius:11px;position:relative;overflow:hidden;
+background:linear-gradient(135deg,#16203a,#101728);}
+.pmap::before{content:"";position:absolute;inset:0;
+background:repeating-linear-gradient(58deg,transparent 0 17px,rgba(255,255,255,0.05) 17px 19px),
+repeating-linear-gradient(-32deg,transparent 0 23px,rgba(255,255,255,0.04) 23px 25px);}
+.pmap .pin{position:absolute;left:46%;top:44%;width:13px;height:13px;border-radius:50% 50% 50% 0;
+transform:rotate(-45deg);}
+.pline{display:flex;justify-content:space-between;padding:5px 14px;font-size:10.5px;color:#9FB0D4;}
+.pline.strong{font-weight:800;color:#E6ECFF;font-size:12px;padding-top:8px;}
+.pchart{height:76px;margin:8px 12px;display:flex;align-items:flex-end;gap:4px;}
+.pchart i{flex:1;border-radius:3px 3px 0 0;display:block;}
+.prings{display:flex;justify-content:center;padding:14px 0 6px;}
+.prings .r{width:82px;height:82px;border-radius:50%;border:9px solid #1A2136;position:relative;}
+.prings .r::after{content:"";position:absolute;inset:-9px;border-radius:50%;
+border:9px solid transparent;transform:rotate(-90deg);}
+.psteps{padding:8px 14px;}
+.pstep{display:flex;align-items:center;gap:9px;font-size:10px;color:#6C7BA0;padding:4px 0;}
+.pstep .b{width:9px;height:9px;border-radius:50%;background:#232B45;flex-shrink:0;}
+.pstep.on{color:#E6ECFF;font-weight:700;}
+.pprog{height:6px;margin:8px 14px;border-radius:6px;background:#1A2136;overflow:hidden;}
+.pprog i{display:block;height:100%;border-radius:6px;}
+.pcheck{display:flex;align-items:center;gap:9px;padding:7px 14px;font-size:11px;}
+.pcheck .bx{width:16px;height:16px;border-radius:5px;border:2px solid #2C3454;flex-shrink:0;}
+.pcheck.done{color:#6C7BA0;text-decoration:line-through;}
+.pstories{display:flex;gap:9px;padding:9px 12px;overflow:hidden;}
+.pstory{text-align:center;flex-shrink:0;}
+.pstory .c{width:38px;height:38px;border-radius:50%;border:2px solid;}
+.pstory .n{font-size:8px;color:#7C8AAD;margin-top:3px;}
+.ppost{margin:7px 12px;background:#161C2E;border-radius:11px;overflow:hidden;}
+.ppost .hd{display:flex;align-items:center;gap:8px;padding:8px 10px;}
+.ppost .im{height:78px;}
+.ppost .ac{display:flex;gap:12px;padding:7px 11px;font-size:11px;color:#7C8AAD;}
+.ptiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px;}
+.ptile{background:#161C2E;border-radius:11px;overflow:hidden;}
+.ptile .im{height:56px;}
+.ptile .bd{padding:6px 8px;}
+.ptile .t{font-size:10px;font-weight:700;}
+.ptile .p{font-size:10px;margin-top:2px;font-weight:800;}
+.part{height:132px;margin:14px 22px 8px;border-radius:14px;}
+.pseek{margin:10px 16px 4px;}
+.pseek .bar{height:4px;border-radius:4px;background:#232B45;overflow:hidden;}
+.pseek .bar i{display:block;height:100%;width:42%;}
+.pseek .tm{display:flex;justify-content:space-between;font-size:8.5px;color:#7C8AAD;margin-top:5px;}
+.pctl{display:flex;align-items:center;justify-content:center;gap:20px;padding:6px 0 10px;font-size:15px;color:#9FB0D4;}
+.pctl .pl{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;
+justify-content:center;color:#08101f;font-size:16px;}
+.pmini{margin-top:auto;display:flex;align-items:center;gap:9px;padding:9px 12px;
+background:#161C2E;border-top:1px solid #1E2540;flex-shrink:0;}
+.pmini .ar{width:32px;height:32px;border-radius:7px;flex-shrink:0;}
+.pkey{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:8px 20px;}
+.pkey div{text-align:center;padding:7px 0;font-size:13px;font-weight:700;color:#9FB0D4;
+background:#161C2E;border-radius:8px;}
+.ppick{display:flex;align-items:center;gap:10px;margin:5px 12px;padding:9px 11px;
+border-radius:11px;background:#161C2E;border:1px solid transparent;}
+.ppick.on{background:#1A2136;}
+.ppick .tx{flex:1;} .ppick .t{font-size:11.5px;font-weight:700;}
+.ppick .st{font-size:9px;color:#7C8AAD;margin-top:1px;}
+.ppick .mt{font-size:12px;font-weight:800;}
+
+/* ---- নিচের স্ট্যাটাস লাইন ---- */
+.statusbar{display:flex;align-items:center;gap:12px;padding:7px 14px;background:#121729;
+border-top:1px solid #1e2540;font-size:11px;color:#8FA3CC;flex-shrink:0;
+font-family:ui-monospace,Menlo,Consolas,monospace;}
+.statusbar .grow{flex:1;height:4px;border-radius:4px;background:#1A2136;overflow:hidden;}
+.statusbar .grow i{display:block;height:100%;width:0;transition:width 0.3s linear;}
+.blip{width:7px;height:7px;border-radius:50%;background:#34D399;animation:blink 1.6s infinite;}
+
+/* ---- কোনার "কেউ টাইপ করছে" ভিডিও ---- */
+#camBox{position:fixed;right:18px;bottom:18px;width:212px;border-radius:12px;overflow:hidden;
+border:1px solid #262d47;box-shadow:0 14px 34px rgba(0,0,0,0.65);background:#0c1020;z-index:5;}
+#camBox video{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;background:#0c1020;}
+#camBox .lbl{position:absolute;left:8px;bottom:7px;font-size:9px;font-weight:800;color:#fff;
+background:rgba(0,0,0,0.55);padding:2px 8px;border-radius:20px;letter-spacing:0.4px;}
+#camBox.empty{display:none;}
+
+#bgSettingsPanel{max-width:560px;margin:30px auto;padding:20px;background:#12172a;
+border:1px solid #2a3352;border-radius:16px;}
+#bgSettingsPanel h2{color:#FFD866;font-size:16px;margin:0 0 4px;}
+#bgSettingsPanel label{display:block;margin-top:14px;font-size:11px;color:#7C8AAD;font-weight:700;}
+#bgSettingsPanel input{width:100%;padding:9px;border-radius:8px;border:1px solid #26314f;
+background:#0f1526;color:#fff;font-size:13px;margin-top:5px;}
+#bgSettingsPanel button{margin-top:14px;padding:10px 18px;border-radius:8px;border:none;
+background:#FFD866;color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
+#bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
+</style></head><body>
+<div id="bgFallback"></div>
+<div id="bgDim"></div>
+<video id="bgVideo" autoplay muted loop playsinline preload="auto"></video>
+
+<div class="stage"><div class="laptop">
+  <div class="lid">
+    <div class="cam"></div>
+    <div class="screen">
+      <div class="titlebar">
+        <div class="dots">
+          <span class="dot" style="background:#FF5F57"></span>
+          <span class="dot" style="background:#FEBC2E"></span>
+          <span class="dot" style="background:#28C840"></span>
+        </div>
+        <div class="tab"><b id="tabFile">app.jsx</b></div>
+        <div class="langChip" id="langChip">React Native</div>
+        <div class="brandChip" id="brandChip">Building</div>
+      </div>
+      <div class="work">
+        <div class="editor">
+          <div class="gutter" id="gutter"></div>
+          <div class="code" id="code"></div>
+        </div>
+        <div class="side">
+          <div class="phone"><div class="pscreen" id="pscreen"></div></div>
+          <div class="caption" id="caption">Live preview</div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span class="blip"></span>
+        <span id="statusText">Starting build...</span>
+        <span class="grow"><i id="growBar"></i></span>
+        <span id="counter"></span>
+      </div>
+    </div>
+  </div>
+  <div class="base"></div>
+</div></div>
+
+<div id="camBox" class="empty"><video id="camVideo" autoplay muted loop playsinline></video><div class="lbl">LIVE</div></div>
+
+<div id="bgSettingsPanel">
+  <h2>🎬 Code Live — Video settings</h2>
+  <form id="bgSettingsForm">
+    <label>Background video link (direct .mp4 URL — the calm, relaxing scene)</label>
+    <input type="text" id="bgVideoUrlInput" placeholder="https://.../relaxing-background.mp4">
+    <label>Corner video link (direct .mp4 URL — someone typing on a laptop)</label>
+    <input type="text" id="camVideoUrlInput" placeholder="https://.../typing-hands.mp4">
+    <button type="submit">Save</button>
+    <div id="bgSettingsStatus"></div>
+  </form>
+</div>
+
+<script>
+var APPS = ${JSON.stringify(CODELIVE_APPS)};
+
+/* ---------- সেটিংস (ব্যাকগ্রাউন্ড + কোনার ভিডিও) ---------- */
+var lastBg = "", lastCam = "";
+function applyVideo(el, url, box){
+  if (!url) return;
+  el.src = url; el.load();
+  el.play().catch(function(){});
+  if (box) box.classList.remove("empty");
+}
+function loadConfig(){
+  fetch("/gaming/codelive-config").then(function(r){ return r.json(); }).then(function(cfg){
+    if (cfg.bgVideoUrl && cfg.bgVideoUrl !== lastBg){
+      lastBg = cfg.bgVideoUrl;
+      applyVideo(document.getElementById("bgVideo"), cfg.bgVideoUrl, null);
+    }
+    if (cfg.camVideoUrl && cfg.camVideoUrl !== lastCam){
+      lastCam = cfg.camVideoUrl;
+      applyVideo(document.getElementById("camVideo"), cfg.camVideoUrl, document.getElementById("camBox"));
+    }
+    if (document.activeElement !== document.getElementById("bgVideoUrlInput"))
+      document.getElementById("bgVideoUrlInput").value = cfg.bgVideoUrl || "";
+    if (document.activeElement !== document.getElementById("camVideoUrlInput"))
+      document.getElementById("camVideoUrlInput").value = cfg.camVideoUrl || "";
+  }).catch(function(){});
+}
+loadConfig(); setInterval(loadConfig, 15000);
+document.getElementById("bgVideoUrlInput").form.addEventListener("submit", function(e){
+  e.preventDefault();
+  fetch("/gaming/codelive-config", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      bgVideoUrl: document.getElementById("bgVideoUrlInput").value.trim(),
+      camVideoUrl: document.getElementById("camVideoUrlInput").value.trim() }) })
+    .then(function(){ document.getElementById("bgSettingsStatus").textContent = "Saved!"; lastBg=""; lastCam=""; })
+    .catch(function(){ document.getElementById("bgSettingsStatus").textContent = "Could not save."; });
+});
+(function(){
+  var v = document.getElementById("bgVideo");
+  v.addEventListener("loadeddata", function(){ v.style.opacity = "0.8"; });
+  setInterval(function(){ if (v.src && v.paused) v.play().catch(function(){}); }, 3000);
+})();
+
+/* ---------- কোড হাইলাইট ---------- */
+var HLRE = /(\\/\\/[^\\n]*)|('[^']*'|"[^"]*")|\\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|class|extends|new|try|catch|this|null|true|false|struct|func|fun|override|private|final|late|void|super|Widget|object|companion|enum|interface|type|public|static)\\b|\\b(\\d+(?:\\.\\d+)?)\\b|([A-Za-z_$][\\w$]*)(?=\\s*\\()/g;
+function esc(t){ return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function hl(line){
+  return esc(line).replace(HLRE, function(m, cm, st, kw, num, fn){
+    if (cm) return '<span class="c">' + cm + '</span>';
+    if (st) return '<span class="s">' + st + '</span>';
+    if (kw) return '<span class="k">' + kw + '</span>';
+    if (num) return '<span class="n">' + num + '</span>';
+    if (fn) return '<span class="f">' + fn + '</span>';
+    return m;
+  });
+}
+
+/* ---------- ফোনের স্ক্রিন আঁকা ---------- */
+function el(cls, html){ var d = document.createElement("div"); if (cls) d.className = cls; if (html != null) d.innerHTML = html; return d; }
+function fade(hex, a){ return hex + Math.round(a * 255).toString(16).padStart(2, "0"); }
+
+function renderPhone(ui, accent){
+  var scr = document.getElementById("pscreen");
+  scr.innerHTML = "";
+  scr.classList.remove("swap"); void scr.offsetWidth; scr.classList.add("swap");
+  ui.forEach(function(w){
+    var d;
+    switch (w.t) {
+      case "status":
+        d = el("pstatus", "<span>9:41</span><span>▮▮▮ ᯤ ▉</span>"); break;
+      case "appbar":
+        d = el("pbar", '<div class="t">' + w.title + '</div>' + (w.sub ? '<div class="st">' + w.sub + '</div>' : "")); break;
+      case "search":
+        d = el("psearch", "🔍  " + w.ph); break;
+      case "hero":
+        d = el("phero", '<div class="t" style="color:' + accent + '">' + w.title + '</div><div class="st">' + w.sub + '</div>'); break;
+      case "input":
+        d = el("pinput", w.ph); break;
+      case "btn":
+        d = el("pbtn", w.label); d.style.background = accent; break;
+      case "note":
+        d = el("pnote", w.text); break;
+      case "row":
+        d = el("prow");
+        var ic = el("pic", w.icon); ic.style.background = accent; d.appendChild(ic);
+        d.appendChild(el("tx", '<div class="t">' + w.title + '</div>' + (w.sub ? '<div class="st">' + w.sub + '</div>' : "")));
+        if (w.meta) d.appendChild(el("mt", w.meta));
+        break;
+      case "pick":
+        d = el("ppick" + (w.on ? " on" : ""));
+        if (w.on) d.style.borderColor = accent;
+        d.appendChild(el("pic", w.icon)).style.background = fade(accent, 0.25);
+        d.appendChild(el("tx", '<div class="t">' + w.title + '</div><div class="st">' + w.sub + '</div>'));
+        var mt = el("mt", w.meta); mt.style.color = accent; d.appendChild(mt);
+        break;
+      case "chips":
+        d = el("pchips");
+        w.items.forEach(function(c, i){
+          var ch = el("pchip" + (i === 0 ? " on" : ""), c);
+          if (i === 0) ch.style.background = accent;
+          d.appendChild(ch);
+        });
+        break;
+      case "card":
+        d = el("pcard", '<div class="im"></div><div class="bd"><div class="t">' + w.title + '</div><div class="st">' + w.sub + '</div></div>');
+        d.querySelector(".im").style.background = "linear-gradient(135deg," + fade(accent, 0.55) + ",#1A2136)";
+        break;
+      case "tiles":
+        d = el("ptiles");
+        w.items.forEach(function(it){
+          var tl = el("ptile", '<div class="im"></div><div class="bd"><div class="t">' + it[0] + '</div><div class="p">' + it[1] + '</div></div>');
+          tl.querySelector(".im").style.background = "linear-gradient(135deg," + fade(accent, 0.5) + ",#1A2136)";
+          tl.querySelector(".p").style.color = accent;
+          d.appendChild(tl);
+        });
+        break;
+      case "grid":
+        d = el("pgrid");
+        w.items.forEach(function(it){
+          var c = el("pcell", '<div class="v">' + it[0] + '</div><div class="l">' + it[1] + '</div>');
+          c.querySelector(".v").style.color = accent;
+          d.appendChild(c);
+        });
+        break;
+      case "big":
+        d = el("pbig", '<div class="v">' + w.value + '</div><div class="l">' + w.label + '</div>'); break;
+      case "balance":
+        d = el("pbal", '<div class="l">' + w.label + '</div><div class="v">' + w.value + '</div>');
+        d.style.background = "linear-gradient(135deg," + accent + "," + fade(accent, 0.65) + ")";
+        break;
+      case "line":
+        d = el("pline" + (w.strong ? " strong" : ""), "<span>" + w.label + "</span><span>" + w.value + "</span>"); break;
+      case "map":
+        d = el("pmap", '<div class="pin"></div>');
+        d.querySelector(".pin").style.background = accent;
+        break;
+      case "bubble":
+        d = el("pbub " + w.side, w.text);
+        if (w.side === "out") d.style.background = accent;
+        break;
+      case "composer":
+        d = el("pcomp", '<div class="f">' + w.ph + '</div>');
+        var sb = el("s"); sb.style.background = accent; d.appendChild(sb);
+        break;
+      case "chart":
+        d = el("pchart");
+        for (var i = 0; i < 14; i++) {
+          var b = document.createElement("i");
+          b.style.height = (26 + Math.round(Math.abs(Math.sin(i * 1.1)) * 66)) + "%";
+          b.style.background = i % 3 === 0 ? accent : fade(accent, 0.4);
+          d.appendChild(b);
+        }
+        break;
+      case "rings":
+        d = el("prings", '<div class="r"></div>');
+        var r = d.querySelector(".r");
+        r.style.borderColor = fade(accent, 0.22);
+        r.style.boxShadow = "0 0 0 2px " + fade(accent, 0.5) + " inset";
+        break;
+      case "steps":
+        d = el("psteps");
+        w.items.forEach(function(sname, i){
+          var st = el("pstep" + (i <= w.active ? " on" : ""), '<span class="b"></span>' + sname);
+          if (i <= w.active) st.querySelector(".b").style.background = accent;
+          d.appendChild(st);
+        });
+        break;
+      case "progress":
+        d = el("pprog", "<i></i>");
+        d.querySelector("i").style.width = Math.round(w.value * 100) + "%";
+        d.querySelector("i").style.background = accent;
+        break;
+      case "check":
+        d = el("pcheck" + (w.done ? " done" : ""));
+        var bx = el("bx"); if (w.done) { bx.style.background = accent; bx.style.borderColor = accent; }
+        d.appendChild(bx); d.appendChild(el("", w.title));
+        break;
+      case "stories":
+        d = el("pstories");
+        w.items.forEach(function(nm, i){
+          var s = el("pstory", '<div class="c"></div><div class="n">' + nm + '</div>');
+          s.querySelector(".c").style.borderColor = i === 0 ? "#2C3454" : accent;
+          s.querySelector(".c").style.background = fade(accent, 0.25);
+          d.appendChild(s);
+        });
+        break;
+      case "post":
+        d = el("ppost", '<div class="hd"></div><div class="im"></div><div class="ac"><span>♡ 128</span><span>💬 24</span><span>↗</span></div>');
+        var hd = d.querySelector(".hd");
+        var av = el("pic", w.title.charAt(0)); av.style.background = accent; hd.appendChild(av);
+        hd.appendChild(el("tx", '<div class="t" style="font-size:11px;font-weight:700">' + w.title + '</div><div class="st" style="font-size:9px;color:#7C8AAD">' + w.sub + '</div>'));
+        d.querySelector(".im").style.background = "linear-gradient(135deg," + fade(accent, 0.5) + ",#1A2136)";
+        break;
+      case "art":
+        d = el("part"); d.style.background = "linear-gradient(135deg," + accent + ",#1A2136)"; break;
+      case "seek":
+        d = el("pseek", '<div class="bar"><i></i></div><div class="tm"><span>1:24</span><span>3:18</span></div>');
+        d.querySelector("i").style.background = accent;
+        break;
+      case "controls":
+        d = el("pctl", '<span>⏮</span><span class="pl">▶</span><span>⏭</span>');
+        d.querySelector(".pl").style.background = accent;
+        break;
+      case "miniplayer":
+        d = el("pmini", '<div class="ar"></div><div class="tx"><div class="t" style="font-size:11px;font-weight:700">' + w.title + '</div><div class="st" style="font-size:9px;color:#7C8AAD">' + w.sub + '</div></div><span style="color:#9FB0D4">▶</span>');
+        d.querySelector(".ar").style.background = accent;
+        break;
+      case "keypad":
+        d = el("pkey");
+        ["1","2","3","4","5","6","7","8","9","","0","⌫"].forEach(function(kk){ d.appendChild(el("", kk)); });
+        break;
+      case "tabbar":
+        d = el("ptab");
+        w.items.forEach(function(tname, i){
+          var tb = el("", tname);
+          if (i === 0) { tb.style.color = accent; }
+          d.appendChild(tb);
+        });
+        break;
+      default:
+        d = el("w", "");
+    }
+    scr.appendChild(d);
+  });
+}
+
+/* ---------- টাইপিং ইঞ্জিন ---------- */
+// গতি — "ফাস্ট, কিন্তু একটু ধীরে", যেন সত্যিই কেউ বসে টাইপ করছে
+var CHAR_MS = 28, LINE_PAUSE = 240, SCREEN_PAUSE = 4200, APP_PAUSE = 5000, MAX_LINES = 26;
+var order = [], oi = 0, app = null, si = 0, li = 0, ci = 0;
+var lineEls = [], lineNo = 0, totalChars = 0, doneChars = 0;
+
+function shuffled(n){
+  var a = []; for (var i = 0; i < n; i++) a.push(i);
+  for (var j = a.length - 1; j > 0; j--){ var k = Math.floor(Math.random() * (j + 1)); var t = a[j]; a[j] = a[k]; a[k] = t; }
+  return a;
+}
+function clearEditor(){
+  document.getElementById("code").innerHTML = "";
+  document.getElementById("gutter").innerHTML = "";
+  lineEls = []; lineNo = 0;
+}
+function pushLine(){
+  lineNo++;
+  var codeBox = document.getElementById("code"), gut = document.getElementById("gutter");
+  var d = document.createElement("div");
+  codeBox.appendChild(d); lineEls.push(d);
+  var g = document.createElement("div"); g.textContent = lineNo; gut.appendChild(g);
+  // লাইন বেশি হয়ে গেলে উপরেরটা মুছে ফেলা — এতেই "লেখা উপরে উঠে যাচ্ছে" অনুভূতি হয়
+  while (lineEls.length > MAX_LINES){
+    lineEls.shift().remove();
+    if (gut.firstChild) gut.firstChild.remove();
+  }
+  return d;
+}
+function startApp(){
+  app = APPS[order[oi]];
+  si = 0;
+  document.getElementById("brandChip").textContent = app.name;
+  document.getElementById("brandChip").style.background = app.accent;
+  document.getElementById("brandChip").style.color = "#08101f";
+  document.getElementById("langChip").textContent = app.lang;
+  document.getElementById("counter").textContent = app.tag;
+  totalChars = 0; doneChars = 0;
+  app.screens.forEach(function(s){ s.code.forEach(function(l){ totalChars += l.length + 1; }); });
+  document.getElementById("pscreen").innerHTML = "";
+  clearEditor();
+  startScreen();
+}
+function startScreen(){
+  var sc = app.screens[si];
+  li = 0; ci = 0;
+  document.getElementById("tabFile").textContent = sc.file;
+  document.getElementById("statusText").textContent = "Writing " + sc.file;
+  pushLine();
+  tick();
+}
+function tick(){
+  var sc = app.screens[si];
+  var raw = sc.code[li];
+  if (ci <= raw.length){
+    lineEls[lineEls.length - 1].innerHTML = hl(raw.slice(0, ci)) + '<span class="cursor"></span>';
+    ci++; doneChars++;
+    document.getElementById("growBar").style.width = Math.min(100, Math.round(doneChars / totalChars * 100)) + "%";
+    document.getElementById("growBar").style.background = app.accent;
+    setTimeout(tick, CHAR_MS + Math.random() * 26);
+    return;
+  }
+  lineEls[lineEls.length - 1].innerHTML = hl(raw) || "&nbsp;";
+  li++;
+  if (li < sc.code.length){
+    pushLine(); ci = 0;
+    setTimeout(tick, raw.trim() === "" ? 60 : LINE_PAUSE);
+    return;
+  }
+  // স্ক্রিনের কোড শেষ — এবার ফোনে সেই স্ক্রিনটা তৈরি হবে
+  document.getElementById("statusText").textContent = "✓ " + sc.file + " compiled — rendering preview";
+  setTimeout(function(){
+    renderPhone(sc.ui, app.accent);
+    document.getElementById("caption").innerHTML = "<b>" + app.name + "</b> — " + sc.label;
+    si++;
+    if (si < app.screens.length){
+      setTimeout(startScreen, SCREEN_PAUSE);
+    } else {
+      document.getElementById("statusText").textContent = "🎉 " + app.name + " build complete — starting next project";
+      setTimeout(function(){
+        oi++;
+        if (oi >= order.length){ order = shuffled(APPS.length); oi = 0; }
+        startApp();
+      }, APP_PAUSE);
+    }
+  }, 700);
+}
+order = shuffled(APPS.length);
+startApp();
+</script></body></html>`;
+
 // ---------------------------------------------------------------------------
 // ৮. মূল mount ফাংশন — server.js থেকে কল হয়
 // ---------------------------------------------------------------------------
@@ -4799,7 +5473,7 @@ module.exports = function mountGaming(app) {
     });
   });
   app.get("/gaming/overlay/chess", (req, res) => res.type("html").send(CHESS_OVERLAY_HTML));
-  app.get("/gaming/overlay/sports", (req, res) => res.type("html").send(SPORTS_OVERLAY_HTML));
+  app.get("/gaming/overlay/codelive", (req, res) => res.type("html").send(CODELIVE_OVERLAY_HTML));
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
 
   // --- লাইভ চ্যালেঞ্জ / queue রুটগুলো ---
@@ -4863,12 +5537,17 @@ module.exports = function mountGaming(app) {
   //  ৩) কিছুই না থাকলে রিপোর ফোল্ডার থেকে (/game-assets/...mp4)
   // ⚠️ Render প্রতিবার deploy করলে সার্ভারের নিজের ফাইল মুছে যায়, তাই সেটিংস প্যানেলে সেভ করা
   // ঠিকানাও মুছে যেতে পারে। স্থায়ীভাবে রাখতে চাইলে Environment Variable-ই সবচেয়ে নিরাপদ।
-  const ENV_BG_VIDEO = { snake: process.env.SNAKE_BG_VIDEO_URL || "", ballsort: process.env.BALLSORT_BG_VIDEO_URL || "" };
+  const ENV_BG_VIDEO = {
+    snake: process.env.SNAKE_BG_VIDEO_URL || "",
+    ballsort: process.env.BALLSORT_BG_VIDEO_URL || "",
+    codelive: process.env.CODELIVE_BG_VIDEO_URL || "",
+  };
   function readMindGameConfig(game) {
     let cfg;
     try { cfg = JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
     catch (e) { cfg = { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90, bgVideoUrl: "" }; }
     if (!cfg.bgVideoUrl) cfg.bgVideoUrl = ENV_BG_VIDEO[game] || "";
+    if (!cfg.camVideoUrl) cfg.camVideoUrl = process.env.CODELIVE_CAM_VIDEO_URL || "";
     return cfg;
   }
   function writeMindGameConfig(game, cfg) {
@@ -4883,6 +5562,7 @@ module.exports = function mountGaming(app) {
         commentaryUrls: Array.isArray(body.commentaryUrls) ? body.commentaryUrls.slice(0, 20).map(s => (s || "").toString().slice(0, 500)) : [],
         loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
         bgVideoUrl: (body.bgVideoUrl || "").toString().slice(0, 500),
+        camVideoUrl: (body.camVideoUrl || "").toString().slice(0, 500),
       });
       res.json({ ok: true });
     };
@@ -4891,6 +5571,8 @@ module.exports = function mountGaming(app) {
   app.post("/gaming/snake-config", express.json(), saveMindGameConfigRoute("snake"));
   app.get("/gaming/ballsort-config", (req, res) => res.json(readMindGameConfig("ballsort")));
   app.post("/gaming/ballsort-config", express.json(), saveMindGameConfigRoute("ballsort"));
+  app.get("/gaming/codelive-config", (req, res) => res.json(readMindGameConfig("codelive")));
+  app.post("/gaming/codelive-config", express.json(), saveMindGameConfigRoute("codelive"));
 
   // কুকি পড়া/লেখার জন্য হালকা helper — নতুন কোনো npm প্যাকেজ ছাড়াই
   function readCookie(req, name) {
@@ -5065,5 +5747,5 @@ module.exports = function mountGaming(app) {
   app.get("/gaming/challenge/ballsort", (req, res) => res.type("html").send(BALLSORT_CHALLENGE_HTML));
   runBallSortLoop().catch((e) => console.error("❌ Ball Sort loop-এ error:", e));
 
-  console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess, /gaming/overlay/sports, /gaming/overlay/snake, /gaming/overlay/ballsort, /gaming/challenge/join এ পাওয়া যাবে।");
+  console.log("✅ gaming.js mount হয়েছে — /gaming/overlay/chess, /gaming/overlay/codelive, /gaming/overlay/snake, /gaming/overlay/ballsort, /gaming/challenge/join এ পাওয়া যাবে।");
 };
