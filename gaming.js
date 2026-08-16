@@ -233,6 +233,123 @@ function notifyQueuePositions() {
   });
 }
 
+// ===========================================================================
+// Snake / Ball Sort — লাইনে দাঁড়িয়ে খেলার সিস্টেম (queue)
+// ---------------------------------------------------------------------------
+// চেসের queue থেকে এটা একটা জায়গায় আলাদা: চেসে চ্যালেঞ্জার overlay-র বোর্ডেই চাল দেয়,
+// তাই সেখানে "turn" মানে বোর্ডের দখল। এখানে খেলোয়াড় নিজের ফোনেই খেলে — তাই "turn" মানে
+// তাকে একটা নির্দিষ্ট সময়ের স্লট দেওয়া হয়, ওই সময়টুকুতে তার নাম ও ছবি লাইভ স্ট্রিমে
+// দেখা যায়, আর সে তার একটামাত্র খেলা খেলে ফেলে।
+//
+// নিয়ম:
+//  • একবার লিংকে ঢুকে নাম-ছবি দিয়ে লাইনে দাঁড়ালে **একবারই** খেলা যায়। আবার খেলতে চাইলে
+//    আবার লিংকে ঢুকে নতুন করে লাইনে দাঁড়াতে হবে।
+//  • একসাথে একজনই খেলে। তার স্লট শেষ হলে বা খেলা শেষ করলে পরেরজনের ডাক পড়ে।
+//  • পালা আসার ~৫ মিনিট আগে (= লাইনে ১ নম্বরে পৌঁছালে) ফোনে নোটিফিকেশন যায়, আর সেটা
+//    বারবার ভাইব্রেট করতে থাকে যতক্ষণ না সে ক্লিক করে খেলার পেজে আসছে।
+// ===========================================================================
+const GQ_GAMES = ["snake", "ballsort"];
+const GQ_TURN_MS = 5 * 60 * 1000;     // একজনের স্লট ৫ মিনিট — এটাই "৫ মিনিট আগে" হিসেবের ভিত্তি
+const GQ_RING_EVERY_MS = 20 * 1000;   // ক্লিক না করা পর্যন্ত প্রতি ২০ সেকেন্ডে আবার ভাইব্রেট
+const GQ_RING_MAX_MS = 5 * 60 * 1000; // অনন্তকাল বাজতে থাকবে না — বড়জোর ৫ মিনিট
+
+const gameQueues = {};
+GQ_GAMES.forEach((g) => { gameQueues[g] = { queue: [], active: null }; });
+
+function gqLabel(game) { return game === "snake" ? "Snake" : "Ball Sort Puzzle"; }
+function gqPublicQueue(game) {
+  return gameQueues[game].queue.map((q, i) => ({
+    position: i + 1, name: q.name, photoUrl: q.photoUrl, tipAmount: q.tipAmount || 0,
+  }));
+}
+function gqPublicActive(game) {
+  const a = gameQueues[game].active;
+  if (!a) return null;
+  return {
+    name: a.name, photoUrl: a.photoUrl, tipAmount: a.tipAmount || 0,
+    secondsLeft: Math.max(0, Math.round((a.startedAt + GQ_TURN_MS - Date.now()) / 1000)),
+  };
+}
+
+// পালা আসার আগে ফোনে "রিং" — ক্লিক না করা পর্যন্ত থামে না
+function gqStartRinging(game, entry) {
+  gqStopRinging(entry);
+  const started = Date.now();
+  const fire = () => {
+    if (entry.acknowledged || Date.now() - started > GQ_RING_MAX_MS) return gqStopRinging(entry);
+    sendPushToId(entry.id, {
+      title: "📞 আপনার পালা এসে গেছে!",
+      body: `${entry.name}, এখনই ${gqLabel(game)} খেলার সুযোগ — চাপ দিয়ে খেলার পেজে আসুন!`,
+      tag: "gq-ring-" + game,       // একই tag, তাই ফোনে নোটিফিকেশন জমতে থাকবে না — একটাই বারবার বাজবে
+      requireInteraction: true,
+      ring: true,
+      url: `/gaming/challenge/${game}?id=${entry.id}`,
+    });
+  };
+  fire();
+  entry.ringTimer = setInterval(fire, GQ_RING_EVERY_MS);
+}
+function gqStopRinging(entry) {
+  if (entry && entry.ringTimer) { clearInterval(entry.ringTimer); entry.ringTimer = null; }
+}
+
+// লাইনের নাম্বার বদলালে সবাইকে জানানো। ⚠️ শুধু নাম্বার বদলালেই পাঠানো হয়, একই নাম্বার
+// বারবার পাঠালে দর্শকের ফোন অকারণে বাজতেই থাকত।
+function gqNotifyPositions(game) {
+  gameQueues[game].queue.forEach((q, i) => {
+    const position = i + 1;
+    if (q.lastNotifiedPosition === position) return;
+    q.lastNotifiedPosition = position;
+    const mins = Math.round((position * GQ_TURN_MS) / 60000);
+    if (position === 1) {
+      sendPushToId(q.id, {
+        title: "🔔 প্রায় আপনার পালা!",
+        body: `${q.name}, আপনিই লাইনে সবার আগে — আর প্রায় ৫ মিনিট। তৈরি থাকুন!`,
+        tag: "gq-next-" + game, requireInteraction: true,
+        url: `/gaming/challenge/${game}?id=${q.id}`,
+      });
+    } else {
+      sendPushToId(q.id, {
+        title: "🔢 লাইনের অবস্থান",
+        body: `${q.name}, আপনি এখন #${position} নম্বরে — আনুমানিক ${mins} মিনিট বাকি`,
+        tag: "gq-pos-" + game, requireInteraction: false,
+        url: `/gaming/challenge/${game}?id=${q.id}`,
+      });
+    }
+  });
+}
+
+function gqFinishActive(game, reason) {
+  const st = gameQueues[game];
+  if (!st.active) return;
+  console.log(`[${game}-queue] ${st.active.name}-এর পালা শেষ (${reason})`);
+  gqStopRinging(st.active);
+  delete pushSubscriptions[st.active.id];
+  st.active = null;
+}
+
+// প্রতি ২ সেকেন্ডে — কারও স্লট শেষ হয়েছে কিনা, আর লাইনে কেউ অপেক্ষা করছে কিনা দেখে
+function gqTick() {
+  GQ_GAMES.forEach((game) => {
+    const st = gameQueues[game];
+    if (st.active) {
+      if (st.active.finished) gqFinishActive(game, "খেলা শেষ করেছেন");
+      else if (Date.now() - st.active.startedAt > GQ_TURN_MS) gqFinishActive(game, "সময় শেষ");
+    }
+    if (!st.active && st.queue.length) {
+      const next = st.queue.shift();
+      next.startedAt = Date.now();
+      next.finished = false;
+      next.acknowledged = false;
+      st.active = next;
+      console.log(`[${game}-queue] এখন খেলছেন: ${next.name} (লাইনে বাকি ${st.queue.length} জন)`);
+      gqStartRinging(game, next);
+      gqNotifyPositions(game);
+    }
+  });
+}
+setInterval(gqTick, 2000);
+
 async function runChessLoop() {
   if (chessLoopActive) return;
   chessLoopActive = true;
@@ -3079,6 +3196,10 @@ ${CELEBRATION_HTML}
       <div id="recentDonorList"></div>
     </div>
     <div class="altView" id="queueView">
+      <h3>⏳ Challenge Queue</h3>
+      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+    </div>
+    <div class="altView" id="howToView">
       <h3>🎮 Beat the Grandmaster</h3>
       <div style="font-size:10px;color:#9fb0d4;line-height:1.6;">
         যে কেউ, যেকোনো সময় খেলতে পারেন —<br>
@@ -3163,13 +3284,48 @@ setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
 
 // Recent Supporters ↔ Challenge Queue — প্রতি ১ মিনিটে পালাক্রমে বদলায়
 // (⚠️ চ্যালেঞ্জ/queue-এর real backend এখনো এই গেমে যোগ হয়নি, তাই queueList আপাতত সবসময় খালি দেখাবে)
-let altShowingRecent = true;
+var altIdx = 0;
+var ALT_VIEWS = ["recentView", "queueView", "howToView"];
 function toggleAltPanel(){
-  altShowingRecent = !altShowingRecent;
-  document.getElementById("recentView").classList.toggle("show", altShowingRecent);
-  document.getElementById("queueView").classList.toggle("show", !altShowingRecent);
+  altIdx = (altIdx + 1) % ALT_VIEWS.length;
+  ALT_VIEWS.forEach(function(v, i){
+    document.getElementById(v).classList.toggle("show", i === altIdx);
+  });
 }
-setInterval(toggleAltPanel, 60000);
+setInterval(toggleAltPanel, 20000);
+
+/* ---------- কে এখন খেলছে + লাইনে কারা ---------- */
+// বাম কলামের ছবির বাক্সে এখন খেলোয়াড়ের আসল ছবি ও নাম দেখা যাবে — দর্শক বুঝবে
+// স্ক্রিনে যে খেলছে সে-ই লাইভে আছে
+function refreshChallengeQueue(){
+  fetch("/gaming/gq/snake/public").then(function(r){ return r.json(); }).then(function(d){
+    var wrap = document.getElementById("challengerPhotoWrap");
+    var nameEl = document.getElementById("challengerName");
+    if (d.nowPlaying){
+      var np = d.nowPlaying;
+      wrap.innerHTML = np.photoUrl
+        ? '<img src="' + np.photoUrl + '">'
+        : '<div class="cFallback">' + ((np.name && np.name[0]) || "?") + '</div>';
+      nameEl.innerHTML = np.name + (np.tipAmount ? ' <span style="color:#FFD866;">₹' + np.tipAmount + '</span>' : '');
+    } else {
+      wrap.innerHTML = '<div class="cFallback">?</div>';
+      nameEl.textContent = "No one playing right now";
+    }
+    var list = d.queue || [];
+    document.getElementById("queueList").innerHTML = list.length
+      ? list.slice(0, 6).map(function(q){
+          return '<div class="miniListRow">' +
+            (q.photoUrl ? '<img class="miniAvatar" src="' + q.photoUrl + '">'
+                        : '<div class="miniAvatarFallback">' + ((q.name && q.name[0]) || "?") + '</div>') +
+            '<div><b>#' + q.position + '</b> ' + q.name +
+            (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹' + q.tipAmount + '</span>' : '') +
+            '</div></div>';
+        }).join("")
+      : '<div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div>';
+  }).catch(function(){});
+}
+refreshChallengeQueue();
+setInterval(refreshChallengeQueue, 3000);
 
 // ব্যাকগ্রাউন্ড মিউজিক + কমেন্ট্রি — এই পেজেই নিচে স্ক্রল করলে ফর্ম দিয়ে সরাসরি সেট করা যায় (chess-এর প্যাটার্নে)
 const bgMusicEl = new Audio();
@@ -3885,6 +4041,10 @@ ${CELEBRATION_HTML}
       <div id="recentDonorList"></div>
     </div>
     <div class="altView" id="queueView">
+      <h3>⏳ Challenge Queue</h3>
+      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+    </div>
+    <div class="altView" id="howToView">
       <h3>🎮 Beat the Grandmaster</h3>
       <div style="font-size:10px;color:#9fb0d4;line-height:1.6;">
         যে কেউ, যেকোনো সময় খেলতে পারেন —<br>
@@ -3958,13 +4118,48 @@ setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
 
 // Recent Supporters ↔ Challenge Queue — প্রতি ১ মিনিটে পালাক্রমে বদলায়
 // (⚠️ চ্যালেঞ্জ/queue-এর real backend এখনো এই গেমে যোগ হয়নি, তাই queueList আপাতত সবসময় খালি দেখাবে)
-let altShowingRecent = true;
+var altIdx = 0;
+var ALT_VIEWS = ["recentView", "queueView", "howToView"];
 function toggleAltPanel(){
-  altShowingRecent = !altShowingRecent;
-  document.getElementById("recentView").classList.toggle("show", altShowingRecent);
-  document.getElementById("queueView").classList.toggle("show", !altShowingRecent);
+  altIdx = (altIdx + 1) % ALT_VIEWS.length;
+  ALT_VIEWS.forEach(function(v, i){
+    document.getElementById(v).classList.toggle("show", i === altIdx);
+  });
 }
-setInterval(toggleAltPanel, 60000);
+setInterval(toggleAltPanel, 20000);
+
+/* ---------- কে এখন খেলছে + লাইনে কারা ---------- */
+// বাম কলামের ছবির বাক্সে এখন খেলোয়াড়ের আসল ছবি ও নাম দেখা যাবে — দর্শক বুঝবে
+// স্ক্রিনে যে খেলছে সে-ই লাইভে আছে
+function refreshChallengeQueue(){
+  fetch("/gaming/gq/ballsort/public").then(function(r){ return r.json(); }).then(function(d){
+    var wrap = document.getElementById("challengerPhotoWrap");
+    var nameEl = document.getElementById("challengerName");
+    if (d.nowPlaying){
+      var np = d.nowPlaying;
+      wrap.innerHTML = np.photoUrl
+        ? '<img src="' + np.photoUrl + '">'
+        : '<div class="cFallback">' + ((np.name && np.name[0]) || "?") + '</div>';
+      nameEl.innerHTML = np.name + (np.tipAmount ? ' <span style="color:#FFD866;">₹' + np.tipAmount + '</span>' : '');
+    } else {
+      wrap.innerHTML = '<div class="cFallback">?</div>';
+      nameEl.textContent = "No one playing right now";
+    }
+    var list = d.queue || [];
+    document.getElementById("queueList").innerHTML = list.length
+      ? list.slice(0, 6).map(function(q){
+          return '<div class="miniListRow">' +
+            (q.photoUrl ? '<img class="miniAvatar" src="' + q.photoUrl + '">'
+                        : '<div class="miniAvatarFallback">' + ((q.name && q.name[0]) || "?") + '</div>') +
+            '<div><b>#' + q.position + '</b> ' + q.name +
+            (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹' + q.tipAmount + '</span>' : '') +
+            '</div></div>';
+        }).join("")
+      : '<div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div>';
+  }).catch(function(){});
+}
+refreshChallengeQueue();
+setInterval(refreshChallengeQueue, 3000);
 
 // ব্যাকগ্রাউন্ড মিউজিক + কমেন্ট্রি — এই পেজেই নিচে স্ক্রল করলে ফর্ম দিয়ে সরাসরি সেট করা যায় (chess-এর প্যাটার্নে)
 const bgMusicEl = new Audio();
@@ -4315,10 +4510,183 @@ background:#0f1526;border-radius:8px;padding:10px;}
 .msg.win{color:#8BE28B;} .msg.lose{color:#FF8A80;}
 `;
 
+// লাইনে দাঁড়ানোর অংশটা দুটো চ্যালেঞ্জ পেজেই এক — তাই একবার লিখে দুই জায়গায় ব্যবহার
+const QUEUE_CARDS_CSS = `
+.qRow{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #232b45;}
+.qRow:first-child{border-top:none;}
+.qPos{width:24px;font-size:12px;font-weight:800;color:#7C8AAD;}
+.qAv{width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid #2a3352;}
+.qAvF{width:32px;height:32px;border-radius:50%;background:#2a3352;display:flex;align-items:center;
+justify-content:center;font-weight:800;color:#9fb0d4;font-size:14px;}
+.qName{flex:1;font-size:13px;font-weight:700;}
+.qTip{font-size:12px;font-weight:800;color:#FFD866;}
+.bigNum{font-size:44px;font-weight:900;color:#FFD866;line-height:1;}
+.nowBox{background:#0f1526;border:1px solid #2a3352;border-radius:12px;padding:12px;margin-top:14px;}
+.nowBox h4{margin:0 0 8px;font-size:11px;letter-spacing:1px;color:#7C8AAD;text-transform:uppercase;}
+.turnBar{background:linear-gradient(135deg,#8BE28B,#34D399);color:#06210f;font-weight:800;
+border-radius:10px;padding:10px;text-align:center;font-size:13px;margin-bottom:10px;}
+#pushStatus{font-size:11px;color:#7C8AAD;margin-top:10px;line-height:1.5;}
+`;
+
+const QUEUE_CARDS_HTML = `
+<div class="hide" id="waitCard">
+  <div class="card">
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:#7C8AAD;font-weight:700;letter-spacing:1px;">YOUR POSITION</div>
+      <div class="bigNum" id="qPosition">—</div>
+      <div style="font-size:12px;color:#7C8AAD;margin-top:4px;" id="qEta">লাইনে দাঁড়ানো হচ্ছে...</div>
+    </div>
+    <div class="nowBox">
+      <h4>▶ এখন খেলছেন</h4>
+      <div id="nowPlayingBox" style="font-size:12px;color:#5a6a8a;">এখনো কেউ খেলছেন না</div>
+    </div>
+    <div class="nowBox">
+      <h4>⏳ লাইনে অপেক্ষা করছেন</h4>
+      <div id="queueListBox" style="font-size:12px;color:#5a6a8a;">লাইনে কেউ নেই</div>
+    </div>
+    <div id="pushStatus"></div>
+    <button class="ghost" id="leaveBtn" style="margin-top:12px;">লাইন থেকে সরে যান</button>
+  </div>
+</div>
+
+<div class="hide" id="doneCard">
+  <div class="card" style="text-align:center;">
+    <div style="font-size:34px;">🎉</div>
+    <div class="msg" id="doneMsg" style="margin-top:6px;"></div>
+    <p style="font-size:12px;color:#7C8AAD;line-height:1.6;margin-top:10px;">
+      একবার লাইনে দাঁড়ালে একবারই খেলা যায়।<br>আবার খেলতে চাইলে নতুন করে নাম দিয়ে লাইনে দাঁড়ান।
+    </p>
+    <button id="againBtn2">আবার লাইনে দাঁড়ান</button>
+  </div>
+</div>
+`;
+
+// gameKey: "snake" / "ballsort" | startFn: পালা এলে যে ফাংশনটা খেলা চালু করবে
+function queueClientJS(gameKey, startFn) {
+  return `
+/* ---------- লাইনে দাঁড়ানো, পালা আসা, একবারই খেলা ---------- */
+${PUSH_SETUP_JS}
+var myQueueId = null, myTurnStarted = false, pollTimer = null, turnTimer = null;
+
+function show(id, on){ document.getElementById(id).classList.toggle("hide", !on); }
+function avatarHtml(p, n){
+  return p ? '<img class="qAv" src="' + p + '">'
+           : '<div class="qAvF">' + ((n && n[0]) || "?") + '</div>';
+}
+function renderQueue(st){
+  var np = st.nowPlaying;
+  document.getElementById("nowPlayingBox").innerHTML = np
+    ? '<div class="qRow">' + avatarHtml(np.photoUrl, np.name) + '<span class="qName">' + np.name + '</span>' +
+      (np.tipAmount ? '<span class="qTip">₹' + np.tipAmount + '</span>' : '') + '</div>'
+    : 'এখনো কেউ খেলছেন না';
+}
+function renderWaitingList(list){
+  document.getElementById("queueListBox").innerHTML = list.length
+    ? list.slice(0, 8).map(function(q){
+        return '<div class="qRow"><span class="qPos">#' + q.position + '</span>' +
+               avatarHtml(q.photoUrl, q.name) + '<span class="qName">' + q.name + '</span>' +
+               (q.tipAmount ? '<span class="qTip">₹' + q.tipAmount + '</span>' : '') + '</div>';
+      }).join("")
+    : 'লাইনে কেউ নেই';
+}
+function refreshPublic(){
+  fetch("/gaming/gq/${gameKey}/public").then(function(r){ return r.json(); })
+    .then(function(d){ renderQueue(d); renderWaitingList(d.queue || []); }).catch(function(){});
+}
+function startTurnCountdown(){
+  if (turnTimer) clearInterval(turnTimer);
+  turnTimer = setInterval(function(){
+    fetch("/gaming/gq/${gameKey}/state?id=" + myQueueId).then(function(r){ return r.json(); })
+      .then(function(st){
+        var el = document.getElementById("turnClock");
+        if (!el) return;
+        if (st.secondsLeft == null) return;
+        var m = Math.floor(st.secondsLeft / 60), sec = st.secondsLeft % 60;
+        el.textContent = m + ":" + (sec < 10 ? "0" : "") + sec;
+        // সময় শেষ — সার্ভার এমনিতেই পরেরজনকে ডেকে নেবে, এখানে শুধু জানিয়ে দেওয়া
+        if (st.secondsLeft <= 0) endMyTurn("⏱ সময় শেষ! পরের জনের পালা এসে গেছে।");
+      }).catch(function(){});
+  }, 1000);
+}
+function endMyTurn(message){
+  if (turnTimer) { clearInterval(turnTimer); turnTimer = null; }
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  fetch("/gaming/gq/${gameKey}/finish", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: myQueueId }) }).catch(function(){});
+  show("playCard", false); show("waitCard", false); show("joinCard", false);
+  show("doneCard", true);
+  var d = document.getElementById("doneMsg");
+  if (message) d.textContent = message;
+}
+function pollQueue(){
+  fetch("/gaming/gq/${gameKey}/state?id=" + myQueueId).then(function(r){ return r.json(); })
+    .then(function(st){
+      renderQueue(st);
+      if (st.isYourTurn && !myTurnStarted){
+        myTurnStarted = true;
+        // নোটিফিকেশনের রিং থামাও — খেলোয়াড় পেজে এসে গেছেন
+        fetch("/gaming/gq/${gameKey}/ack", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: myQueueId }) }).catch(function(){});
+        show("waitCard", false); show("playCard", true);
+        startTurnCountdown();
+        ${startFn}();
+        return;
+      }
+      if (!st.isYourTurn && !myTurnStarted){
+        if (st.position == null){
+          // লাইনেও নেই, খেলছেও না — সম্ভবত সময় পেরিয়ে গেছে
+          endMyTurn("আপনার পালাটি আর নেই — আবার লাইনে দাঁড়ান।");
+          return;
+        }
+        document.getElementById("qPosition").textContent = "#" + st.position;
+        document.getElementById("qEta").textContent = "আনুমানিক " + st.etaMinutes + " মিনিট বাকি · লাইনে মোট " + st.total + " জন";
+      }
+    }).catch(function(){});
+  refreshPublic();
+}
+function joinQueue(){
+  var name = document.getElementById("nameInput").value.trim();
+  if (name.length < 2){ document.getElementById("startMsg").textContent = "একটা নাম লিখুন (অন্তত ২ অক্ষর)।"; return; }
+  var btn = document.getElementById("startBtn");
+  btn.disabled = true; btn.textContent = "লাইনে দাঁড়ানো হচ্ছে...";
+  // Render-এর ফ্রি সার্ভার ঘুমিয়ে থাকলে প্রথম রিকোয়েস্টে সময় লাগে — তাই স্পষ্ট বার্তা
+  var slow = setTimeout(function(){ btn.textContent = "সার্ভার জাগছে, একটু অপেক্ষা করুন..."; }, 6000);
+  var fd = new FormData();
+  fd.append("name", name);
+  var photo = document.getElementById("photoInput");
+  if (photo && photo.files[0]) fd.append("photo", photo.files[0]);
+  var tip = document.getElementById("tipAmountInput");
+  if (tip && tip.value) fd.append("tipAmount", tip.value);
+  fetch("/gaming/gq/${gameKey}/join", { method: "POST", body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      clearTimeout(slow);
+      if (!d.id) throw new Error("no id");
+      myQueueId = d.id;
+      show("joinCard", false); show("waitCard", true);
+      setupPush(myQueueId, document.getElementById("pushStatus")).catch(function(){});
+      pollQueue();
+      pollTimer = setInterval(pollQueue, 3000);
+    })
+    .catch(function(){
+      clearTimeout(slow);
+      btn.disabled = false; btn.textContent = "আবার চেষ্টা করুন";
+    });
+}
+document.getElementById("startBtn").addEventListener("click", joinQueue);
+document.getElementById("leaveBtn").addEventListener("click", function(){
+  fetch("/gaming/gq/${gameKey}/leave", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: myQueueId }) }).finally(function(){ location.reload(); });
+});
+document.getElementById("againBtn2").addEventListener("click", function(){ location.reload(); });
+refreshPublic();
+`;
+}
+
 const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Beat the Grandmaster — Snake</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>${CHALLENGE_SHARED_CSS}
+<style>${CHALLENGE_SHARED_CSS}${QUEUE_CARDS_CSS}
 #board{background:rgba(10,14,31,0.45);border:4px solid #6b4423;border-radius:10px;display:block;margin:0 auto;touch-action:none;}
 #pad{display:grid;grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px;gap:8px;
 margin:14px auto 0;justify-content:center;}
@@ -4333,24 +4701,29 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
 <h1>🐍 Beat the Grandmaster</h1>
 <div class="sub">সাপের গেমে গ্র্যান্ডমাস্টারের চেয়ে বেশি স্কোর করুন —<br>পারলে লাইভ স্ট্রিমে আপনার নাম উঠে যাবে।</div>
 
-<div class="card" id="startCard">
+<div id="joinCard"><div class="card">
   <div class="record">🏆 এখনকার রেকর্ড: <b id="recScore">—</b> — <span id="recName">Grandmaster</span></div>
   <label>আপনার নাম (লাইভে এই নামটাই দেখানো হবে)</label>
   <input type="text" id="nameInput" maxlength="24" placeholder="আপনার নাম লিখুন">
+  <label>আপনার ছবি (ঐচ্ছিক — লাইভ স্ট্রিমে দেখা যাবে)</label>
+  <input type="file" id="photoInput" accept="image/*" style="color:#7C8AAD;font-size:13px;">
   <div class="tipBox" id="tipBox" style="display:none;">
     <b>🙏 Want to help me out?</b>
     <div class="notFee">খেলতে কোনো টাকা লাগে না — এটা সম্পূর্ণ ফ্রি।<br>
     Playing is completely free. This is only if you'd like to help.</div>
     <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Help Me — Send a Tip<small>ঐচ্ছিক · Optional · এক চাপে পেমেন্ট পেজ খুলবে</small></a>
+    <label style="text-align:left;">টিপস পাঠিয়ে থাকলে অঙ্কটা লিখুন (ঐচ্ছিক — লাইনে আপনার নামের পাশে দেখা যাবে)</label>
+    <input type="number" id="tipAmountInput" min="0" step="1" placeholder="যেমন 50">
     <div class="disclaimer">
       ⚠️ This is <b>not</b> an entry fee or any kind of bet or gambling. Tipping does <b>not</b>
       change your score, your record, or your chance of beating the Grandmaster — winning and
       losing have nothing to do with it. It is purely voluntary support for the streamer.
     </div>
   </div>
-  <button id="startBtn">খেলা শুরু করুন</button>
+  <button id="startBtn">লাইনে দাঁড়ান</button>
   <div class="msg" id="startMsg"></div>
-</div>
+</div></div>
+${QUEUE_CARDS_HTML}
 
 <div class="hide" id="playCard">
   <div id="scoreBar">Score: <b id="scoreVal">0</b> &nbsp;|&nbsp; রেকর্ড: <span id="recScore2">—</span></div>
@@ -4359,8 +4732,8 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
     <div class="pb" id="pu">▲</div><div class="pb" id="pl">◀</div>
     <div class="pb" id="pr">▶</div><div class="pb" id="pd">▼</div>
   </div>
+  <div class="turnBar">🎮 এখন আপনার পালা — বাকি সময় <span id="turnClock">5:00</span></div>
   <div class="msg" id="resultMsg"></div>
-  <button class="ghost hide" id="againBtn">আবার খেলুন</button>
 </div>
 
 <script>
@@ -4452,7 +4825,10 @@ function gameOver(){
     }
     document.getElementById("recScore2").textContent = d.score;
   }).catch(function(){ msg.textContent = "স্কোর জমা দেওয়া যায়নি — ইন্টারনেট দেখে আবার চেষ্টা করুন।"; });
-  document.getElementById("againBtn").classList.remove("hide");
+  // একবার লাইনে দাঁড়ালে একবারই খেলা — তাই এখানেই পালা শেষ, পরেরজনের ডাক পড়বে
+  setTimeout(function(){
+    endMyTurn(document.getElementById("resultMsg").textContent);
+  }, 4000);
 }
 function startGame(){
   fitBoard();
@@ -4461,19 +4837,15 @@ function startGame(){
   dir = {r:0,c:1}; nextDir = null; score = 0; alive = true;
   document.getElementById("scoreVal").textContent = "0";
   document.getElementById("resultMsg").textContent = "";
-  document.getElementById("againBtn").classList.add("hide");
   placeFood(); draw();
   clearInterval(timer); timer = setInterval(tick, TICK);
 }
-document.getElementById("startBtn").addEventListener("click", function(){
-  var n = document.getElementById("nameInput").value.trim();
-  if (n.length < 2){ document.getElementById("startMsg").textContent = "একটা নাম লিখুন (অন্তত ২ অক্ষর)।"; return; }
-  playerName = n;
-  document.getElementById("startCard").classList.add("hide");
-  document.getElementById("playCard").classList.remove("hide");
+// পালা এলে queue ক্লায়েন্ট এই ফাংশনটাই ডাকে
+function beginMyTurn(){
+  playerName = document.getElementById("nameInput").value.trim() || "Player";
   startGame();
-});
-document.getElementById("againBtn").addEventListener("click", startGame);
+}
+${queueClientJS("snake", "beginMyTurn")}
 document.getElementById("pu").addEventListener("click", function(){ setDir(-1,0); });
 document.getElementById("pd").addEventListener("click", function(){ setDir(1,0); });
 document.getElementById("pl").addEventListener("click", function(){ setDir(0,-1); });
@@ -4496,7 +4868,7 @@ window.addEventListener("resize", function(){ if (alive){ fitBoard(); draw(); } 
 const BALLSORT_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Beat the Grandmaster — Ball Sort</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>${CHALLENGE_SHARED_CSS}
+<style>${CHALLENGE_SHARED_CSS}${QUEUE_CARDS_CSS}
 #tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 6px;width:100%;max-width:460px;margin:8px auto 0;}
 .tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.13),rgba(10,14,31,0.55));
 border:2px solid rgba(255,255,255,0.28);border-top:none;border-radius:4px 4px 20px 20px;
@@ -4513,32 +4885,35 @@ ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45
 <h1>🧪 Beat the Grandmaster</h1>
 <div class="sub">এই পাজলটা গ্র্যান্ডমাস্টারের চেয়ে কম সময়ে সমাধান করুন —<br>পারলে লাইভ স্ট্রিমে আপনার নাম উঠে যাবে।</div>
 
-<div class="card" id="startCard">
+<div id="joinCard"><div class="card">
   <div class="record">🏆 সবচেয়ে কম সময়: <b id="recTime">—</b> — <span id="recName">Grandmaster</span></div>
   <label>আপনার নাম (লাইভে এই নামটাই দেখানো হবে)</label>
   <input type="text" id="nameInput" maxlength="24" placeholder="আপনার নাম লিখুন">
+  <label>আপনার ছবি (ঐচ্ছিক — লাইভ স্ট্রিমে দেখা যাবে)</label>
+  <input type="file" id="photoInput" accept="image/*" style="color:#7C8AAD;font-size:13px;">
   <div class="tipBox" id="tipBox" style="display:none;">
     <b>🙏 Want to help me out?</b>
     <div class="notFee">খেলতে কোনো টাকা লাগে না — এটা সম্পূর্ণ ফ্রি।<br>
     Playing is completely free. This is only if you'd like to help.</div>
     <a class="helpBtn" id="tipLink" href="#" target="_blank">💛 Help Me — Send a Tip<small>ঐচ্ছিক · Optional · এক চাপে পেমেন্ট পেজ খুলবে</small></a>
+    <label style="text-align:left;">টিপস পাঠিয়ে থাকলে অঙ্কটা লিখুন (ঐচ্ছিক — লাইনে আপনার নামের পাশে দেখা যাবে)</label>
+    <input type="number" id="tipAmountInput" min="0" step="1" placeholder="যেমন 50">
     <div class="disclaimer">
       ⚠️ This is <b>not</b> an entry fee or any kind of bet or gambling. Tipping does <b>not</b>
       change your score, your record, or your chance of beating the Grandmaster — winning and
       losing have nothing to do with it. It is purely voluntary support for the streamer.
     </div>
   </div>
-  <button id="startBtn">পাজল শুরু করুন</button>
+  <button id="startBtn">লাইনে দাঁড়ান</button>
   <div class="msg" id="startMsg"></div>
-</div>
+</div></div>
+${QUEUE_CARDS_HTML}
 
 <div class="hide" id="playCard">
   <div id="hud"><span>⏱ <b id="clock">0:00</b></span><span>রেকর্ড: <span id="recTime2">—</span></span></div>
   <div id="tubes"></div>
   <div class="msg" id="resultMsg">একটা টিউবে চাপ দিয়ে উপরের বলটা তুলুন, তারপর যেখানে রাখবেন সেই টিউবে চাপ দিন।</div>
-  <div id="btnRow">
-    <button class="ghost" id="againBtn">নতুন পাজল</button>
-  </div>
+  <div class="turnBar">🎮 এখন আপনার পালা — বাকি সময় <span id="turnClock">5:00</span></div>
 </div>
 
 <script>
@@ -4623,7 +4998,11 @@ function finish(){
       msg.className = "msg lose";
     }
     document.getElementById("recTime2").textContent = fmt(d.seconds);
-  }).catch(function(){ msg.textContent = "সময় জমা দেওয়া যায়নি — ইন্টারনেট দেখে আবার চেষ্টা করুন।"; });
+  }).catch(function(){ msg.textContent = "সময় জমা দেওয়া যায়নি — ইন্টারনেট দেখে আবার চেষ্টা করুন।"; })
+    .finally(function(){
+      // একবার লাইনে দাঁড়ালে একবারই খেলা — পাজল মিলে গেলেই পালা শেষ
+      setTimeout(function(){ endMyTurn(msg.textContent); }, 4000);
+    });
 }
 function newPuzzle(){
   finished = false; sel = -1;
@@ -4642,15 +5021,11 @@ function newPuzzle(){
     document.getElementById("resultMsg").textContent = "পাজল আনা যায়নি — একটু পরে আবার চেষ্টা করুন।";
   });
 }
-document.getElementById("startBtn").addEventListener("click", function(){
-  var n = document.getElementById("nameInput").value.trim();
-  if (n.length < 2){ document.getElementById("startMsg").textContent = "একটা নাম লিখুন (অন্তত ২ অক্ষর)।"; return; }
-  playerName = n;
-  document.getElementById("startCard").classList.add("hide");
-  document.getElementById("playCard").classList.remove("hide");
+function beginMyTurn(){
+  playerName = document.getElementById("nameInput").value.trim() || "Player";
   newPuzzle();
-});
-document.getElementById("againBtn").addEventListener("click", newPuzzle);
+}
+${queueClientJS("ballsort", "beginMyTurn")}
 </script></body></html>`;
 
 
@@ -6138,6 +6513,99 @@ module.exports = function mountGaming(app) {
   });
 
   // --- পুশ নোটিফিকেশন সেটআপ রুট ---
+  // ---------- Snake / Ball Sort queue রুট ----------
+  function gqValid(req, res) {
+    const game = req.params.game;
+    if (!gameQueues[game]) { res.status(404).json({ error: "unknown_game" }); return null; }
+    return game;
+  }
+
+  app.post("/gaming/gq/:game/join", (req, res, next) => {
+    if (upload) return upload.single("photo")(req, res, next);
+    next();
+  }, express.urlencoded({ extended: true }), (req, res) => {
+    try {
+      const game = gqValid(req, res); if (!game) return;
+      const st = gameQueues[game];
+      // একই ব্রাউজার থেকে ইতিমধ্যেই লাইনে থাকলে বা খেলতে থাকলে — নতুন entry না বানিয়ে
+      // পুরনোটাই ফেরত দেওয়া হয়, নাহলে একজন বারবার চেপে পুরো লাইন দখল করে ফেলত
+      const existingId = readCookie(req, "gq_" + game);
+      if (existingId) {
+        const inQueue = st.queue.some((q) => q.id === existingId);
+        const isPlaying = st.active && st.active.id === existingId;
+        if (inQueue || isPlaying) return res.json({ id: existingId, alreadyInQueue: true });
+      }
+      const id = nextQueueId();
+      const name = ((req.body && req.body.name) || "Player").toString().trim().slice(0, 30) || "Player";
+      const photoUrl = req.file ? `/gaming/uploads/${path.basename(req.file.path)}` : "";
+      let tipAmount = parseInt((req.body && req.body.tipAmount) || "0", 10);
+      if (!Number.isFinite(tipAmount) || tipAmount < 0) tipAmount = 0;
+      if (tipAmount > 1000000) tipAmount = 1000000;
+      st.queue.push({ id, name, photoUrl, tipAmount, joinedAt: Date.now() });
+      setCookie(res, "gq_" + game, id, 3600);
+      console.log(`[${game}-queue] নতুন: ${name} (লাইনে এখন ${st.queue.length} জন)`);
+      gqNotifyPositions(game);
+      res.json({ id });
+    } catch (e) {
+      console.error("❌ gq/join error:", e.message);
+      res.status(500).json({ error: "join_failed", message: e.message });
+    }
+  });
+
+  // খেলোয়াড়ের নিজের পেজ প্রতি ৩ সেকেন্ডে এটা জিজ্ঞেস করে — এখন কি আমার পালা?
+  app.get("/gaming/gq/:game/state", (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    const st = gameQueues[game];
+    const id = req.query.id;
+    const idx = st.queue.findIndex((q) => q.id === id);
+    const isYourTurn = !!(st.active && st.active.id === id);
+    res.json({
+      position: idx >= 0 ? idx + 1 : null,
+      total: st.queue.length,
+      isYourTurn,
+      finished: isYourTurn ? !!st.active.finished : false,
+      secondsLeft: isYourTurn ? Math.max(0, Math.round((st.active.startedAt + GQ_TURN_MS - Date.now()) / 1000)) : null,
+      etaMinutes: idx >= 0 ? Math.round(((idx + 1) * GQ_TURN_MS) / 60000) : null,
+      nowPlaying: gqPublicActive(game),
+    });
+  });
+
+  // খেলোয়াড় নোটিফিকেশনে চাপ দিয়ে পেজে এসেছে — রিং থামাও
+  app.post("/gaming/gq/:game/ack", express.json(), (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    const st = gameQueues[game];
+    const { id } = req.body || {};
+    if (st.active && st.active.id === id) { st.active.acknowledged = true; gqStopRinging(st.active); }
+    res.json({ ok: true });
+  });
+
+  // খেলা শেষ — একবারই খেলা যায়, তাই এর পরেই তার পালা শেষ হয়ে পরেরজনের ডাক পড়ে
+  app.post("/gaming/gq/:game/finish", express.json(), (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    const st = gameQueues[game];
+    const { id } = req.body || {};
+    if (st.active && st.active.id === id) st.active.finished = true;
+    res.json({ ok: true });
+  });
+
+  app.post("/gaming/gq/:game/leave", express.json(), (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    const st = gameQueues[game];
+    const { id } = req.body || {};
+    const idx = st.queue.findIndex((q) => q.id === id);
+    if (idx >= 0) { gqStopRinging(st.queue[idx]); st.queue.splice(idx, 1); }
+    if (st.active && st.active.id === id) st.active.finished = true;
+    delete pushSubscriptions[id];
+    gqNotifyPositions(game);
+    res.json({ ok: true });
+  });
+
+  // overlay এই রুটটা poll করে — কে এখন খেলছে, আর লাইনে কারা আছে
+  app.get("/gaming/gq/:game/public", (req, res) => {
+    const game = gqValid(req, res); if (!game) return;
+    res.json({ nowPlaying: gqPublicActive(game), queue: gqPublicQueue(game), total: gameQueues[game].queue.length });
+  });
+
   app.get("/gaming/vapid-public-key", (req, res) => res.json({ key: VAPID_PUBLIC_KEY }));
   app.post("/gaming/challenge/push-subscribe", express.json(), (req, res) => {
     const { id, subscription } = req.body || {};
