@@ -36,7 +36,7 @@ const GATEWAY_SETTINGS_FILE = path.join(__dirname, 'gateway-settings.json');
 const NOTIFY_SETTINGS_FILE = path.join(__dirname, 'notify-settings.json');
 // (the old shared legacy scheduled-events.json path/constant has been removed — see loadScheduledEvents() for why)
 
-// ====== Multi-channel config (Fan Battle Live / Zero to Trader / Daily Needle) ======
+// ====== Multi-channel config (Fan Battle Live / Daily Needle / gaming channels) ======
 // Each channel gets its OWN saved-ideas file and its own YouTube/Facebook
 // links for the Go-Live wizard. Google Drive backup is split by DATA TYPE,
 // not by channel — see GSHEET_WEBHOOK_URL / GSHEET_WEBHOOK_URL_CH3 further
@@ -50,17 +50,6 @@ const CHANNELS = {
     youtubeUrl: 'https://www.youtube.com/@supportyourfavourite',
     facebookUrl: 'https://www.facebook.com/share/18Av6gds4G/'
   },
-  zerototrader: {
-    label: 'Zero to Trader',
-    file: path.join(__dirname, 'scheduled-events-zerototrader.json'),
-    youtubeUrl: 'https://www.youtube.com/@ZerotoTrader-y6k',
-    facebookUrl: 'https://www.facebook.com/share/1YovxyeAcD/',
-    // Facebook Live requires 100 followers + the Page being 60 days old —
-    // rather than guessing this automatically, you flip this switch
-    // yourself from the app once Facebook itself shows you're eligible.
-    // Until then, Go Live only ever sends you to YouTube.
-    facebookEligibilityIsManual: true
-  },
   dailyneedle: {
     label: 'Daily Needle',
     file: path.join(__dirname, 'scheduled-events-dailyneedle.json'),
@@ -72,12 +61,6 @@ const CHANNELS = {
   // এই দুটো চ্যানেলের actual "live" behaviour (schedule অনুযায়ী automatic
   // chess/sports broadcast) config/schedule.json দিয়ে নিয়ন্ত্রিত হয় —
   // এখানে শুধু আপনার dashboard-এ এন্ট্রি হিসেবে দেখানোর জন্য যোগ করা হলো।
-  sportsgaming: {
-    label: 'Sports Live (Auto)',
-    file: path.join(__dirname, 'scheduled-events-sportsgaming.json'),
-    youtubeUrl: 'PUT_YOUR_SPORTS_CHANNEL_YOUTUBE_URL_HERE',
-    facebookUrl: ''
-  },
   boardgames: {
     label: 'Board Games Live (Auto)',
     file: path.join(__dirname, 'scheduled-events-boardgames.json'),
@@ -86,6 +69,18 @@ const CHANNELS = {
   },
   // চেস ব্যাটেল লাইভ-এর "সরাসরি টিপস" QR থেকে পেমেন্ট করার পর /thanks পেজে
   // "ফিরে যান লাইভে" বাটনটা এই youtubeUrl-এই পাঠাবে (Mind Game চ্যানেল)
+  snake: {
+    label: 'Snake — Live',
+    file: path.join(__dirname, 'scheduled-events-boardgames.json'),
+    youtubeUrl: 'https://www.youtube.com/channel/UCVP5_uwrKIp7rfMNgolnEqA',
+    facebookUrl: ''
+  },
+  ballsort: {
+    label: 'Ball Sort Puzzle — Live',
+    file: path.join(__dirname, 'scheduled-events-boardgames.json'),
+    youtubeUrl: 'https://www.youtube.com/channel/UCVP5_uwrKIp7rfMNgolnEqA',
+    facebookUrl: ''
+  },
   chessbattle: {
     label: 'Chess Battle Live',
     file: path.join(__dirname, 'scheduled-events-boardgames.json'),
@@ -289,15 +284,15 @@ async function uploadPhotoToDriveAndLog(name, photoDataUrl) {
 
 // ====== Per-channel in-memory event queues the browser overlays poll ======
 // Fan Battle Live keeps "side" meaning left/right (its own two-team battle).
-// Daily Needle and Zero to Trader have no sides at all — for them, `side`
-// IS the channel name itself ('dailyneedle' / 'zerototrader'), and this
+// Daily Needle ও গেমিং চ্যানেলগুলোর কোনো পক্ষ নেই — ওদের ক্ষেত্রে `side`-ই
+// চ্যানেলের নাম ('dailyneedle' / 'snake' / 'ballsort' / 'chessbattle'), আর এই
 // helper maps any side value to which overlay's queue it belongs in.
 function sideToChannel(side) {
   if (side === 'left' || side === 'right') return 'fanbattle';
-  if (side === 'dailyneedle' || side === 'zerototrader' || side === 'chessbattle' || side === 'snake' || side === 'ballsort') return side;
+  if (side === 'dailyneedle' || side === 'chessbattle' || side === 'snake' || side === 'ballsort') return side;
   return 'fanbattle';
 }
-let latestEventsByChannel = { fanbattle: [], dailyneedle: [], zerototrader: [], chessbattle: [], snake: [], ballsort: [] };
+let latestEventsByChannel = { fanbattle: [], dailyneedle: [], chessbattle: [], snake: [], ballsort: [] };
 
 // ---- Celebration timing is DELIBERATELY separated from bookkeeping. ----
 // The payment itself is recorded immediately (recordDonation) so accounting/
@@ -460,13 +455,14 @@ async function fetchInstamojoPayment(paymentId) {
 
 // Shared with the /thanks handler further below — decodes which of the
 // four possible prefixes (L/R for Fan Battle Live's two sides, DN for
-// Daily Needle, ZT for Zero to Trader) an Instamojo purpose string starts
+// Daily Needle, SN = Snake, BS = Ball Sort) an Instamojo purpose string starts
 // with, so every payment always lands on the correct channel/overlay.
 function parseSideFromPurpose(purpose) {
   const p = (purpose || '').trim();
-  if (/^ZT:/i.test(p)) return 'zerototrader';
   if (/^DN:/i.test(p)) return 'dailyneedle';
   if (/^CB:/i.test(p)) return 'chessbattle';
+  if (/^SN:/i.test(p)) return 'snake';
+  if (/^BS:/i.test(p)) return 'ballsort';
   if (/^R:/i.test(p)) return 'right';
   if (/^L:/i.test(p)) return 'left';
   return null;
@@ -538,11 +534,11 @@ fetchRecentPayments();
 // works purely through the API and does not depend on any dashboard
 // "Post Purchase" configuration at all.
 // Maps every valid "side" value (which now also doubles as a bare channel
-// name for Daily Needle/Zero to Trader) to the short prefix embedded in the
+// name for Daily Needle and the gaming channels) to the short prefix embedded in the
 // Instamojo purpose field/PayPal custom_id — this is how /thanks and the
 // background poller later figure out which channel a payment belongs to.
-const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', zerototrader: 'ZT', chessbattle: 'CB', snake: 'SN', ballsort: 'BS' };
-const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', zerototrader: 'Zero to Trader tip', chessbattle: 'Chess Battle Live tip', snake: 'Snake tip', ballsort: 'Ball Sort Puzzle tip' };
+const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', chessbattle: 'CB', snake: 'SN', ballsort: 'BS' };
+const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', chessbattle: 'Chess Battle Live tip', snake: 'Snake Live tip', ballsort: 'Ball Sort Puzzle Live tip' };
 async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone) {
   const prefix = SIDE_PREFIX[side] || 'R';
   const purpose = `${prefix}: ${SIDE_LABEL[side] || 'Fan Battle Live tip'}`;
@@ -655,7 +651,7 @@ app.post('/instamojo-create-request', async (req, res) => {
     // directly. Mobile number is no longer collected on this page at all.
     if (!donorName || !donorName.trim()) return res.status(400).json({ error: 'Name is required.' });
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
-    const validSides = ['left', 'right', 'dailyneedle', 'zerototrader', 'chessbattle'];
+    const validSides = ['left', 'right', 'dailyneedle', 'chessbattle', 'snake', 'ballsort'];
     const safeSide = validSides.includes(side) ? side : 'right';
     const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), null);
     res.json({ longurl });
@@ -703,7 +699,7 @@ app.post('/paypal-create-order', async (req, res) => {
     // us set this per-order, so each channel shows its own brand here.
     const PAYPAL_BRAND_NAME = {
       left: 'Fan Battle Live', right: 'Fan Battle Live',
-      dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live',
+      dailyneedle: 'Daily Needle', chessbattle: 'Chess Battle Live',
       snake: 'Snake Live', ballsort: 'Ball Sort Puzzle Live'
     };
     const brandName = PAYPAL_BRAND_NAME[side] || 'Fan Battle Live';
@@ -712,7 +708,7 @@ app.post('/paypal-create-order', async (req, res) => {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         intent: 'CAPTURE',
-        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'zerototrader', 'chessbattle'].includes(side) ? side : 'right' }],
+        purchase_units: [{ amount: { currency_code: currency || 'USD', value: amt.toFixed(2) }, custom_id: ['left', 'right', 'dailyneedle', 'chessbattle', 'snake', 'ballsort'].includes(side) ? side : 'right' }],
         payment_source: { paypal: { experience_context: { brand_name: brandName } } }
       })
     });
@@ -749,7 +745,7 @@ app.post('/paypal-capture-order', async (req, res) => {
     const amount = captureObj.amount ? captureObj.amount.value : null;
     const currency = captureObj.amount ? captureObj.amount.currency_code : 'USD';
     const country = (payer.address && payer.address.country_code) || null;
-    const side = ['left', 'right', 'dailyneedle', 'zerototrader', 'chessbattle'].includes(purchaseUnit.custom_id) ? purchaseUnit.custom_id : 'right';
+    const side = ['left', 'right', 'dailyneedle', 'chessbattle', 'snake', 'ballsort'].includes(purchaseUnit.custom_id) ? purchaseUnit.custom_id : 'right';
 
     let celebrationId = null;
     if (amount) {
@@ -1260,13 +1256,21 @@ app.get('/pay-right', async (req, res) => {
   res.send(paypalPageHtml('right', teamName));
 });
 
-// ====== Daily Needle & Zero to Trader — ONE smart-routed QR each ======
-// Same exact mechanism as /pay-left and /pay-right above (India → Instamojo,
-// abroad → PayPal, decided per-visitor) — just a single QR per channel
-// instead of two, since neither channel has "sides" to split between.
-const SINGLE_CHANNEL_PAY_LABEL = { dailyneedle: 'Daily Needle', zerototrader: 'Zero to Trader', chessbattle: 'Chess Battle Live', snake: 'Snake Live', ballsort: 'Ball Sort Puzzle Live' };
+// ====== এক চ্যানেল = এক smart-routed QR ======
+// /pay-left আর /pay-right এর মতোই (ভারত → Instamojo, বাইরে → PayPal, প্রতি
+// দর্শকভেদে ঠিক হয়) — শুধু পক্ষ ভাগাভাগি নেই বলে চ্যানেলপিছু একটাই QR।
+// ⚠️ Snake আর Ball Sort এই তালিকায় ছিল না, অথচ ওই দুটো overlay-র "Help Me" QR
+// সরাসরি /pay/snake আর /pay/ballsort দেখাচ্ছিল — অর্থাৎ কেউ QR স্ক্যান করলেই
+// "Unknown channel" পেত, একটা টাকাও নেওয়া যেত না। এখন দুটোই যোগ করা হলো।
+const SINGLE_CHANNEL_PAY_LABEL = {
+  dailyneedle: 'Daily Needle',
+  chessbattle: 'Chess Battle Live',
+  snake: 'Snake — Live',
+  ballsort: 'Ball Sort Puzzle — Live'
+};
 app.get('/pay/:channel', async (req, res) => {
   const channel = req.params.channel;
+  // উপরের ম্যাপটাই একমাত্র সত্য — নতুন চ্যানেল যোগ করতে ওখানে একটা লাইন বসালেই যথেষ্ট
   if (!SINGLE_CHANNEL_PAY_LABEL[channel]) return res.status(404).send('Unknown channel');
   const label = SINGLE_CHANNEL_PAY_LABEL[channel];
   const gw = loadGatewaySettings();
@@ -1301,12 +1305,11 @@ app.get('/events', (req, res) => {
   Object.entries(donorPhotoMap).forEach(([name, v]) => { photosOut[name] = v.photo; });
   res.json({ events: eventsToSend, photos: photosOut });
 });
-// Daily Needle and Zero to Trader poll their OWN channel's events —
-// entirely separate queues, so one channel's tips never show up on
-// another channel's overlay.
+// প্রতিটা চ্যানেল নিজের queue-ই poll করে — এক চ্যানেলের টিপ কখনো অন্য চ্যানেলের
+// overlay-তে দেখা যায় না।
+const EVENT_CHANNELS = ['dailyneedle', 'chessbattle', 'snake', 'ballsort'];
 app.get('/events/:channel', (req, res) => {
-  const validChannels = ['dailyneedle', 'zerototrader', 'chessbattle', 'snake', 'ballsort'];
-  const channel = validChannels.includes(req.params.channel) ? req.params.channel : 'fanbattle';
+  const channel = EVENT_CHANNELS.includes(req.params.channel) ? req.params.channel : 'fanbattle';
   const eventsToSend = [...latestEventsByChannel[channel]];
   latestEventsByChannel[channel] = [];
   const photosOut = {};
@@ -1481,11 +1484,11 @@ app.delete('/donor-photo', requireDashboardAuth, (req, res) => {
 // Each channel's overlay is its own HTML file — Fan Battle Live keeps its
 // original filename (and the original bare /overlay URL, unchanged, so the
 // OBS Browser Source you already set up keeps working with no edits);
-// Daily Needle and Zero to Trader are new files (see OVERLAY_FILES below).
+// Daily Needle-এর নিজের ফাইল আছে (নিচে OVERLAY_FILES দেখুন)। গেমিং চ্যানেলগুলোর
+// overlay গুলো gaming.js নিজেই serve করে (/gaming/overlay/...), তাই এখানে নেই।
 const OVERLAY_FILES = {
   fanbattle: 'fan-battle-live-demo.html',
-  dailyneedle: 'daily-needle-overlay.html',
-  zerototrader: 'zero-to-trader-overlay.html'
+  dailyneedle: 'daily-needle-overlay.html'
 };
 function serveOverlay(channel, res) {
   const fileName = OVERLAY_FILES[channelOrDefault(channel)];
@@ -1675,12 +1678,6 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <a class="quick-link" href="/pay-right" target="_blank"><span class="emoji">🔴</span>Right pay</a>
     </div>
 
-    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">📈 Zero to Trader</div>
-    <div class="quick-links">
-      <a class="quick-link" href="/overlay/zerototrader" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
-      <a class="quick-link" href="/pay/zerototrader" target="_blank"><span class="emoji">💸</span>Pay</a>
-    </div>
-
     <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">🧵 Daily Needle</div>
     <div class="quick-links">
       <a class="quick-link" href="/overlay/dailyneedle" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
@@ -1697,11 +1694,21 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">🐍 Snake — Live</div>
     <div class="quick-links">
       <a class="quick-link" href="/gaming/overlay/snake" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/gaming/challenge/snake" target="_blank"><span class="emoji">🎮</span>Challenge</a>
+      <a class="quick-link" href="/pay/snake" target="_blank"><span class="emoji">💸</span>Pay</a>
     </div>
 
     <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">🧪 Ball Sort Puzzle — Live</div>
     <div class="quick-links">
       <a class="quick-link" href="/gaming/overlay/ballsort" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/gaming/challenge/ballsort" target="_blank"><span class="emoji">🎮</span>Challenge</a>
+      <a class="quick-link" href="/pay/ballsort" target="_blank"><span class="emoji">💸</span>Pay</a>
+    </div>
+
+    <div style="font-size:11px; color:var(--dim); font-weight:700; margin-top:16px;">💻 Code Live — Building Apps</div>
+    <div class="quick-links">
+      <a class="quick-link" href="/gaming/overlay/codelive" target="_blank"><span class="emoji">🖥️</span>Overlay</a>
+      <a class="quick-link" href="/gaming/overlay/codelive#bgSettingsPanel" target="_blank"><span class="emoji">🎬</span>Videos</a>
     </div>
   </section>
 
@@ -1762,16 +1769,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     <div class="section-title">Channel</div>
     <div class="quick-links" id="channelSwitcher">
       <a class="quick-link channel-pill active" data-channel="fanbattle" onclick="switchChannel('fanbattle')" style="cursor:pointer;">⚔️ Fan Battle Live</a>
-      <a class="quick-link channel-pill" data-channel="zerototrader" onclick="switchChannel('zerototrader')" style="cursor:pointer;">📈 Zero to Trader</a>
       <a class="quick-link channel-pill" data-channel="dailyneedle" onclick="switchChannel('dailyneedle')" style="cursor:pointer;">🧵 Daily Needle</a>
-    </div>
-
-    <div id="zeroToTraderFbBox" style="display:none;">
-      <div class="gw-row" style="margin-top:14px;">
-        <div><div class="gw-name">📘 Facebook Live eligible</div><div class="gw-status" id="zttFbStatus">—</div></div>
-        <label class="switch"><input type="checkbox" id="zttFbToggle" onchange="toggleZttFbEligibility(this.checked)"><span class="slider"></span></label>
-      </div>
-      <p class="form-hint" style="margin-top:6px;">Turn this ON only once Facebook itself shows this Page has 100+ followers and is at least 60 days old. Until then, Go Live only sends you to YouTube for this channel.</p>
     </div>
 
     <div class="section-title" style="margin-top:22px;">Save a content idea (no time needed)</div>
@@ -2119,7 +2117,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   }
   renderAffiliatePanel();
 
-  // ====== Channel switcher — Fan Battle Live / Zero to Trader / Daily Needle ======
+  // ====== Channel switcher — Fan Battle Live / Daily Needle ======
   // All three channels share this ONE form/list UI; only which channel's
   // saved-ideas endpoint gets called changes. Each channel's ideas, Go-Live
   // links, and "currently live" marker are completely independent of the
@@ -2128,19 +2126,17 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   function switchChannel(channel){
     currentScheduleChannel = channel;
     document.querySelectorAll('.channel-pill').forEach(p => p.classList.toggle('active', p.dataset.channel === channel));
-    document.getElementById('zeroToTraderFbBox').style.display = (channel === 'zerototrader') ? 'block' : 'none';
-    document.getElementById('zttLossFieldWrap').style.display = (channel === 'zerototrader') ? 'block' : 'none';
-    // Daily Needle / Zero to Trader have no "sides" at all — the Left-side
+    document.getElementById('zttLossFieldWrap').style.display = 'none';
+    // Daily Needle-এর কোনো "পক্ষ" নেই — তাই Left-side
     // fields are relabeled as the channel's own name/logo (this is exactly
     // what their overlay reads), and the Right-side fields are hidden
     // entirely since they'd never be used.
-    const isSingleTotalChannel = (channel === 'dailyneedle' || channel === 'zerototrader');
+    const isSingleTotalChannel = (channel === 'dailyneedle');
     document.getElementById('schRightFieldsWrap').style.display = isSingleTotalChannel ? 'none' : 'block';
     document.getElementById('schVideoLinksWrap').style.display = isSingleTotalChannel ? 'none' : 'block';
     document.getElementById('schLeftNameLabel').textContent = isSingleTotalChannel ? '📛 Channel name' : '🔵 Left side name';
     document.getElementById('schLeftPhotoLabel').textContent = isSingleTotalChannel ? '🖼️ Channel logo' : '🔵 Left side photo';
     document.getElementById('schLeftName').placeholder = isSingleTotalChannel ? 'e.g. Daily Needle' : 'Left side name';
-    if(channel === 'zerototrader') loadZttFbEligibility();
     cancelEditIdea(); // also resets affiliate products — switching channels mid-edit would otherwise save to the wrong channel
     loadIdeas();
   }
@@ -2319,21 +2315,6 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ preset })
     }).then(loadIdeas);
-  }
-
-  // ====== Zero to Trader — manual Facebook-eligibility switch ======
-  function loadZttFbEligibility(){
-    fetch('/api/fb-eligibility/zerototrader').then(r => r.json()).then(d => {
-      document.getElementById('zttFbToggle').checked = !!d.eligible;
-      document.getElementById('zttFbStatus').textContent = d.eligible ? 'Enabled — Go Live will include Facebook' : 'Not yet — Go Live only goes to YouTube';
-      document.getElementById('zttFbStatus').className = 'gw-status ' + (d.eligible ? 'on' : 'off');
-    }).catch(() => {});
-  }
-  function toggleZttFbEligibility(eligible){
-    fetch('/api/fb-eligibility/zerototrader', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ eligible })
-    }).then(loadZttFbEligibility);
   }
 
   function saveNotifySettings(){
@@ -2620,7 +2601,7 @@ function buildIdeaFieldsFromBody(body) {
       // through them just like the overlay's own manual video upload already did.
       leftVideoUrls: parseVideoLinks(leftVideoUrls),
       rightVideoUrls: parseVideoLinks(rightVideoUrls),
-      // Zero to Trader only: the "loss" figure you set by hand, which then
+      // পুরনো "loss" ফিল্ড — এখন কোনো চ্যানেলেই দেখানো হয় না, শুধু পুরনো
       // counts DOWN live on the overlay as tips come in (see /api/active-idea/:channel).
       startingLossAmount: startingLossAmount != null && startingLossAmount !== '' ? Number(startingLossAmount) : null,
       // Affiliate marketing products, up to 20 per platform (Amazon/Flipkart/
@@ -2633,7 +2614,7 @@ function buildIdeaFieldsFromBody(body) {
 
 const MAX_CONTENT_IDEAS = 20;
 
-// ====== Per-channel "which idea is live" + Zero to Trader's manual  ======
+// ====== Per-channel "which idea is live" + ম্যানুয়াল Facebook-eligibility ======
 // ====== Facebook-eligibility toggle — both stored inside gateway-settings ======
 function getActiveIdeaId(gw, channel) {
   if (!gw.activeIdeaIds) gw.activeIdeaIds = {};
@@ -2757,7 +2738,7 @@ app.post('/schedule/:channel/:id/set-preset', requireDashboardAuth, (req, res) =
   res.json({ ok: true });
 });
 
-// ====== Zero to Trader's manual Facebook-eligibility switch ======
+// ====== ম্যানুয়াল Facebook-eligibility সুইচ (এখন কোনো চ্যানেলে ব্যবহার হচ্ছে না) ======
 // Facebook requires the Page to have 100 followers AND be 60 days old
 // before Live Video works — rather than guessing this automatically, you
 // flip this switch yourself once Facebook shows you're eligible. Until
@@ -2965,7 +2946,7 @@ app.get('/go-live/:channel/:id', (req, res) => {
   const evt = events.find(e => e.id === req.params.id);
   if (!evt) return res.status(404).send('<body style="background:#0B0F19; color:#F5F7FA; font-family:Arial; text-align:center; padding:60px;">This link is no longer valid — the idea may have been deleted.</body>');
 
-  // Zero to Trader's Facebook step only unlocks once you've manually
+  // কোনো চ্যানেলে facebookEligibilityIsManual সেট করা থাকলে তার Facebook ধাপটা
   // flipped the eligibility switch in the app (100 followers + 60 days) —
   // every other channel always shows both steps.
   const gw = loadGatewaySettings();
