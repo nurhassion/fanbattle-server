@@ -5041,26 +5041,45 @@ font-family:ui-monospace,Menlo,Consolas,monospace;}
 .blip{width:7px;height:7px;border-radius:50%;background:#34D399;animation:blink 1.6s infinite;}
 
 /* ---- কোনার "কেউ টাইপ করছে" ভিডিও ---- */
-#camBox{position:fixed;right:18px;bottom:18px;width:212px;border-radius:12px;overflow:hidden;
-border:1px solid #262d47;box-shadow:0 14px 34px rgba(0,0,0,0.65);background:#0c1020;z-index:5;}
+/* ---- কোনার "কেউ বসে টাইপ করছে" বক্স ----
+   ইউটিউব স্ট্রিমাররা ওয়েবক্যাম যেভাবে ডান-নিচের কোনায় রাখেন, ঠিক সেই চেহারা:
+   ১৬:৯ ফ্রেম, হালকা সোনালি বর্ডার, উপরে লাল জ্বলজ্বলে LIVE ব্যাজ, নিচে নাম-প্লেট। */
+#camBox{position:fixed;right:20px;bottom:20px;width:264px;border-radius:14px;overflow:hidden;
+border:2px solid rgba(255,216,102,0.55);box-shadow:0 18px 44px rgba(0,0,0,0.75);
+background:#0c1020;z-index:5;}
 #camBox video{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;background:#0c1020;}
-#camBox .lbl{position:absolute;left:8px;bottom:7px;font-size:9px;font-weight:800;color:#fff;
-background:rgba(0,0,0,0.55);padding:2px 8px;border-radius:20px;letter-spacing:0.4px;}
+#camBox .liveTag{position:absolute;left:9px;top:8px;display:flex;align-items:center;gap:5px;
+font-size:9px;font-weight:800;color:#fff;background:rgba(200,30,30,0.88);padding:3px 9px;
+border-radius:20px;letter-spacing:0.6px;}
+#camBox .liveTag i{width:5px;height:5px;border-radius:50%;background:#fff;display:block;
+animation:livePulse 1.4s ease-in-out infinite;}
+@keyframes livePulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+#camBox .nameTag{position:absolute;left:0;right:0;bottom:0;padding:14px 10px 7px;
+font-size:10px;font-weight:700;color:#F2F5FF;letter-spacing:0.3px;
+background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,0.72) 100%);}
+/* ভিডিও না থাকলে বক্সটা একদম লুকিয়ে যায় — ফাঁকা কালো চৌকো দেখা যায় না */
 #camBox.empty{display:none;}
 
 #bgSettingsPanel{max-width:560px;margin:30px auto;padding:20px;background:#12172a;
 border:1px solid #2a3352;border-radius:16px;}
 #bgSettingsPanel h2{color:#FFD866;font-size:16px;margin:0 0 4px;}
 #bgSettingsPanel label{display:block;margin-top:14px;font-size:11px;color:#7C8AAD;font-weight:700;}
-#bgSettingsPanel input{width:100%;padding:9px;border-radius:8px;border:1px solid #26314f;
-background:#0f1526;color:#fff;font-size:13px;margin-top:5px;}
+#bgSettingsPanel input,#bgSettingsPanel textarea{width:100%;padding:9px;border-radius:8px;
+border:1px solid #26314f;background:#0f1526;color:#fff;font-size:13px;margin-top:5px;
+font-family:inherit;}
+#bgSettingsPanel textarea{min-height:70px;resize:vertical;}
+#bgSettingsPanel input[type=range]{padding:0;}
+#bgSettingsPanel .hint{font-size:11.5px;color:#7C8AAD;line-height:1.6;margin:6px 0 0;}
+#bgSettingsPanel .hint b{color:#FFD866;font-family:ui-monospace,Menlo,Consolas,monospace;}
 #bgSettingsPanel button{margin-top:14px;padding:10px 18px;border-radius:8px;border:none;
 background:#FFD866;color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
 #bgSettingsStatus{margin-top:10px;font-size:12px;color:#8BE28B;min-height:16px;}
 </style></head><body>
 <div id="bgFallback"></div>
 <div id="bgDim"></div>
-<video id="bgVideo" autoplay muted loop playsinline preload="auto"></video>
+<!-- ⚠️ src এখানে সরাসরি বসানো — Snake/Ball Sort যেভাবে কাজ করে ঠিক সেভাবেই।
+     রিপোর ভিডিও-ফোল্ডারে ফাইলটা রাখলেই কোনো সেটিংস ছাড়াই নিজে থেকে চলতে শুরু করবে। -->
+<video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/codelive-bg.mp4"></video>
 
 <div class="stage"><div class="laptop">
   <div class="lid">
@@ -5097,14 +5116,32 @@ background:#FFD866;color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
   <div class="base"></div>
 </div></div>
 
-<div id="camBox" class="empty"><video id="camVideo" autoplay muted loop playsinline></video><div class="lbl">LIVE</div></div>
+<div id="camBox" class="empty">
+  <video id="camVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/codelive-cam.mp4"></video>
+  <div class="liveTag"><i></i>LIVE</div>
+  <div class="nameTag">Building apps, live</div>
+</div>
+
+<audio id="bgMusic" loop preload="auto"></audio>
+<audio id="commentaryAudio" preload="auto"></audio>
 
 <div id="bgSettingsPanel">
-  <h2>🎬 Code Live — Video settings</h2>
+  <h2>🎬 Code Live — Video, Music &amp; Commentary</h2>
+  <p class="hint">দুটো ভিডিওই রিপোর ভিডিও-ফোল্ডার থেকে নিজে থেকেই চলে —
+  <b>codelive-bg.mp4</b> (ব্যাকগ্রাউন্ড) আর <b>codelive-cam.mp4</b> (কোনার বক্স)।
+  নিচের ঘরগুলো শুধু তখনই লাগবে যখন ফোল্ডারের বদলে অন্য কোনো লিংক থেকে চালাতে চান।</p>
   <form id="bgSettingsForm">
-    <label>Background video link (direct .mp4 URL — the calm, relaxing scene)</label>
+    <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
+    <input type="text" id="bgMusicUrlInput" placeholder="https://...mp3">
+    <label>Volume — <span id="volLabel">15%</span></label>
+    <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
+    <label>Your own recorded commentary audio links (one URL per line — cycles through them)</label>
+    <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
+    <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
+    <input type="number" id="loopIntervalInput" min="20" value="90">
+    <label>Background video link (optional — overrides the folder file)</label>
     <input type="text" id="bgVideoUrlInput" placeholder="https://.../relaxing-background.mp4">
-    <label>Corner video link (direct .mp4 URL — someone typing on a laptop)</label>
+    <label>Corner video link (optional — overrides the folder file)</label>
     <input type="text" id="camVideoUrlInput" placeholder="https://.../typing-hands.mp4">
     <button type="submit">Save</button>
     <div id="bgSettingsStatus"></div>
@@ -5114,45 +5151,99 @@ background:#FFD866;color:#0a0e1f;font-weight:800;cursor:pointer;font-size:13px;}
 <script>
 var APPS = ${JSON.stringify(CODELIVE_APPS)};
 
-/* ---------- সেটিংস (ব্যাকগ্রাউন্ড + কোনার ভিডিও) ---------- */
-var lastBg = "", lastCam = "";
-function applyVideo(el, url, box){
-  if (!url) return;
+/* =========================================================================
+   ভিডিও, মিউজিক ও কমেন্ট্রি
+   -------------------------------------------------------------------------
+   ভিডিও দুটো HTML-এই /game-assets/codelive-bg.mp4 আর /game-assets/codelive-cam.mp4
+   ধরে বসানো আছে — অর্থাৎ ফোল্ডারে ফাইল রাখলেই চলবে, কোথাও কিছু লিখতে হবে না।
+   সেটিংসে আলাদা লিংক দিলে সেটাই অগ্রাধিকার পাবে।
+   ========================================================================= */
+var bgVideoEl = document.getElementById("bgVideo");
+var camVideoEl = document.getElementById("camVideo");
+var camBoxEl = document.getElementById("camBox");
+var bgMusicEl = document.getElementById("bgMusic");
+var commentaryAudioEl = document.getElementById("commentaryAudio");
+var lastBg = "", lastCam = "", lastMusicUrl = "";
+var commentaryList = [], commentaryIdx = 0, commentaryTimer = null;
+
+// কোনার বক্সটা তখনই দেখানো হয় যখন ভিডিওটা সত্যিই লোড হয়েছে — ফাইল না থাকলে
+// দর্শক একটা ফাঁকা কালো চৌকো দেখবে না, বক্সটা একেবারেই থাকবে না
+camVideoEl.addEventListener("loadeddata", function(){ camBoxEl.classList.remove("empty"); });
+camVideoEl.addEventListener("error", function(){ camBoxEl.classList.add("empty"); });
+bgVideoEl.addEventListener("loadeddata", function(){ bgVideoEl.style.opacity = "0.8"; });
+
+// OBS/PRISM-এর ভেতরে ব্রাউজার মাঝে মাঝে নিজে থেকে autoplay শুরু করে না বা থেমে যায়,
+// তাই দুটো ভিডিওকেই নিয়মিত ঠেলে চালু রাখা হচ্ছে
+function keepPlaying(el){ if (el.getAttribute("src") && el.paused) el.play().catch(function(){}); }
+setInterval(function(){ keepPlaying(bgVideoEl); keepPlaying(camVideoEl); }, 3000);
+keepPlaying(bgVideoEl); keepPlaying(camVideoEl);
+
+function applyVideo(el, url){
   el.src = url; el.load();
   el.play().catch(function(){});
-  if (box) box.classList.remove("empty");
+}
+function scheduleCommentary(intervalSec){
+  if (commentaryTimer) clearInterval(commentaryTimer);
+  if (!commentaryList.length) return;
+  commentaryTimer = setInterval(function(){
+    commentaryAudioEl.src = commentaryList[commentaryIdx % commentaryList.length];
+    commentaryAudioEl.play().catch(function(){});
+    commentaryIdx++;
+  }, Math.max(20, intervalSec) * 1000);
+}
+function setIfNotTyping(id, value){
+  var el = document.getElementById(id);
+  if (document.activeElement !== el) el.value = value;
 }
 function loadConfig(){
   fetch("/gaming/codelive-config").then(function(r){ return r.json(); }).then(function(cfg){
-    if (cfg.bgVideoUrl && cfg.bgVideoUrl !== lastBg){
-      lastBg = cfg.bgVideoUrl;
-      applyVideo(document.getElementById("bgVideo"), cfg.bgVideoUrl, null);
+    if (cfg.bgVideoUrl && cfg.bgVideoUrl !== lastBg){ lastBg = cfg.bgVideoUrl; applyVideo(bgVideoEl, cfg.bgVideoUrl); }
+    if (cfg.camVideoUrl && cfg.camVideoUrl !== lastCam){ lastCam = cfg.camVideoUrl; applyVideo(camVideoEl, cfg.camVideoUrl); }
+
+    if (cfg.bgMusicUrl && cfg.bgMusicUrl !== lastMusicUrl){
+      lastMusicUrl = cfg.bgMusicUrl;
+      bgMusicEl.src = cfg.bgMusicUrl;
+      bgMusicEl.play().catch(function(){}); // autoplay নীতির কারণে প্রথম ক্লিকের পর বাজবে
     }
-    if (cfg.camVideoUrl && cfg.camVideoUrl !== lastCam){
-      lastCam = cfg.camVideoUrl;
-      applyVideo(document.getElementById("camVideo"), cfg.camVideoUrl, document.getElementById("camBox"));
+    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+
+    var newList = Array.isArray(cfg.commentaryUrls) ? cfg.commentaryUrls : [];
+    if (JSON.stringify(newList) !== JSON.stringify(commentaryList)){
+      commentaryList = newList; commentaryIdx = 0;
+      scheduleCommentary(cfg.loopIntervalSec || 90);
     }
-    if (document.activeElement !== document.getElementById("bgVideoUrlInput"))
-      document.getElementById("bgVideoUrlInput").value = cfg.bgVideoUrl || "";
-    if (document.activeElement !== document.getElementById("camVideoUrlInput"))
-      document.getElementById("camVideoUrlInput").value = cfg.camVideoUrl || "";
+
+    var vol = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    setIfNotTyping("bgMusicUrlInput", cfg.bgMusicUrl || "");
+    document.getElementById("bgMusicVolumeInput").value = vol;
+    document.getElementById("volLabel").textContent = Math.round(vol * 100) + "%";
+    setIfNotTyping("commentaryUrlsInput", newList.join(String.fromCharCode(10)));
+    setIfNotTyping("loopIntervalInput", cfg.loopIntervalSec || 90);
+    setIfNotTyping("bgVideoUrlInput", cfg.bgVideoUrl || "");
+    setIfNotTyping("camVideoUrlInput", cfg.camVideoUrl || "");
   }).catch(function(){});
 }
 loadConfig(); setInterval(loadConfig, 15000);
-document.getElementById("bgVideoUrlInput").form.addEventListener("submit", function(e){
+document.body.addEventListener("click", function(){ bgMusicEl.play().catch(function(){}); }, { once: true });
+document.getElementById("bgMusicVolumeInput").addEventListener("input", function(e){
+  document.getElementById("volLabel").textContent = Math.round(e.target.value * 100) + "%";
+  bgMusicEl.volume = parseFloat(e.target.value);
+});
+document.getElementById("bgSettingsForm").addEventListener("submit", function(e){
   e.preventDefault();
+  var urls = document.getElementById("commentaryUrlsInput").value
+    .split(String.fromCharCode(10)).map(function(u){ return u.trim(); }).filter(Boolean);
   fetch("/gaming/codelive-config", { method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
+      bgMusicUrl: document.getElementById("bgMusicUrlInput").value.trim(),
+      bgMusicVolume: parseFloat(document.getElementById("bgMusicVolumeInput").value),
+      commentaryUrls: urls,
+      loopIntervalSec: parseInt(document.getElementById("loopIntervalInput").value, 10) || 90,
       bgVideoUrl: document.getElementById("bgVideoUrlInput").value.trim(),
       camVideoUrl: document.getElementById("camVideoUrlInput").value.trim() }) })
-    .then(function(){ document.getElementById("bgSettingsStatus").textContent = "Saved!"; lastBg=""; lastCam=""; })
+    .then(function(){ document.getElementById("bgSettingsStatus").textContent = "Saved!"; lastBg=""; lastCam=""; lastMusicUrl=""; })
     .catch(function(){ document.getElementById("bgSettingsStatus").textContent = "Could not save."; });
 });
-(function(){
-  var v = document.getElementById("bgVideo");
-  v.addEventListener("loadeddata", function(){ v.style.opacity = "0.8"; });
-  setInterval(function(){ if (v.src && v.paused) v.play().catch(function(){}); }, 3000);
-})();
 
 /* ---------- কোড হাইলাইট ---------- */
 var HLRE = /(\\/\\/[^\\n]*)|('[^']*'|"[^"]*")|\\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|class|extends|new|try|catch|this|null|true|false|struct|func|fun|override|private|final|late|void|super|Widget|object|companion|enum|interface|type|public|static)\\b|\\b(\\d+(?:\\.\\d+)?)\\b|([A-Za-z_$][\\w$]*)(?=\\s*\\()/g;
@@ -5468,7 +5559,12 @@ module.exports = function mountGaming(app) {
     } catch (e) { rootListing = ["পড়া যায়নি: " + e.message]; }
     res.json({
       servedFrom: foundAssetDirs,
-      expectedUrls: ["/game-assets/snake-bg.mp4", "/game-assets/ballsort-bg.mp4"],
+      expectedUrls: [
+        "/game-assets/snake-bg.mp4",
+        "/game-assets/ballsort-bg.mp4",
+        "/game-assets/codelive-bg.mp4",   // Code Live — বড় ব্যাকগ্রাউন্ড ভিডিও
+        "/game-assets/codelive-cam.mp4",  // Code Live — কোনার ছোট "কেউ টাইপ করছে" ভিডিও
+      ],
       repoRoot: rootListing,
     });
   });
