@@ -250,6 +250,7 @@ function notifyQueuePositions() {
 // ===========================================================================
 const GQ_GAMES = ["snake", "ballsort"];
 const GQ_TURN_MS = 5 * 60 * 1000;     // একজনের স্লট ৫ মিনিট — এটাই "৫ মিনিট আগে" হিসেবের ভিত্তি
+const GQ_IDLE_MS = 60 * 1000;         // টানা এত সময় কোনো চাল না দিলে পালা বাতিল
 const GQ_RING_EVERY_MS = 20 * 1000;   // ক্লিক না করা পর্যন্ত প্রতি ২০ সেকেন্ডে আবার ভাইব্রেট
 const GQ_RING_MAX_MS = 5 * 60 * 1000; // অনন্তকাল বাজতে থাকবে না — বড়জোর ৫ মিনিট
 
@@ -383,8 +384,15 @@ function gqTick() {
   GQ_GAMES.forEach((game) => {
     const st = gameQueues[game];
     if (st.active) {
+      const m = gqMirror[game];
+      // শেষ কবে সে কিছু করেছে — চাল দিলে mirror আপডেট হয়, তাই ওটাই সবচেয়ে নির্ভরযোগ্য চিহ্ন
+      const lastActivity = (m && m.at > st.active.startedAt) ? m.at : st.active.startedAt;
       if (st.active.finished) gqFinishActive(game, "খেলা শেষ করেছেন");
       else if (Date.now() - st.active.startedAt > GQ_TURN_MS) gqFinishActive(game, "সময় শেষ");
+      // ⚠️ কেউ লিংক খুলে ফেলে রাখলে পুরো ৫ মিনিট বোর্ড আটকে থাকত আর দর্শক স্থির পর্দা
+      // দেখত। এখন টানা ১ মিনিট কোনো চাল না এলে পালা বাতিল হয়ে পরের জন ডাক পায়
+      // (কেউ না থাকলে AI আবার নিজে খেলতে শুরু করে)।
+      else if (Date.now() - lastActivity > GQ_IDLE_MS) gqFinishActive(game, "১ মিনিট কোনো চাল দেননি");
     }
     if (!st.active && st.queue.length) {
       const next = st.queue.shift();
@@ -4015,7 +4023,17 @@ function applyMirrorState(d){
 }
 function pollMirror(){
   fetch("/gaming/gq/snake/mirror").then(function(r){ return r.json(); }).then(function(d){
+    // পালা শুরু হয়েছে কিন্তু প্রথম চাল আসেনি — তখনও AI থেমে থাকে
+    if (d.active && d.waiting){
+      mirrorMode = true;
+      document.getElementById("flash").textContent = "🎮 " + d.name + " is getting ready…";
+      document.getElementById("flash").classList.add("show");
+      return;
+    }
     if (d.active && d.state && d.state.body){
+      if (!mirrorMode){
+        document.getElementById("flash").classList.remove("show");
+      }
       if (!mirrorMode){
         mirrorMode = true;
         document.getElementById("flash").textContent = "🎮 " + d.name + " is playing live!";
@@ -4589,6 +4607,12 @@ setInterval(poll, 500); poll();
 var bsMirror = false, bsMirrorSeq = -1;
 function pollBsMirror(){
   fetch("/gaming/gq/ballsort/mirror").then(function(r){ return r.json(); }).then(function(d){
+    // কারও পালা চলছে অথচ প্রথম চাল আসেনি — তখনও AI থামিয়ে রাখা হয়
+    if (d.active && d.waiting){
+      bsMirror = true;
+      document.getElementById("statusLine").textContent = "🎮 " + d.name + " is getting ready…";
+      return;
+    }
     if (d.active && d.state && d.state.tubes){
       if (!bsMirror){
         bsMirror = true;
@@ -4597,6 +4621,10 @@ function pollBsMirror(){
       if (d.seq !== bsMirrorSeq){
         bsMirrorSeq = d.seq;
         var st = d.state;
+        // ⚠️ আগে শুধু renderStatic ডাকা হতো, কিন্তু AI-এর পুরনো animation ততক্ষণে চলতে
+        // থাকলে সে নিজের বোর্ড আবার এঁকে দিত — তাই মূল পর্দায় পুরনো খেলাটাই দেখা যেত।
+        // এখন animating পতাকাটাও নামিয়ে দেওয়া হয়, ফলে AI-এর আঁকা সম্পূর্ণ থেমে যায়।
+        animating = false;
         renderStatic(st.tubes, st.colors || []);
         // খেলোয়াড় যে টিউব থেকে বল তুলেছে সেটা জ্বলে ওঠে — দর্শক বুঝতে পারে সে কী ভাবছে
         var wrap = document.getElementById("tubesWrap");
@@ -5365,14 +5393,16 @@ function tubeIndexAt(x, y){
   var best = -1, bestDist = 1e9;
   for (var i = 0; i < els.length; i++){
     var r = els[i].getBoundingClientRect();
-    // টিউবের ভেতরে পড়লে সাথে সাথেই ওটা; নাহলে সবচেয়ে কাছেরটা (৪৪px পর্যন্ত)
     if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
     var cx = Math.max(r.left, Math.min(x, r.right));
     var cy = Math.max(r.top, Math.min(y, r.bottom));
     var d = Math.hypot(x - cx, y - cy);
     if (d < bestDist){ bestDist = d; best = i; }
   }
-  return bestDist <= 44 ? best : -1;
+  // ⚠️ আগে ৪৪px পর্যন্ত "কাছের" টিউবও ধরা হতো। টিউবগুলো পাশাপাশি ঘন থাকায় আঙুল
+  // এক টিউবে থাকলেও পাশেরটা ধরা পড়ত — মনে হতো যেখান থেকে সেখান থেকে বল উঠে যাচ্ছে।
+  // এখন সীমা ১৪px, তাই আঙুল যে টিউবে আছে সেটাই ধরা পড়ে।
+  return bestDist <= 14 ? best : -1;
 }
 function highlightTarget(idx){
   document.querySelectorAll("#tubes .tube").forEach(function(el, i){
@@ -5397,7 +5427,17 @@ function pointerDown(x, y){
     if (!tubes[idx].length) return;
     sel = idx; dragFrom = idx; dragging = true; dragMoved = false;
     render();
-    showDragBall(x, y, tubes[idx][tubes[idx].length - 1]);
+    // খেলার নিয়ম অনুযায়ী শুধু টিউবের *সবচেয়ে উপরের* বলটাই তোলা যায়। আঙুল টিউবের
+    // নিচের দিকে থাকলেও তাই উপরের বলটাই ওঠে — আর বলটা ঠিক ওই উপরের জায়গা থেকেই
+    // ওড়া শুরু করে, যাতে দেখে বোঝা যায় কোন বলটা উঠল।
+    var tubeEl = document.querySelectorAll("#tubes .tube")[idx];
+    var topBall = tubeEl && tubeEl.lastElementChild; // column-reverse — শেষ সন্তানই উপরের বল
+    if (topBall){
+      var tb = topBall.getBoundingClientRect();
+      showDragBall(tb.left + tb.width / 2, tb.top + tb.height / 2, tubes[idx][tubes[idx].length - 1]);
+    } else {
+      showDragBall(x, y, tubes[idx][tubes[idx].length - 1]);
+    }
   } else {
     dragFrom = sel; dragging = true; dragMoved = false;
   }
@@ -6085,16 +6125,20 @@ body{margin:0;color:#E6ECFF;font-family:'Segoe UI',system-ui,sans-serif;overflow
 min-height:100vh;padding:0;position:relative;}
 #bgFallback{position:fixed;inset:0;z-index:-3;background:linear-gradient(135deg,#0b1030,#05070f 45%,#141033);}
 #bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:0;transition:opacity 1s ease;}
-#bgDim{position:fixed;inset:0;z-index:-1;background:rgba(4,6,16,0.46);pointer-events:none;}
+/* ⚠️ আগে এই কালো পর্দাটা ৪৬% ছিল, ভিডিওর উপর অত ঘন ছায়া পড়লে দৃষ্টিনন্দন
+   ভিডিওটাই ম্লান হয়ে যেত। এখন ২৪% — ভিডিও স্পষ্ট, অথচ ল্যাপটপের লেখাও পড়া যায়। */
+#bgDim{position:fixed;inset:0;z-index:-1;background:rgba(4,6,16,0.24);pointer-events:none;}
 
 /* ---- ল্যাপটপ ---- */
-.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;}
-.laptop{width:100%;max-width:1580px;}
+/* ল্যাপটপের চারপাশে ইচ্ছে করেই ফাঁকা জায়গা রাখা — ওই ফাঁকা অংশ দিয়েই পেছনের
+   ভিডিওটা দেখা যায়। প্যাডিং বাড়ানোয় দুপাশে ও উপর-নিচে ভিডিও আরও বেশি দেখা যাবে। */
+.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:34px 48px;}
+.laptop{width:100%;max-width:1460px;}
 .lid{background:linear-gradient(180deg,#2a2f42,#171a28);border-radius:16px 16px 4px 4px;
 padding:14px 14px 10px;box-shadow:0 30px 70px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.10);}
 .cam{width:6px;height:6px;border-radius:50%;background:#3D4562;margin:0 auto 9px;}
 .screen{background:#0c1020;border-radius:8px;overflow:hidden;border:1px solid #1e2540;
-display:flex;flex-direction:column;height:76vh;min-height:420px;}
+display:flex;flex-direction:column;height:72vh;min-height:400px;}
 .base{height:14px;background:linear-gradient(180deg,#20243a,#0e1120);border-radius:0 0 18px 18px;
 margin:0 auto;width:104%;max-width:none;position:relative;left:-2%;
 box-shadow:0 16px 30px rgba(0,0,0,0.6);}
@@ -6336,7 +6380,7 @@ ${CELEBRATION_HTML}
 <div id="camBox" class="empty">
   <video id="camVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/codelive-cam.mp4"></video>
   <div class="liveTag"><i></i>LIVE</div>
-  <div class="nameTag">Building apps, live</div>
+  <div class="nameTag">👨‍💻 Coding live</div>
 </div>
 
 <audio id="bgMusic" loop preload="auto"></audio>
@@ -6387,7 +6431,7 @@ var commentaryList = [], commentaryIdx = 0, commentaryTimer = null;
 // দর্শক একটা ফাঁকা কালো চৌকো দেখবে না, বক্সটা একেবারেই থাকবে না
 camVideoEl.addEventListener("loadeddata", function(){ camBoxEl.classList.remove("empty"); });
 camVideoEl.addEventListener("error", function(){ camBoxEl.classList.add("empty"); });
-bgVideoEl.addEventListener("loadeddata", function(){ bgVideoEl.style.opacity = "0.8"; });
+bgVideoEl.addEventListener("loadeddata", function(){ bgVideoEl.style.opacity = "0.95"; });
 
 // OBS/PRISM-এর ভেতরে ব্রাউজার মাঝে মাঝে নিজে থেকে autoplay শুরু করে না বা থেমে যায়,
 // তাই দুটো ভিডিওকেই নিয়মিত ঠেলে চালু রাখা হচ্ছে
@@ -6844,8 +6888,15 @@ module.exports = function mountGaming(app) {
     // ⚠️ ?ret= টুকুই আসল পরিবর্তন। এটা ছাড়া টাকা দেওয়ার পর দর্শককে সোজা YouTube-এ
     // পাঠিয়ে দেওয়া হতো — অথচ সে তো লাইভ দেখছিল না, লাইনে দাঁড়াতে এসেছিল।
     const ret = TIP_RETURN[game] || "/gaming/challenge/join";
-    const base = TIP_URL || "/pay/" + channel;
-    res.json({ tipUrl: base + "?ret=" + encodeURIComponent(ret) });
+    // ⚠️ এখানেই সবচেয়ে বড় ভুলটা ছিল। CHALLENGE_TIP_URL সেট করা থাকলে *সব* গেমের টিপস
+    // ওই এক ঠিকানাতেই যেত — অর্থাৎ Snake-এ দেওয়া টাকা chessbattle চ্যানেলে জমা হতো।
+    // ফলে Snake overlay-তে সেলিব্রেশন কখনোই হতো না, টপ-৩ তেও নাম উঠত না।
+    // (স্ক্যানারের QR সরাসরি /pay/snake দেখাত, তাই ওটা ঠিকঠাক কাজ করছিল — আর এই
+    //  পার্থক্যটাই "স্ক্যানারে হয়, লাইনে হয় না" রহস্যের আসল কারণ।)
+    // এখন গেম জানা থাকলে সবসময় সেই গেমের নিজের চ্যানেলেই যায়।
+    const base = TIP_CHANNEL[game] ? ("/pay/" + channel) : (TIP_URL || "/pay/" + channel);
+    const sep = base.indexOf("?") >= 0 ? "&" : "?"; // ঠিকানায় আগে থেকে ? থাকলেও যেন না ভাঙে
+    res.json({ tipUrl: base + sep + "ret=" + encodeURIComponent(ret) });
   });
 
   // চেস overlay-তে নতুন টিপস এলে তার নাম নিয়ে real voice announcement বাজানোর জন্য —
@@ -7164,7 +7215,13 @@ module.exports = function mountGaming(app) {
   // overlay এটা পড়ে চ্যালেঞ্জারের খেলাটা নিজের বোর্ডে এঁকে দেয়
   app.get("/gaming/gq/:game/mirror", (req, res) => {
     const game = gqValid(req, res); if (!game) return;
+    const st = gameQueues[game];
     const m = gqMirror[game];
+    // কারও পালা চলছে অথচ এখনো প্রথম চাল আসেনি (নিয়ম দেখছে/তৈরি হচ্ছে) — তখনও AI-কে
+    // থামিয়ে রাখা হয়, নাহলে দুই সেকেন্ডের জন্য AI-এর খেলা ঝিলিক দিয়ে উঠত
+    if (st.active && (!m || m.at < st.active.startedAt)) {
+      return res.json({ active: true, waiting: true, name: st.active.name, photoUrl: st.active.photoUrl });
+    }
     // ৮ সেকেন্ড কোনো খবর না এলে ধরে নেওয়া হয় খেলোয়াড় চলে গেছেন (ইন্টারনেট গেছে/ট্যাব বন্ধ) —
     // তখন overlay নিজে থেকেই AI-এর খেলায় ফিরে যায়, পর্দা জমে থাকে না
     if (!m || Date.now() - m.at > 8000) return res.json({ active: false });
