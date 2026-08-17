@@ -555,7 +555,7 @@ fetchRecentPayments();
 // background poller later figure out which channel a payment belongs to.
 const SIDE_PREFIX = { left: 'L', right: 'R', dailyneedle: 'DN', chessbattle: 'CB', snake: 'SN', ballsort: 'BS', codelive: 'CL' };
 const SIDE_LABEL = { left: 'Fan Battle Live tip', right: 'Fan Battle Live tip', dailyneedle: 'Daily Needle tip', chessbattle: 'Chess Battle Live tip', snake: 'Snake Live tip', ballsort: 'Ball Sort Puzzle Live tip', codelive: 'Code Live tip' };
-async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone, ret) {
+async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone, ret, noPhotoFlag) {
   const prefix = SIDE_PREFIX[side] || 'R';
   const purpose = `${prefix}: ${SIDE_LABEL[side] || 'Fan Battle Live tip'}`;
   // Carry the donor's OWN name/phone (entered on our page, not Instamojo's
@@ -563,7 +563,7 @@ async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone
   // is what lets us skip requiring an email at all on our side.
   const nameParam = donorName ? `&dn=${encodeURIComponent(donorName)}` : '';
   const phoneParam = donorPhone ? `&dp=${encodeURIComponent(donorPhone)}` : '';
-  const retParam = ret ? `&ret=${encodeURIComponent(ret)}` : '';
+  const retParam = ret ? `&ret=${encodeURIComponent(ret)}${noPhotoFlag ? '&nophoto=1' : ''}` : '';
   const redirectUrl = `${PUBLIC_BASE_URL}/thanks?via=instamojo${nameParam}${phoneParam}${retParam}`;
   const body = new URLSearchParams({
     purpose, amount: String(amount), redirect_url: redirectUrl, send_email: 'False', send_sms: 'False',
@@ -590,7 +590,7 @@ async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone
 // STEP 3: name + amount are REQUIRED (enforced both client-side below and
 // server-side in /instamojo-create-request); email is never asked at all;
 // phone stays optional.
-function instamojoAmountPageHtml(side, teamName, ret) {
+function instamojoAmountPageHtml(side, teamName, ret, knownName) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Support ${teamName}</title>
@@ -609,8 +609,10 @@ function instamojoAmountPageHtml(side, teamName, ret) {
   </style></head><body>
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a completely voluntary show of support, no goods or prizes are exchanged. Minimum ₹9.</p>
-    <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
-    <div><input type="text" id="donorName" placeholder="Your name" maxlength="40"></div>
+    ${knownName ? `<div style="font-size:13px;color:#8BE28B;margin-top:10px;">Paying as <b>${knownName}</b></div>
+    <input type="hidden" id="donorName" value="${knownName.replace(/"/g, '&quot;')}">`
+    : `<label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
+    <div><input type="text" id="donorName" placeholder="Your name" maxlength="40"></div>`}
     <label class="fieldLabel">Amount <span class="req">*required</span></label>
     <div style="margin-top:4px;"><input type="number" id="amt" placeholder="₹ Amount" min="9" value="9"></div>
     <div class="presets">
@@ -636,7 +638,7 @@ function instamojoAmountPageHtml(side, teamName, ret) {
         const donorName = document.getElementById('donorName').value.trim();
         if(!donorName){
           document.getElementById('status').textContent = 'Please enter your name — it\\'s required.';
-          document.getElementById('donorName').focus();
+          if(document.getElementById('donorName').type !== 'hidden') document.getElementById('donorName').focus();
           return;
         }
         if(!amt || isNaN(amt) || amt < 9){
@@ -647,7 +649,7 @@ function instamojoAmountPageHtml(side, teamName, ret) {
         document.getElementById('status').textContent = 'Redirecting to payment...';
         fetch('/instamojo-create-request', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ amount: amt, side: '${side}', donorName, ret: ${JSON.stringify(safeReturnPath(ret))} })
+          body: JSON.stringify({ amount: amt, side: '${side}', donorName, ret: ${JSON.stringify(safeReturnPath(ret))}, nophoto: ${JSON.stringify(!!knownName)} })
         }).then(r => r.json()).then(d => {
           if(d.longurl) window.location.href = d.longurl;
           else document.getElementById('status').textContent = 'Something went wrong: ' + (d.error || 'please try again.');
@@ -661,7 +663,7 @@ function instamojoAmountPageHtml(side, teamName, ret) {
 
 app.post('/instamojo-create-request', async (req, res) => {
   try {
-    const { amount, side, donorName, ret } = req.body;
+    const { amount, side, donorName, ret, nophoto } = req.body;
     const amt = parseFloat(amount);
     // Name + amount are required — enforced here too, not just in the
     // page's own JS, since this endpoint could in principle be called
@@ -670,7 +672,7 @@ app.post('/instamojo-create-request', async (req, res) => {
     if (!amt || amt < 9) return res.status(400).json({ error: 'Minimum amount is ₹9 (Instamojo requirement).' });
     const validSides = ['left', 'right', 'dailyneedle', 'chessbattle', 'snake', 'ballsort', 'codelive'];
     const safeSide = validSides.includes(side) ? side : 'right';
-    const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), null, safeReturnPath(ret));
+    const longurl = await createInstamojoPaymentRequest(amt, safeSide, donorName.trim(), null, safeReturnPath(ret), !!nophoto);
     res.json({ longurl });
   } catch (e) {
     console.error('instamojo-create-request failed:', e.message);
@@ -780,7 +782,7 @@ app.post('/paypal-capture-order', async (req, res) => {
 // STEP 3: name is REQUIRED (already enforced in createOrder below) and now
 // amount is also explicitly validated client-side before the PayPal button
 // flow even starts; email is never asked at all; phone stays optional.
-function paypalPageHtml(side, teamName, ret) {
+function paypalPageHtml(side, teamName, ret, knownName) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Support ${teamName}</title>
@@ -803,8 +805,10 @@ function paypalPageHtml(side, teamName, ret) {
     ${streamBackUrlFor(side) ? `<button class="skipBtn" onclick="skipToStream()" title="Back to stream">✕</button>` : ''}
     <h2>Support ${teamName} 🔥</h2>
     <p>Enter any amount you'd like to tip — this is a voluntary show of support, no goods or services are exchanged.</p>
-    <label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
-    <div><input type="text" id="donorNameInput" placeholder="Your name" maxlength="40"></div>
+    ${knownName ? `<div style="font-size:13px;color:#8BE28B;margin-top:10px;">Paying as <b>${knownName}</b></div>
+    <input type="hidden" id="donorNameInput" value="${knownName.replace(/"/g, '&quot;')}">`
+    : `<label class="fieldLabel">Your name (shown on stream) <span class="req">*required</span></label>
+    <div><input type="text" id="donorNameInput" placeholder="Your name" maxlength="40"></div>`}
     <label class="fieldLabel">Mobile number (optional)</label>
     <div><input type="tel" id="donorPhoneInput" placeholder="Optional"></div>
     <label class="fieldLabel">Email <span class="req">*required</span></label>
@@ -851,6 +855,7 @@ function paypalPageHtml(side, teamName, ret) {
       // চ্যালেঞ্জ পেজ থেকে এলে সেখানেই ফিরিয়ে দেওয়া হয় — লাইভে নয়, কারণ সে তো
       // লাইভ দেখছিল না, লাইনে দাঁড়াতে এসেছিল
       const returnPath = ${JSON.stringify(safeReturnPath(ret))};
+      const alreadyHavePhoto = ${JSON.stringify(!!noPhoto)};
       function getBackUrl(){
         if(returnPath) return returnPath;
         if(chosenPlatform === 'facebook' && facebookBackUrl) return facebookBackUrl;
@@ -897,6 +902,19 @@ function paypalPageHtml(side, teamName, ret) {
         if(__picker) __picker.style.display = 'none';
         var __skip = document.getElementById('skipText');
         if(__skip) __skip.textContent = 'Skip — back to the queue';
+      }
+      // ⚠️ লাইনে দাঁড়ানোর সময় সে নাম আর ছবি দুটোই দিয়ে ফেলেছে। তাই এখানে আবার ছবি
+      // চাওয়াটা অর্থহীন — ধন্যবাদ জানিয়ে সাথে সাথেই লাইনে ফিরিয়ে দেওয়া হয়।
+      // confirm-return এখানেই ডাকা হয়, তাই ফিরে গিয়ে সে নিজের সেলিব্রেশনটা লাইভে দেখতে পায়।
+      if(alreadyHavePhoto){
+        ['photoInput','photoPreview','photoQuestionText','photoNoteText'].forEach(function(id){
+          var el = document.getElementById(id); if(el) el.style.display = 'none';
+        });
+        var __b = document.querySelectorAll('button');
+        for(var __i=0; __i<__b.length; __i++){ if(/Add my photo/i.test(__b[__i].textContent)) __b[__i].style.display='none'; }
+        var __d = document.getElementById('doneMsg');
+        if(__d) __d.innerHTML = '<p style="color:#4ADE80;font-weight:bold;">✅ Thank you! Taking you back…</p>';
+        setTimeout(confirmReturnAndGo, 2200);
       }
       // Catches the phone's back button/swipe, or the tab/browser being
       // closed — pagehide fires reliably in all of these cases on mobile.
@@ -985,7 +1003,7 @@ const THANKS_TRANSLATIONS = {
   pt: { thankYou: 'Obrigado', tipReceived: 'Sua gorjeta foi recebida.', platformQuestion: 'De onde você está assistindo?', photoQuestion: 'Quer mostrar sua foto na transmissão ao vivo?', photoNote: 'Isso é totalmente opcional — pule se preferir.', addPhoto: 'Adicionar minha foto', skip: 'Pular — voltar para a transmissão' }
 };
 
-function thanksPageHtml({ name, side, amount, currency, celebrationId, ret }) {
+function thanksPageHtml({ name, side, amount, currency, celebrationId, ret, noPhoto }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Thank you!</title>
@@ -1035,6 +1053,7 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId, ret }) {
       // চ্যালেঞ্জ পেজ থেকে এলে সেখানেই ফিরিয়ে দেওয়া হয় — লাইভে নয়, কারণ সে তো
       // লাইভ দেখছিল না, লাইনে দাঁড়াতে এসেছিল
       const returnPath = ${JSON.stringify(safeReturnPath(ret))};
+      const alreadyHavePhoto = ${JSON.stringify(!!noPhoto)};
       function getBackUrl(){
         if(returnPath) return returnPath;
         if(chosenPlatform === 'facebook' && facebookBackUrl) return facebookBackUrl;
@@ -1083,6 +1102,19 @@ function thanksPageHtml({ name, side, amount, currency, celebrationId, ret }) {
         var __skip = document.getElementById('skipText');
         if(__skip) __skip.textContent = 'Skip — back to the queue';
       }
+      // ⚠️ লাইনে দাঁড়ানোর সময় সে নাম আর ছবি দুটোই দিয়ে ফেলেছে। তাই এখানে আবার ছবি
+      // চাওয়াটা অর্থহীন — ধন্যবাদ জানিয়ে সাথে সাথেই লাইনে ফিরিয়ে দেওয়া হয়।
+      // confirm-return এখানেই ডাকা হয়, তাই ফিরে গিয়ে সে নিজের সেলিব্রেশনটা লাইভে দেখতে পায়।
+      if(alreadyHavePhoto){
+        ['photoInput','photoPreview','photoQuestionText','photoNoteText'].forEach(function(id){
+          var el = document.getElementById(id); if(el) el.style.display = 'none';
+        });
+        var __b = document.querySelectorAll('button');
+        for(var __i=0; __i<__b.length; __i++){ if(/Add my photo/i.test(__b[__i].textContent)) __b[__i].style.display='none'; }
+        var __d = document.getElementById('doneMsg');
+        if(__d) __d.innerHTML = '<p style="color:#4ADE80;font-weight:bold;">✅ Thank you! Taking you back…</p>';
+        setTimeout(confirmReturnAndGo, 2200);
+      }
       // Catches the phone's back button/swipe, or the tab/browser being
       // closed — pagehide fires reliably in all of these cases on mobile.
       window.addEventListener('pagehide', confirmReturnAndGo);
@@ -1114,6 +1146,7 @@ app.get('/thanks', async (req, res) => {
   try {
     const { payment_id, payment_status, dn, dp } = req.query;
     const ret = safeReturnPath(req.query.ret);
+    const noPhoto = req.query.nophoto === '1';
     const donorProvidedName = dn ? decodeURIComponent(dn) : null;
     const donorProvidedPhone = dp ? decodeURIComponent(dp) : null;
     let name = null, amount = null, currency = 'INR', side = null, celebrationId = null;
@@ -1142,7 +1175,7 @@ app.get('/thanks', async (req, res) => {
         celebrationId = record.id;
       }
     }
-    res.send(thanksPageHtml({ name, side, amount, currency, celebrationId, ret }));
+    res.send(thanksPageHtml({ name, side, amount, currency, celebrationId, ret, noPhoto }));
   } catch (e) {
     console.error('/thanks failed:', e.message);
     res.send(thanksPageHtml({ name: null, side: null, amount: null, currency: 'INR', celebrationId: null, ret: '' }));
@@ -1322,21 +1355,23 @@ app.get('/pay/:channel', async (req, res) => {
   const label = SINGLE_CHANNEL_PAY_LABEL[channel];
   const gw = loadGatewaySettings();
   const ret = safeReturnPath(req.query.ret); // চ্যালেঞ্জ পেজ থেকে এলে সেখানেই ফেরত
+  // লাইনে দাঁড়ানোর সময় সে নাম আর ছবি দুটোই দিয়ে ফেলেছে, তাই এখানে আর চাওয়া হয় না
+  const knownName = (req.query.dn || '').toString().trim().slice(0, 40);
   if (req.query.force === 'paypal') {
     if (!gw.internationalEnabled) return res.send(pausedPageHtml(label));
-    return res.send(paypalPageHtml(channel, label, ret));
+    return res.send(paypalPageHtml(channel, label, ret, knownName));
   }
   if (req.query.force === 'instamojo') {
     if (!gw.domesticEnabled) return res.send(pausedPageHtml(label));
-    return res.send(instamojoAmountPageHtml(channel, label, ret));
+    return res.send(instamojoAmountPageHtml(channel, label, ret, knownName));
   }
   const country = await lookupCountry(getVisitorIp(req));
   if (country === 'IN') {
     if (!gw.domesticEnabled) return res.send(pausedPageHtml(label));
-    return res.send(instamojoAmountPageHtml(channel, label, ret));
+    return res.send(instamojoAmountPageHtml(channel, label, ret, knownName));
   }
   if (!gw.internationalEnabled) return res.send(pausedPageHtml(label));
-  res.send(paypalPageHtml(channel, label, ret));
+  res.send(paypalPageHtml(channel, label, ret, knownName));
 });
 
 // NOTE: the /gateway-settings page and its toggle endpoint are registered
