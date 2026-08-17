@@ -260,6 +260,24 @@ GQ_GAMES.forEach((g) => { gameQueues[g] = { queue: [], active: null }; });
 
 function gqLabel(game) { return game === "snake" ? "Snake" : "Ball Sort Puzzle"; }
 
+// লাইনে দাঁড়ানোর সময় দেওয়া ছবিটা server.js-এর /donor-photo রুটে পাঠানো হয়, যাতে পরে
+// সে টাকা দিলে সেলিব্রেশনে ও টপ-৩ তালিকায় ওই ছবিটাই ব্যবহার হয়।
+// celebrationId পাঠানো হয় না, তাই এখনই কোনো সেলিব্রেশন হয় না, শুধু ছবিটা জমা থাকে।
+function registerQueuePhotoAsDonorPhoto(name, filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length > 4 * 1024 * 1024) return;
+    const ext = (path.extname(filePath) || ".jpg").slice(1).toLowerCase();
+    const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+    const dataUrl = "data:" + mime + ";base64," + buf.toString("base64");
+    const port = process.env.PORT || 3000;
+    fetch("http://127.0.0.1:" + port + "/donor-photo", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name, photoDataUrl: dataUrl }),
+    }).catch(function(){});
+  } catch (e) { /* ছবি নথিভুক্ত না হলেও লাইনে দাঁড়ানো আটকাবে না */ }
+}
+
 // ⚠️ আগে খেলোয়াড় নিজেই "কত টিপস দিয়েছি" টাইপ করে দিত — যে কেউ ₹৯৯৯৯ লিখে দিতে পারত।
 // এখন সংখ্যাটা আসে সার্ভারে সত্যিই রেকর্ড হওয়া পেমেন্ট থেকে, নাম মিলিয়ে। কেউ টাকা না দিলে
 // শূন্য দেখাবে, আর যত টাকা সত্যিই দিয়েছে ঠিক ততটাই দেখাবে।
@@ -304,9 +322,13 @@ function gqStartRinging(game, entry) {
   const started = Date.now();
   const fire = () => {
     if (entry.acknowledged || Date.now() - started > GQ_RING_MAX_MS) return gqStopRinging(entry);
+    // প্রতিবার আবার পাঠানোর সময় কত বাকি তা হিসেব করে শিরোনামে লেখা হয়, তাই
+    // নোটিফিকেশনেই সে দেখতে পায় হাতে আর কতটুকু সময় আছে
+    var leftSec = Math.max(0, Math.round((GQ_TURN_MS - (Date.now() - started)) / 1000));
+    var mm = Math.floor(leftSec / 60), ss = leftSec % 60;
     sendPushToId(entry.id, {
-      title: "📞 It is your turn now!",
-      body: `${entry.name}, you can play ${gqLabel(game)} right now — tap to open the game!`,
+      title: "📞 YOUR TURN — " + mm + ":" + (ss < 10 ? "0" : "") + ss + " left",
+      body: `${entry.name}, tap now to play ${gqLabel(game)} live!`,
       tag: "gq-ring-" + game,       // একই tag, তাই ফোনে নোটিফিকেশন জমতে থাকবে না — একটাই বারবার বাজবে
       requireInteraction: true,
       ring: true,
@@ -4805,8 +4827,15 @@ function show(id, on){ document.getElementById(id).classList.toggle("hide", !on)
 function openTipModal(){
   show("tipModal", true);
   fetch("/gaming/challenge/tip-info?game=${gameKey}").then(function(r){ return r.json(); })
-    .then(function(d){ if (d.tipUrl) document.getElementById("tipGo").href = d.tipUrl; })
-    .catch(function(){});
+    .then(function(d){
+      if (!d.tipUrl) return;
+      // dn = তার নাম, nophoto=1 = ছবিও আগেই দেওয়া আছে।
+      // এই দুটোর জন্যই পেমেন্টের সময় আর নাম বা ছবি চাওয়া হয় না, আর সেলিব্রেশনটা
+      // ঠিক তার নামেই হয় (নাম আলাদা হয়ে গেলে টিপসটা তার সাথে মিলত না)।
+      document.getElementById("tipGo").href = d.tipUrl
+        + "&dn=" + encodeURIComponent(playerName || "")
+        + "&nophoto=1";
+    }).catch(function(){});
 }
 function closeTipModal(){ show("tipModal", false); enterStage(); }
 
@@ -4971,12 +5000,10 @@ const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
 #board{background:rgba(10,14,31,0.45);border:3px solid #6b4423;border-radius:8px;display:block;touch-action:none;}
-#pad{display:grid;grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px;gap:5px;
-margin:5px auto 0;justify-content:center;flex-shrink:0;}
-.pb{background:#242c48;border:2px solid #38446e;border-radius:10px;display:flex;align-items:center;
-justify-content:center;font-size:17px;color:#cfd8ef;user-select:none;}
-.pb:active{background:#FFD866;color:#0a0e1f;}
-#pu{grid-column:2;grid-row:1;} #pl{grid-column:1;grid-row:2;} #pr{grid-column:3;grid-row:2;} #pd{grid-column:2;grid-row:3;}
+/* ⚠️ নিচের ▲◀▶▼ বোতামগুলো সরিয়ে দেওয়া হয়েছে — বোর্ডের যেকোনো জায়গায় আঙুল
+   টেনেই সাপ ঘোরানো যায়, তাই বোতামগুলো শুধু জায়গা খাচ্ছিল। ওই জায়গাটুকু এখন
+   বোর্ডেই যোগ হয়েছে, ফলে বোর্ড অনেক বড় ও স্পষ্ট। */
+.swipeHint{font-size:11px;color:#8BE28B;text-align:center;flex-shrink:0;font-weight:700;}
 </style></head><body>
 ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#12331f)")}
 
@@ -5016,11 +5043,8 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
   </div>
   <div class="boardArea">
     <canvas id="board"></canvas>
-    <div id="pad">
-      <div class="pb" id="pu">▲</div><div class="pb" id="pl">◀</div>
-      <div class="pb" id="pr">▶</div><div class="pb" id="pd">▼</div>
-    </div>
   </div>
+  <div class="swipeHint" id="swipeHint">👆 Swipe anywhere on the board to turn</div>
   <div class="watchTag" id="watchTag"></div>
   <div class="liveArea">
     <div class="cap"><i></i>LIVE ON YOUTUBE</div>
@@ -5037,10 +5061,11 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
 <div id="tutorial" class="hide">
   <h3>How to play</h3>
   <div class="step">
-    <b>Swipe</b> on the board to turn<br>
-    …or tap the <b>▲ ◀ ▶ ▼</b> buttons<br>
-    Eat the red dot to grow<br>
-    Don't hit the wall or yourself
+    👆 <b>Swipe up / down / left / right</b><br>
+    anywhere on the board to turn<br><br>
+    🔴 Eat the red dot to grow<br>
+    🚫 Don't hit the wall or yourself<br><br>
+    <span style="color:#FFD866;">Longer snake = higher score</span>
   </div>
   <div class="count" id="tutCount">5</div>
 </div>
@@ -5083,8 +5108,7 @@ loadRecord();
 // বোর্ডটা যতটুকু জায়গা বেঁচে আছে ঠিক ততটুকুতেই বসে — তাই কোনো ফোনেই স্ক্রল লাগে না
 function fitBoard(){
   var host = canvas.parentElement;
-  var padH = document.getElementById("pad").offsetHeight || 140;
-  var availH = Math.max(80, host.clientHeight - padH - 8);
+  var availH = Math.max(80, host.clientHeight - 4);
   var availW = Math.max(80, host.clientWidth);
   cell = Math.max(8, Math.floor(Math.min(availW / COLS, availH / ROWS)));
   canvas.width = cell * COLS; canvas.height = cell * ROWS;
@@ -5162,21 +5186,31 @@ function startGame(){
   placeFood(); draw(); pushMirror();
   clearInterval(timer); timer = setInterval(tick, TICK);
 }
-document.getElementById("pu").addEventListener("click", function(){ setDir(-1,0); });
-document.getElementById("pd").addEventListener("click", function(){ setDir(1,0); });
-document.getElementById("pl").addEventListener("click", function(){ setDir(0,-1); });
-document.getElementById("pr").addEventListener("click", function(){ setDir(0,1); });
 document.addEventListener("keydown", function(e){
   if (e.key === "ArrowUp") setDir(-1,0); else if (e.key === "ArrowDown") setDir(1,0);
   else if (e.key === "ArrowLeft") setDir(0,-1); else if (e.key === "ArrowRight") setDir(0,1);
 });
-var sx = 0, sy = 0;
-canvas.addEventListener("touchstart", function(e){ sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, {passive:true});
-canvas.addEventListener("touchend", function(e){
+// সোয়াইপ ধরা হয় পুরো খেলার এলাকায় — শুধু ক্যানভাসে নয়। আঙুল একটু বাইরে চলে গেলেও
+// চাল কাজ করে, তাই দ্রুত খেলার সময় হতাশ হতে হয় না।
+var sx = 0, sy = 0, swiping = false;
+var swipeZone = document.querySelector(".boardArea");
+swipeZone.addEventListener("touchstart", function(e){
+  sx = e.touches[0].clientX; sy = e.touches[0].clientY; swiping = true;
+}, {passive:true});
+swipeZone.addEventListener("touchend", function(e){
+  if (!swiping) return; swiping = false;
   var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
-  if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+  if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return; // সামান্য নড়াচড়া = ভুল করে ছোঁয়া
   if (Math.abs(dx) > Math.abs(dy)) setDir(0, dx > 0 ? 1 : -1); else setDir(dy > 0 ? 1 : -1, 0);
 }, {passive:true});
+// মাউসেও একই — কম্পিউটার থেকে খেললেও চলবে
+swipeZone.addEventListener("mousedown", function(e){ sx = e.clientX; sy = e.clientY; swiping = true; });
+swipeZone.addEventListener("mouseup", function(e){
+  if (!swiping) return; swiping = false;
+  var dx = e.clientX - sx, dy = e.clientY - sy;
+  if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
+  if (Math.abs(dx) > Math.abs(dy)) setDir(0, dx > 0 ? 1 : -1); else setDir(dy > 0 ? 1 : -1, 0);
+});
 window.addEventListener("resize", function(){ if (alive) draw(); });
 ${queueClientJS("snake", "startGame", "drawWatched")}
 </script></body></html>`;
@@ -5185,13 +5219,20 @@ const BALLSORT_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta char
 <title>Play Ball Sort Live</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
-#tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:7px 4px;width:100%;}
+#tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 6px;width:100%;touch-action:none;}
 .tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.13),rgba(10,14,31,0.55));
 border:2px solid rgba(255,255,255,0.30);border-top:none;border-radius:4px 4px 16px 16px;
-display:flex;flex-direction:column-reverse;padding:3px;gap:2px;transition:transform 0.15s,box-shadow 0.15s;}
-.tube.sel{border-color:#FFD866;box-shadow:0 0 14px rgba(255,216,102,0.6);transform:translateY(-6px);}
+display:flex;flex-direction:column-reverse;padding:3px;gap:2px;position:relative;
+transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s;}
+/* আঙুল ঠিক টিউবের গায়ে না পড়লেও যেন ধরা পড়ে — চারপাশে অদৃশ্য বাড়তি জায়গা */
+.tube::after{content:"";position:absolute;inset:-6px -3px;}
+.tube.sel{border-color:#FFD866;box-shadow:0 0 16px rgba(255,216,102,0.7);transform:translateY(-8px);}
+.tube.target{border-color:#8BE28B;box-shadow:0 0 16px rgba(139,226,139,0.7);}
 .tube.done{border-color:rgba(139,226,139,0.75);}
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.45);}
+/* আঙুলের সাথে সাথে যে বলটা ভেসে চলে */
+#dragBall{position:fixed;width:34px;height:34px;border-radius:50%;pointer-events:none;z-index:50;
+box-shadow:0 6px 16px rgba(0,0,0,0.6);transform:translate(-50%,-50%);display:none;}
 </style></head><body>
 ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45%,#241442)")}
 
@@ -5227,6 +5268,7 @@ ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45
     <span class="eta" id="qEta"></span>
   </div>
   <div class="boardArea"><div id="tubes"></div></div>
+<div id="dragBall"></div>
   <div class="watchTag" id="watchTag"></div>
   <div class="liveArea">
     <div class="cap"><i></i>LIVE ON YOUTUBE</div>
@@ -5243,11 +5285,11 @@ ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45
 <div id="tutorial" class="hide">
   <h3>How to play</h3>
   <div class="step">
-    <b>Tap a tube</b> to pick up its top ball<br>
-    <b>Tap another tube</b> to drop it<br>
+    <b>Drag</b> a ball from one tube to another<br>
+    <span style="color:#7C8AAD;font-size:12px;">(or tap one tube, then tap another)</span><br><br>
     A ball only sits on the <b>same colour</b><br>
-    …or in an <b>empty tube</b><br>
-    Fill every tube with one colour to win
+    …or in an <b>empty tube</b><br><br>
+    Make every tube <b>one single colour</b> to win
   </div>
   <div class="count" id="tutCount">5</div>
 </div>
@@ -5303,10 +5345,118 @@ function paint(list, colors, selected, clickable){
       b.style.background = ballGradient(colors[ci]);
       el.appendChild(b);
     });
-    if (clickable) el.addEventListener("click", function(){ tap(idx); });
+    el.dataset.idx = idx;
     wrap.appendChild(el);
   });
 }
+
+/* =========================================================================
+   বল সরানোর নিয়ন্ত্রণ — আঙুল দিয়ে টেনে নেওয়া
+   -------------------------------------------------------------------------
+   ⚠️ আগে শুধু "ট্যাপ করে বাছো, তারপর ট্যাপ করে ছাড়ো" ছিল। ফোনে টিউবগুলো সরু, তাই
+   আঙুল একটু এদিক-ওদিক পড়লেই কিছু হতো না — খেলাই যাচ্ছিল না। এখন সাপের মতোই: বল ধরে
+   টেনে যে টিউবে ইচ্ছা ছেড়ে দিন। ট্যাপ-ট্যাপও চলে, তাই যার যেটা সুবিধা।
+   ========================================================================= */
+var dragFrom = -1, dragging = false, dragMoved = false;
+var dragBallEl = document.getElementById("dragBall");
+
+function tubeIndexAt(x, y){
+  var els = document.querySelectorAll("#tubes .tube");
+  var best = -1, bestDist = 1e9;
+  for (var i = 0; i < els.length; i++){
+    var r = els[i].getBoundingClientRect();
+    // টিউবের ভেতরে পড়লে সাথে সাথেই ওটা; নাহলে সবচেয়ে কাছেরটা (৪৪px পর্যন্ত)
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
+    var cx = Math.max(r.left, Math.min(x, r.right));
+    var cy = Math.max(r.top, Math.min(y, r.bottom));
+    var d = Math.hypot(x - cx, y - cy);
+    if (d < bestDist){ bestDist = d; best = i; }
+  }
+  return bestDist <= 44 ? best : -1;
+}
+function highlightTarget(idx){
+  document.querySelectorAll("#tubes .tube").forEach(function(el, i){
+    el.classList.toggle("target", i === idx && i !== dragFrom);
+  });
+}
+function showDragBall(x, y, colorIdx){
+  dragBallEl.style.display = "block";
+  dragBallEl.style.background = ballGradient(COLORS[colorIdx]);
+  dragBallEl.style.left = x + "px";
+  dragBallEl.style.top = y + "px";
+}
+function hideDragBall(){
+  dragBallEl.style.display = "none";
+  highlightTarget(-1);
+}
+function pointerDown(x, y){
+  if (finished || !myTurnLive) return;
+  var idx = tubeIndexAt(x, y);
+  if (idx < 0) return;
+  if (sel === -1){
+    if (!tubes[idx].length) return;
+    sel = idx; dragFrom = idx; dragging = true; dragMoved = false;
+    render();
+    showDragBall(x, y, tubes[idx][tubes[idx].length - 1]);
+  } else {
+    dragFrom = sel; dragging = true; dragMoved = false;
+  }
+}
+function pointerMove(x, y){
+  if (!dragging) return;
+  dragMoved = true;
+  if (dragFrom >= 0 && tubes[dragFrom] && tubes[dragFrom].length){
+    showDragBall(x, y, tubes[dragFrom][tubes[dragFrom].length - 1]);
+  }
+  highlightTarget(tubeIndexAt(x, y));
+}
+function pointerUp(x, y){
+  if (!dragging){ return; }
+  dragging = false;
+  hideDragBall();
+  var idx = tubeIndexAt(x, y);
+  // আঙুল প্রায় নড়েনি = সাধারণ ট্যাপ; সেক্ষেত্রে পুরনো ট্যাপ-ট্যাপ নিয়মই চলবে
+  if (!dragMoved){
+    if (idx >= 0 && idx !== sel) drop(idx);
+    else if (idx === sel && idx === dragFrom) { /* ধরেই রাখা হলো */ }
+    return;
+  }
+  if (idx >= 0 && idx !== dragFrom) drop(idx);
+  else { sel = -1; render(); pushMirror(); } // কোথাও না ফেলে ছেড়ে দিলে বলটা ফিরে যায়
+}
+function drop(idx){
+  if (sel === -1) return;
+  if (sel === idx){ sel = -1; render(); pushMirror(); return; }
+  var f = tubes[sel], t = tubes[idx];
+  var color = f[f.length - 1];
+  if (t.length < CAP && (t.length === 0 || t[t.length-1] === color)){
+    t.push(f.pop());
+    sel = -1; render(); pushMirror();
+    if (solved()) finish();
+  } else {
+    // ভুল জায়গা — নতুন টিউবটাই বেছে নেওয়া হয়, যাতে আবার শুরু থেকে করতে না হয়
+    sel = tubes[idx].length ? idx : -1;
+    render(); pushMirror();
+  }
+}
+(function bindControls(){
+  var wrap = document.getElementById("tubes");
+  wrap.addEventListener("touchstart", function(e){
+    var t = e.touches[0]; pointerDown(t.clientX, t.clientY);
+  }, { passive: true });
+  wrap.addEventListener("touchmove", function(e){
+    if (!dragging) return;
+    e.preventDefault();
+    var t = e.touches[0]; pointerMove(t.clientX, t.clientY);
+  }, { passive: false });
+  wrap.addEventListener("touchend", function(e){
+    var t = e.changedTouches[0]; pointerUp(t.clientX, t.clientY);
+  }, { passive: true });
+  // মাউসেও একইভাবে — আপনি নিজে কম্পিউটারে পরীক্ষা করতে পারবেন
+  wrap.addEventListener("mousedown", function(e){ pointerDown(e.clientX, e.clientY); });
+  window.addEventListener("mousemove", function(e){ pointerMove(e.clientX, e.clientY); });
+  window.addEventListener("mouseup", function(e){ if (dragging) pointerUp(e.clientX, e.clientY); });
+})();
 function drawWatched(st){
   if (myTurnLive) return;
   CAP = st.capacity || 4;
@@ -5319,23 +5469,6 @@ function pushMirror(){
   fetch("/gaming/gq/ballsort/mirror", { method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({ id: myQueueId, state: { tubes: tubes, colors: COLORS, capacity: CAP, sel: sel } })
   }).catch(function(){});
-}
-function tap(idx){
-  if (finished || !myTurnLive) return;
-  if (sel === -1){
-    if (!tubes[idx].length) return;
-    sel = idx; render(); pushMirror(); return;
-  }
-  if (sel === idx){ sel = -1; render(); pushMirror(); return; }
-  var f = tubes[sel], t = tubes[idx];
-  var color = f[f.length-1];
-  if (t.length < CAP && (t.length === 0 || t[t.length-1] === color)){
-    t.push(f.pop());
-    sel = -1; render(); pushMirror();
-    if (solved()) finish();
-  } else {
-    sel = idx; render(); pushMirror(); // ভুল জায়গা — নতুন টিউবটাই বেছে নেওয়া হলো
-  }
 }
 function finish(){
   finished = true;
@@ -6711,7 +6844,8 @@ module.exports = function mountGaming(app) {
     // ⚠️ ?ret= টুকুই আসল পরিবর্তন। এটা ছাড়া টাকা দেওয়ার পর দর্শককে সোজা YouTube-এ
     // পাঠিয়ে দেওয়া হতো — অথচ সে তো লাইভ দেখছিল না, লাইনে দাঁড়াতে এসেছিল।
     const ret = TIP_RETURN[game] || "/gaming/challenge/join";
-    res.json({ tipUrl: (TIP_URL || "/pay/" + channel) + "?ret=" + encodeURIComponent(ret) });
+    const base = TIP_URL || "/pay/" + channel;
+    res.json({ tipUrl: base + "?ret=" + encodeURIComponent(ret) });
   });
 
   // চেস overlay-তে নতুন টিপস এলে তার নাম নিয়ে real voice announcement বাজানোর জন্য —
@@ -6926,6 +7060,10 @@ module.exports = function mountGaming(app) {
       const photoUrl = req.file ? `/gaming/uploads/${path.basename(req.file.path)}` : "";
       // অঙ্কটা খেলোয়াড়ের কাছ থেকে নেওয়া হয় না — সার্ভারে রেকর্ড হওয়া আসল পেমেন্ট থেকেই আসে
       st.queue.push({ id, name, photoUrl, joinedAt: Date.now() });
+      // ⚠️ এই ছবিটা server.js-এর ডোনার-ছবির তালিকাতেও পাঠিয়ে দেওয়া হয়। কারণ সেলিব্রেশন আর
+      // টপ-৩ প্যানেল ওই তালিকা থেকেই ছবি নেয়। এটা না করলে লাইনে দাঁড়ানো কেউ টাকা দিলে
+      // তার নাম দেখা যেত কিন্তু ছবি আসত না, আর তাকে দ্বিতীয়বার ছবি চাইতে হতো।
+      if (req.file) registerQueuePhotoAsDonorPhoto(name, req.file.path);
       setCookie(res, "gq_" + game, id, 3600);
       console.log(`[${game}-queue] নতুন: ${name} (লাইনে এখন ${st.queue.length} জন)`);
       gqNotifyPositions(game);
