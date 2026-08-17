@@ -408,6 +408,25 @@ function gqTick() {
 }
 setInterval(gqTick, 2000);
 
+// ===========================================================================
+// সার্ভারকে জাগিয়ে রাখা
+// ---------------------------------------------------------------------------
+// Render-এর ফ্রি প্ল্যানে ১৫ মিনিট কোনো ভিজিটর না এলে সার্ভার ঘুমিয়ে পড়ে। তখন পরের
+// দর্শক লিংকে ঢুকলে ৫০+ সেকেন্ড "Waking up the server…" দেখে, অনেকে অতক্ষণ অপেক্ষা না
+// করে চলে যায় — চ্যালেঞ্জই নেওয়া হয় না।
+//
+// স্ট্রিম চলার সময় overlay নিজেই বারবার সার্ভারে আসে, তাই সমস্যা হয় না। কিন্তু স্ট্রিম
+// বন্ধ থাকলে (বা OBS আলাদা মেশিনে থাকলে) কেউ আসে না। তাই প্রতি ১২ মিনিটে সার্ভার
+// নিজের public URL-এ একটা ছোট্ট request পাঠায় — Render সেটাকে আসল ভিজিটর হিসেবেই গোনে।
+const KEEPALIVE_URL = process.env.PUBLIC_BASE_URL || "";
+if (KEEPALIVE_URL) {
+  setInterval(() => {
+    fetch(KEEPALIVE_URL.replace(/\/+$/, "") + "/gaming/health")
+      .catch(() => {}); // ব্যর্থ হলেও কিছু যায় আসে না, পরেরবার আবার চেষ্টা হবে
+  }, 12 * 60 * 1000);
+  console.log("💤 keep-alive চালু — প্রতি ১২ মিনিটে সার্ভার নিজেকে জাগিয়ে রাখবে");
+}
+
 async function runChessLoop() {
   if (chessLoopActive) return;
   chessLoopActive = true;
@@ -4023,12 +4042,10 @@ function applyMirrorState(d){
 }
 function pollMirror(){
   fetch("/gaming/gq/snake/mirror").then(function(r){ return r.json(); }).then(function(d){
-    // পালা শুরু হয়েছে কিন্তু প্রথম চাল আসেনি — তখনও AI থেমে থাকে
-    if (d.active && d.waiting){
-      mirrorMode = true;
-      document.getElementById("flash").textContent = "🎮 " + d.name + " is getting ready…";
-      document.getElementById("flash").classList.add("show");
-      return;
+    // ⚠️ এখানে আর AI থামানো হয় না। খেলোয়াড় নিয়ম দেখছে/তৈরি হচ্ছে — ততক্ষণ দর্শক
+    // যেন স্থির পর্দা না দেখে, তাই AI-এর খেলাই চলতে থাকে। শুধু জানিয়ে রাখা হয় পরে কে আসছে।
+    if (d.upNext){
+      document.getElementById("flash").textContent = "🎮 Up next: " + d.upNext;
     }
     if (d.active && d.state && d.state.body){
       if (!mirrorMode){
@@ -4607,11 +4624,10 @@ setInterval(poll, 500); poll();
 var bsMirror = false, bsMirrorSeq = -1;
 function pollBsMirror(){
   fetch("/gaming/gq/ballsort/mirror").then(function(r){ return r.json(); }).then(function(d){
-    // কারও পালা চলছে অথচ প্রথম চাল আসেনি — তখনও AI থামিয়ে রাখা হয়
-    if (d.active && d.waiting){
-      bsMirror = true;
-      document.getElementById("statusLine").textContent = "🎮 " + d.name + " is getting ready…";
-      return;
+    // ⚠️ এখানে আর AI থামানো হয় না। খেলোয়াড় নিয়ম দেখছে/তৈরি হচ্ছে — ততক্ষণ দর্শক
+    // যেন স্থির পর্দা না দেখে, তাই AI-এর খেলাই চলতে থাকে। শুধু জানিয়ে রাখা হয় পরে কে আসছে।
+    if (d.upNext){
+      document.getElementById("statusLine").textContent = "🎮 Up next: " + d.upNext;
     }
     if (d.active && d.state && d.state.tubes){
       if (!bsMirror){
@@ -4846,6 +4862,7 @@ function queueClientJS(gameKey, startFn, drawWatch, tutorialHtml) {
   return `
 ${PUSH_SETUP_JS}
 var myQueueId = null, myTurnStarted = false, pollTimer = null, watchTimer = null, lastWatchSeq = null;
+var joinAttempts = 0;
 
 function show(id, on){ document.getElementById(id).classList.toggle("hide", !on); }
 
@@ -4953,7 +4970,16 @@ function joinQueue(){
   if (name.length < 2){ document.getElementById("startMsg").textContent = "Please type your name (2 letters or more)."; return; }
   var btn = document.getElementById("startBtn");
   btn.disabled = true; btn.textContent = "Joining…";
-  var slow = setTimeout(function(){ btn.textContent = "Waking up the server…"; }, 6000);
+  // ফ্রি সার্ভার ঘুমিয়ে থাকলে প্রথম request-এ ৫০ সেকেন্ড পর্যন্ত লাগতে পারে।
+  // চুপ করে থাকলে দর্শক ভাবে পেজটা ভেঙে গেছে — তাই কী হচ্ছে ধাপে ধাপে বলা হয়,
+  // আর ব্যর্থ হলে নিজে থেকেই আরও দুবার চেষ্টা করা হয়।
+  var waited = 0;
+  var slow = setInterval(function(){
+    waited += 4;
+    if (waited <= 4) btn.textContent = "Starting the server… (about 30s)";
+    else if (waited <= 12) btn.textContent = "Almost there — please wait… " + waited + "s";
+    else btn.textContent = "Still waking up… " + waited + "s";
+  }, 4000);
   // ⚠️ ছবি না দিলে FormData পাঠানো হয় না — ইচ্ছে করেই।
   // FormData মানে multipart, আর multipart পড়তে সার্ভারে multer লাগে। multer ইনস্টল না
   // থাকলে সার্ভার নামটা পড়তেই পারত না, ফলে সবার নাম নীরবে "Player" হয়ে যেত।
@@ -4973,18 +4999,25 @@ function joinQueue(){
   fetch("/gaming/gq/${gameKey}/join", req)
     .then(function(r){ return r.json(); })
     .then(function(d){
-      clearTimeout(slow);
+      clearInterval(slow);
       if (!d.id) throw new Error("no id");
       myQueueId = d.id;
-      try { sessionStorage.setItem("gq_${gameKey}", d.id); } catch(e){}
+      try { localStorage.setItem("gq_${gameKey}", d.id); } catch(e){}
       playerName = name;
       show("joinCard", false);
       setupPush(myQueueId, null).catch(function(){});
       openTipModal();
     })
     .catch(function(){
-      clearTimeout(slow);
-      btn.disabled = false; btn.textContent = "Try again";
+      clearInterval(slow);
+      // ঘুম থেকে ওঠার সময় প্রথম request প্রায়ই ব্যর্থ হয় — তাই নিজে থেকেই আবার চেষ্টা
+      if (joinAttempts < 3){
+        joinAttempts++;
+        btn.textContent = "Retrying… (" + joinAttempts + "/3)";
+        setTimeout(joinQueue, 2500);
+      } else {
+        btn.disabled = false; btn.textContent = "Try again";
+      }
     });
 }
 document.getElementById("startBtn").addEventListener("click", joinQueue);
@@ -4994,13 +5027,13 @@ document.getElementById("tipGo").addEventListener("click", function(){
   setTimeout(closeTipModal, 400);
 });
 document.getElementById("againBtn2").addEventListener("click", function(){
-  try { sessionStorage.removeItem("gq_${gameKey}"); } catch(e){}
+  try { localStorage.removeItem("gq_${gameKey}"); } catch(e){}
   location.reload();
 });
 document.getElementById("leaveBtn").addEventListener("click", function(){
   fetch("/gaming/gq/${gameKey}/leave", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: myQueueId }) }).finally(function(){
-      try { sessionStorage.removeItem("gq_${gameKey}"); } catch(e){}
+      try { localStorage.removeItem("gq_${gameKey}"); } catch(e){}
       location.reload();
     });
 });
@@ -5010,11 +5043,11 @@ document.getElementById("leaveBtn").addEventListener("click", function(){
    তাই id মনে রাখা হয় আর সোজা মূল পর্দায় ফেরত নিয়ে যাওয়া হয়। */
 (function restoreAfterPayment(){
   var saved = null;
-  try { saved = sessionStorage.getItem("gq_${gameKey}"); } catch(e){}
+  try { saved = localStorage.getItem("gq_${gameKey}"); } catch(e){}
   if (!saved) return;
   fetch("/gaming/gq/${gameKey}/state?id=" + saved).then(function(r){ return r.json(); })
     .then(function(st){
-      if (st.position == null && !st.isYourTurn) { try { sessionStorage.removeItem("gq_${gameKey}"); } catch(e){} return; }
+      if (st.position == null && !st.isYourTurn) { try { localStorage.removeItem("gq_${gameKey}"); } catch(e){} return; }
       myQueueId = saved;
       show("joinCard", false); show("tipModal", false);
       enterStage();
@@ -5256,6 +5289,8 @@ transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s;}
 .tube::after{content:"";position:absolute;inset:-6px -3px;}
 .tube.sel{border-color:#FFD866;box-shadow:0 0 16px rgba(255,216,102,0.7);transform:translateY(-8px);}
 .tube.target{border-color:#8BE28B;box-shadow:0 0 16px rgba(139,226,139,0.7);}
+/* বোতল ভরা থাকলে লাল — আঙুল সেখানে নিলেই আগেভাগে বোঝা যায় রাখা যাবে না */
+.tube.noDrop{border-color:#FF6B5E;box-shadow:0 0 12px rgba(255,107,94,0.5);}
 .tube.done{border-color:rgba(139,226,139,0.75);}
 .ball{width:100%;aspect-ratio:1;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.45);}
 /* আঙুলের সাথে সাথে যে বলটা ভেসে চলে */
@@ -5388,6 +5423,17 @@ function paint(list, colors, selected, clickable){
 var dragFrom = -1, dragging = false, dragMoved = false;
 var dragBallEl = document.getElementById("dragBall");
 
+/* =========================================================================
+   বল সরানোর নিয়ম (সহজ করা হয়েছে)
+   -------------------------------------------------------------------------
+   • যেকোনো বোতলের **উপরের** বলটিতে আঙুল দিয়ে টানুন
+   • যে বোতলে **জায়গা আছে** সেখানেই ছেড়ে দিন — রঙ মেলানোর কোনো নিয়ম নেই
+   • আগে বোতল "সিলেক্ট" করার দরকার নেই, সরাসরি টানলেই হয়
+
+   ⚠️ আগের কোডে একটা বাজে বাগ ছিল: একবার কোনো বোতল সিলেক্ট হয়ে গেলে পরের বার
+   আঙুল যে বোতলেই দিন না কেন, বল উঠত ওই *পুরনো সিলেক্ট করা* বোতল থেকে। তাই দুই-তিনটা
+   চালের পর আর ঠিকমতো খেলা যেত না। এখন সবসময় আপনি যে বোতল ছুঁয়েছেন সেখান থেকেই ওঠে।
+   ========================================================================= */
 function tubeIndexAt(x, y){
   var els = document.querySelectorAll("#tubes .tube");
   var best = -1, bestDist = 1e9;
@@ -5399,15 +5445,20 @@ function tubeIndexAt(x, y){
     var d = Math.hypot(x - cx, y - cy);
     if (d < bestDist){ bestDist = d; best = i; }
   }
-  // ⚠️ আগে ৪৪px পর্যন্ত "কাছের" টিউবও ধরা হতো। টিউবগুলো পাশাপাশি ঘন থাকায় আঙুল
-  // এক টিউবে থাকলেও পাশেরটা ধরা পড়ত — মনে হতো যেখান থেকে সেখান থেকে বল উঠে যাচ্ছে।
-  // এখন সীমা ১৪px, তাই আঙুল যে টিউবে আছে সেটাই ধরা পড়ে।
-  return bestDist <= 14 ? best : -1;
+  return bestDist <= 18 ? best : -1; // আঙুল একটু বাইরে পড়লেও ধরা পড়ে
+}
+// বলটা ওখানে রাখা যাবে কি না — শুধু জায়গা আছে কি না দেখা হয়, রঙ দেখা হয় না
+function canDrop(from, to){
+  if (from < 0 || to < 0 || from === to) return false;
+  if (!tubes[from] || !tubes[from].length) return false;
+  return !!tubes[to] && tubes[to].length < CAP;
 }
 function highlightTarget(idx){
-  document.querySelectorAll("#tubes .tube").forEach(function(el, i){
-    el.classList.toggle("target", i === idx && i !== dragFrom);
-  });
+  var els = document.querySelectorAll("#tubes .tube");
+  for (var i = 0; i < els.length; i++){
+    els[i].classList.remove("target", "noDrop");
+    if (i === idx && i !== dragFrom) els[i].classList.add(canDrop(dragFrom, i) ? "target" : "noDrop");
+  }
 }
 function showDragBall(x, y, colorIdx){
   dragBallEl.style.display = "block";
@@ -5422,24 +5473,19 @@ function hideDragBall(){
 function pointerDown(x, y){
   if (finished || !myTurnLive) return;
   var idx = tubeIndexAt(x, y);
-  if (idx < 0) return;
-  if (sel === -1){
-    if (!tubes[idx].length) return;
-    sel = idx; dragFrom = idx; dragging = true; dragMoved = false;
-    render();
-    // খেলার নিয়ম অনুযায়ী শুধু টিউবের *সবচেয়ে উপরের* বলটাই তোলা যায়। আঙুল টিউবের
-    // নিচের দিকে থাকলেও তাই উপরের বলটাই ওঠে — আর বলটা ঠিক ওই উপরের জায়গা থেকেই
-    // ওড়া শুরু করে, যাতে দেখে বোঝা যায় কোন বলটা উঠল।
-    var tubeEl = document.querySelectorAll("#tubes .tube")[idx];
-    var topBall = tubeEl && tubeEl.lastElementChild; // column-reverse — শেষ সন্তানই উপরের বল
-    if (topBall){
-      var tb = topBall.getBoundingClientRect();
-      showDragBall(tb.left + tb.width / 2, tb.top + tb.height / 2, tubes[idx][tubes[idx].length - 1]);
-    } else {
-      showDragBall(x, y, tubes[idx][tubes[idx].length - 1]);
-    }
+  // সবসময় ছোঁয়া বোতল থেকেই — আগে কী সিলেক্ট ছিল তাতে কিছু যায় আসে না
+  if (idx < 0 || !tubes[idx] || !tubes[idx].length) return;
+  sel = idx; dragFrom = idx; dragging = true; dragMoved = false;
+  render();
+  // বলটা বোতলের উপরের বলের জায়গা থেকেই ওড়া শুরু করে, তাই কোনটা উঠল স্পষ্ট বোঝা যায়
+  var tubeEl = document.querySelectorAll("#tubes .tube")[idx];
+  var topBall = tubeEl && tubeEl.lastElementChild; // column-reverse — শেষ সন্তানই উপরের বল
+  var colorIdx = tubes[idx][tubes[idx].length - 1];
+  if (topBall){
+    var tb = topBall.getBoundingClientRect();
+    showDragBall(tb.left + tb.width / 2, tb.top + tb.height / 2, colorIdx);
   } else {
-    dragFrom = sel; dragging = true; dragMoved = false;
+    showDragBall(x, y, colorIdx);
   }
 }
 function pointerMove(x, y){
@@ -5451,33 +5497,20 @@ function pointerMove(x, y){
   highlightTarget(tubeIndexAt(x, y));
 }
 function pointerUp(x, y){
-  if (!dragging){ return; }
+  if (!dragging) return;
   dragging = false;
   hideDragBall();
   var idx = tubeIndexAt(x, y);
-  // আঙুল প্রায় নড়েনি = সাধারণ ট্যাপ; সেক্ষেত্রে পুরনো ট্যাপ-ট্যাপ নিয়মই চলবে
-  if (!dragMoved){
-    if (idx >= 0 && idx !== sel) drop(idx);
-    else if (idx === sel && idx === dragFrom) { /* ধরেই রাখা হলো */ }
-    return;
-  }
-  if (idx >= 0 && idx !== dragFrom) drop(idx);
-  else { sel = -1; render(); pushMirror(); } // কোথাও না ফেলে ছেড়ে দিলে বলটা ফিরে যায়
+  var from = dragFrom;
+  if (idx >= 0 && canDrop(from, idx)) doMove(from, idx);
+  else { sel = -1; dragFrom = -1; render(); pushMirror(); } // বলটা নিজের জায়গায় ফিরে যায়
+  dragFrom = -1;
 }
-function drop(idx){
-  if (sel === -1) return;
-  if (sel === idx){ sel = -1; render(); pushMirror(); return; }
-  var f = tubes[sel], t = tubes[idx];
-  var color = f[f.length - 1];
-  if (t.length < CAP && (t.length === 0 || t[t.length-1] === color)){
-    t.push(f.pop());
-    sel = -1; render(); pushMirror();
-    if (solved()) finish();
-  } else {
-    // ভুল জায়গা — নতুন টিউবটাই বেছে নেওয়া হয়, যাতে আবার শুরু থেকে করতে না হয়
-    sel = tubes[idx].length ? idx : -1;
-    render(); pushMirror();
-  }
+function doMove(from, to){
+  tubes[to].push(tubes[from].pop());
+  sel = -1; dragFrom = -1;
+  render(); pushMirror();
+  if (solved()) finish();
 }
 (function bindControls(){
   var wrap = document.getElementById("tubes");
@@ -5486,17 +5519,17 @@ function drop(idx){
   }, { passive: true });
   wrap.addEventListener("touchmove", function(e){
     if (!dragging) return;
-    e.preventDefault();
+    e.preventDefault(); // পেজ স্ক্রল আটকানো, নাহলে বল টানা যেত না
     var t = e.touches[0]; pointerMove(t.clientX, t.clientY);
   }, { passive: false });
   wrap.addEventListener("touchend", function(e){
     var t = e.changedTouches[0]; pointerUp(t.clientX, t.clientY);
   }, { passive: true });
-  // মাউসেও একইভাবে — আপনি নিজে কম্পিউটারে পরীক্ষা করতে পারবেন
   wrap.addEventListener("mousedown", function(e){ pointerDown(e.clientX, e.clientY); });
   window.addEventListener("mousemove", function(e){ pointerMove(e.clientX, e.clientY); });
   window.addEventListener("mouseup", function(e){ if (dragging) pointerUp(e.clientX, e.clientY); });
 })();
+
 function drawWatched(st){
   if (myTurnLive) return;
   CAP = st.capacity || 4;
@@ -7220,7 +7253,10 @@ module.exports = function mountGaming(app) {
     // কারও পালা চলছে অথচ এখনো প্রথম চাল আসেনি (নিয়ম দেখছে/তৈরি হচ্ছে) — তখনও AI-কে
     // থামিয়ে রাখা হয়, নাহলে দুই সেকেন্ডের জন্য AI-এর খেলা ঝিলিক দিয়ে উঠত
     if (st.active && (!m || m.at < st.active.startedAt)) {
-      return res.json({ active: true, waiting: true, name: st.active.name, photoUrl: st.active.photoUrl });
+      // active:false মানে overlay এখনো AI-এর খেলাই চালিয়ে যাবে। খেলোয়াড় তখন টিপসের
+      // পপআপ, "YOUR TURN" আর নিয়ম দেখছে — ওই সময়টুকু মূল পর্দা স্থির হয়ে বসে থাকত।
+      // upNext দিয়ে শুধু জানিয়ে রাখা হয় পরেই কে আসছে।
+      return res.json({ active: false, upNext: st.active.name, upNextPhoto: st.active.photoUrl });
     }
     // ৮ সেকেন্ড কোনো খবর না এলে ধরে নেওয়া হয় খেলোয়াড় চলে গেছেন (ইন্টারনেট গেছে/ট্যাব বন্ধ) —
     // তখন overlay নিজে থেকেই AI-এর খেলায় ফিরে যায়, পর্দা জমে থাকে না
