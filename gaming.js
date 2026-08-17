@@ -4487,7 +4487,31 @@ function renderStatic(tubes, colors){
 
 // আসল "বল বেরিয়ে অন্য টিউবে ঢোকা" অ্যানিমেশন — আগে বল সরাসরি লাফিয়ে অন্য জায়গায় দেখা যেত, এখন
 // বল টিউব থেকে উপরে উঠে, বাঁক নিয়ে, তারপর নতুন টিউবে নেমে যায় — যেন সত্যিই কেউ ঢালছে
+// ⚠️ এটাই ছিল আসল সমস্যা। AI-এর একটা চাল দেখাতে প্রায় ৩ সেকেন্ড লাগে, আর সেই সময়ের
+// মধ্যে কয়েকটা setTimeout সারিবদ্ধ থাকে। মাঝপথে চ্যালেঞ্জারের খেলা শুরু হলে animating
+// পতাকা নামিয়ে দিলেও ওই পুরনো setTimeout গুলো ঠিকই চলত আর শেষে নিজের বোর্ড এঁকে
+// দিত — তাই মূল স্ক্রিনে বারবার AI-এর পুরনো খেলাটাই ফিরে আসত।
+// এখন প্রতিটা অ্যানিমেশন শুরুর সময় একটা "প্রজন্ম" নম্বর ধরে রাখে; মিরর চালু হলেই নম্বরটা
+// বদলে যায়, আর পুরনো অ্যানিমেশনের প্রতিটা ধাপ নিজে থেকেই থেমে যায়।
+var bsRenderGen = 0, bsAnimRunning = 0;
+// একটা অ্যানিমেশন শেষ/বাতিল হলে "ব্যস্ত" পতাকা নামানো — কিন্তু ততক্ষণে নতুন অ্যানিমেশন
+// শুরু হয়ে গেলে নয়। গোনাগুনি ছাড়া করলে একটা বাতিল হওয়া অ্যানিমেশন নতুনটার পতাকা নামিয়ে
+// দিত, আর দুটো অ্যানিমেশন একসাথে চলে বোর্ড এলোমেলো হয়ে যেত।
+function bsAnimDone(){
+  bsAnimRunning = Math.max(0, bsAnimRunning - 1);
+  if (bsAnimRunning === 0) animating = false;
+}
+function cancelAiAnimation(){
+  bsRenderGen++;          // পুরনো সব অ্যানিমেশন এতেই অচল হয়ে যায়
+  bsAnimRunning = 0;
+  animating = false;
+  var stray = document.querySelector(".flyingBall");
+  if (stray) stray.remove(); // উড়ন্ত বলটা পর্দায় আটকে থাকতে দেওয়া যাবে না
+}
 function animateMove(mv, tubesAfter, colors){
+  var myGen = bsRenderGen;
+  function stale(){ return myGen !== bsRenderGen; }
+  bsAnimRunning++;
   animating = true;
   // চাল দেওয়ার *আগের* অবস্থাটা আঁকা হচ্ছে, তারপর সেখান থেকে বলটা তুলে নেওয়ার অ্যানিমেশন
   const before = tubesAfter.map((t) => [...t]);
@@ -4498,9 +4522,9 @@ function animateMove(mv, tubesAfter, colors){
   const wrap = document.getElementById("tubesWrap");
   const fromTubeEl = wrap.children[mv.from];
   const toTubeEl = wrap.children[mv.to];
-  if (!fromTubeEl || !toTubeEl) { animating = false; renderStatic(tubesAfter, colors); return; }
+  if (!fromTubeEl || !toTubeEl) { bsAnimDone(); renderStatic(tubesAfter, colors); return; }
   const srcBall = fromTubeEl.lastElementChild; // column-reverse — শেষ সন্তানই টিউবের সবচেয়ে উপরের বল
-  if (!srcBall) { animating = false; renderStatic(tubesAfter, colors); return; }
+  if (!srcBall) { bsAnimDone(); renderStatic(tubesAfter, colors); return; }
 
   const toRect = toTubeEl.getBoundingClientRect();
   const srcRect = srcBall.getBoundingClientRect();
@@ -4544,6 +4568,7 @@ function animateMove(mv, tubesAfter, colors){
   const riseTop = Math.min(srcRect.top, toRect.top) - 55; // দুটো টিউবেরই উপরে, যাতে কাচে ধাক্কা না লাগে
 
   setTimeout(function(){
+    if (stale()) { flyBall.remove(); bsAnimDone(); return; } // চ্যালেঞ্জারের খেলা শুরু হয়ে গেছে
     // ---- ২) তুলে নেওয়া ----
     fromTubeEl.classList.remove("thinking");
     showTapIndicator(startX + ballSize/2, startY + ballSize/2);
@@ -4553,18 +4578,20 @@ function animateMove(mv, tubesAfter, colors){
     flyBall.style.top = riseTop + "px";
 
     setTimeout(function(){
+      if (stale()) { flyBall.remove(); bsAnimDone(); return; }
       // ---- ৩) পাশে সরে গিয়ে নেমে বসা ----
       flyBall.style.transition = "left 1.2s ease-in-out, top 1.25s ease-in";
       flyBall.style.left = endX + "px";
       flyBall.style.top = endY + "px";
 
       setTimeout(function(){
+        if (stale()) { flyBall.remove(); bsAnimDone(); return; }
         // ---- ৪) রেখে দেওয়ার মুহূর্ত ----
         showTapIndicator(endX + ballSize/2, endY + ballSize/2);
         flyBall.remove();
         toTubeEl.classList.remove("target");
         renderStatic(tubesAfter, colors);
-        animating = false;
+        bsAnimDone();
       }, 1270);
     }, 1020);
   }, 700);
@@ -4632,6 +4659,7 @@ function pollBsMirror(){
     if (d.active && d.state && d.state.tubes){
       if (!bsMirror){
         bsMirror = true;
+        cancelAiAnimation(); // প্রথম চাল আসামাত্রই AI-এর খেলা থামিয়ে দেওয়া
         document.getElementById("statusLine").textContent = "🎮 " + d.name + " is playing live!";
       }
       if (d.seq !== bsMirrorSeq){
@@ -4640,7 +4668,7 @@ function pollBsMirror(){
         // ⚠️ আগে শুধু renderStatic ডাকা হতো, কিন্তু AI-এর পুরনো animation ততক্ষণে চলতে
         // থাকলে সে নিজের বোর্ড আবার এঁকে দিত — তাই মূল পর্দায় পুরনো খেলাটাই দেখা যেত।
         // এখন animating পতাকাটাও নামিয়ে দেওয়া হয়, ফলে AI-এর আঁকা সম্পূর্ণ থেমে যায়।
-        animating = false;
+        cancelAiAnimation(); // AI-এর চলমান অ্যানিমেশন সম্পূর্ণ বাতিল
         renderStatic(st.tubes, st.colors || []);
         // খেলোয়াড় যে টিউব থেকে বল তুলেছে সেটা জ্বলে ওঠে — দর্শক বুঝতে পারে সে কী ভাবছে
         var wrap = document.getElementById("tubesWrap");
@@ -4649,7 +4677,9 @@ function pollBsMirror(){
         }
       }
     } else if (bsMirror){
+      // খেলোয়াড় শেষ করেছেন বা চলে গেছেন — AI আবার নিজের পাজলে ফিরে যায়
       bsMirror = false; bsMirrorSeq = -1;
+      cancelAiAnimation();
       document.getElementById("statusLine").textContent = "";
     }
   }).catch(function(){});
