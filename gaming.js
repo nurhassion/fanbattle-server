@@ -73,6 +73,18 @@ const SCHEDULE = {
 // ---------------------------------------------------------------------------
 // ২. ছোট হেল্পার — ফাইল-ভিত্তিক state (JSON), যাতে overlay পেজ poll করে পড়তে পারে
 // ---------------------------------------------------------------------------
+// ⚠️ আগে এই লেখাটা হাতে বদলাতে হতো, আর আমি বদলাতে ভুলে যেতাম — ফলে /gaming/health
+// সবসময় একই কথা বলত, আর "নতুন ফাইল পৌঁছেছে কি না" যাচাই করার কোনো উপায়ই ছিল না।
+// এখন ফাইলের নিজের বিষয়বস্তু থেকে ছাপ (hash) বের করা হয়। এক অক্ষর বদলালেও ছাপ বদলায়,
+// তাই /gaming/health খুলেই নিশ্চিত হওয়া যায় সার্ভারে ঠিক কোন ফাইলটা চলছে।
+const GAMING_BUILD = (() => {
+  try {
+    const raw = fs.readFileSync(__filename);
+    const hash = crypto.createHash("sha1").update(raw).digest("hex").slice(0, 10);
+    return hash + " · " + Math.round(raw.length / 1024) + "KB";
+  } catch (e) { return "unknown"; }
+})();
+
 const STATE_DIR = path.join(__dirname, ".gaming-state");
 if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 const AUDIO_DIR = path.join(STATE_DIR, "audio");
@@ -4468,7 +4480,11 @@ function playPourSound(){
 
 // সবশেষে যে বোর্ডটা আঁকা হয়েছে সেটা মনে রাখা — অপেক্ষমাণ দর্শকদের কাছে এটাই পাঠানো হয়
 var lastTubes = null, lastColors = null;
+// দ্বিতীয় স্তরের সুরক্ষা: চ্যালেঞ্জার খেলার সময় AI-এর দিক থেকে আসা কোনো আঁকাই গ্রহণ করা
+// হয় না। উপরের পরীক্ষাটা ফসকে গেলেও এটা বোর্ড দখল হওয়া আটকে দেবে।
+var bsFromMirror = false;
 function renderStatic(tubes, colors){
+  if (bsMirror && !bsFromMirror) return;
   lastTubes = tubes; lastColors = colors;
   const wrap = document.getElementById("tubesWrap");
   wrap.innerHTML = "";
@@ -4602,6 +4618,16 @@ async function poll(){
   try{
     const res = await fetch("/gaming/state/ballsort.json?t="+Date.now());
     const data = await res.json();
+    // ⚠️⚠️ এই দুটো লাইনই এতদিনের আসল সমস্যা ছিল।
+    // poll() একটা async ফাংশন — উপরে bsMirror পরীক্ষা করার পর সে সার্ভারের উত্তরের
+    // জন্য অপেক্ষা করে। ঠিক ওই অপেক্ষার ফাঁকেই চ্যালেঞ্জারের খেলা শুরু হয়ে যেতে পারে।
+    // তখন উত্তর এসে পৌঁছালে এই ফাংশন পুরনো পরীক্ষার ভরসায় AI-এর বোর্ডটাই এঁকে দিত —
+    // ফলে মূল স্ক্রিনে চ্যালেঞ্জারের খেলা আর AI-এর খেলা পালা করে ঝিলিক দিত, দুটোতে
+    // কোনো মিল থাকত না।
+    // আমার নিজের পরীক্ষায় সার্ভার একই মেশিনে থাকায় উত্তর আসত ১ মিলিসেকেন্ডে, তাই
+    // ফাঁকটা এত ছোট ছিল যে ধরাই পড়েনি। আসল সার্ভারে উত্তর আসতে কয়েকশো মিলিসেকেন্ড
+    // লাগে — তাই ওখানে প্রতিবারই ধরা পড়ত। এখন উত্তর আসার *পরেও* আবার পরীক্ষা করা হয়।
+    if (bsMirror) return;
     const statusEl = document.getElementById("statusLine");
 
     if (data.fastest && typeof data.fastest.seconds === "number") {
@@ -4669,7 +4695,9 @@ function pollBsMirror(){
         // থাকলে সে নিজের বোর্ড আবার এঁকে দিত — তাই মূল পর্দায় পুরনো খেলাটাই দেখা যেত।
         // এখন animating পতাকাটাও নামিয়ে দেওয়া হয়, ফলে AI-এর আঁকা সম্পূর্ণ থেমে যায়।
         cancelAiAnimation(); // AI-এর চলমান অ্যানিমেশন সম্পূর্ণ বাতিল
+        bsFromMirror = true;                       // এই আঁকাটা চ্যালেঞ্জারের, তাই অনুমোদিত
         renderStatic(st.tubes, st.colors || []);
+        bsFromMirror = false;
         // খেলোয়াড় যে টিউব থেকে বল তুলেছে সেটা জ্বলে ওঠে — দর্শক বুঝতে পারে সে কী ভাবছে
         var wrap = document.getElementById("tubesWrap");
         if (typeof st.sel === "number" && st.sel >= 0 && wrap.children[st.sel]) {
@@ -4684,7 +4712,8 @@ function pollBsMirror(){
     }
   }).catch(function(){});
 }
-setInterval(pollBsMirror, 250);
+// দ্রুত poll — চ্যালেঞ্জারের চাল আর মূল স্ক্রিনের মধ্যে ফারাক যত কম হয় ততই ভালো
+setInterval(pollBsMirror, 150);
 
 // AI-এর পাজলের অবস্থাও প্রকাশ করা — অপেক্ষমাণ দর্শক এটাই দেখবে
 setInterval(function(){
@@ -5089,7 +5118,8 @@ document.getElementById("leaveBtn").addEventListener("click", function(){
 const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Play Snake Live</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<style>${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
+<style>.buildTag{position:fixed;left:4px;bottom:2px;z-index:99;font-size:8px;color:rgba(255,255,255,0.28);font-family:monospace;pointer-events:none;}
+${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
 #board{background:rgba(10,14,31,0.45);border:3px solid #6b4423;border-radius:8px;display:block;touch-action:none;}
 /* ⚠️ নিচের ▲◀▶▼ বোতামগুলো সরিয়ে দেওয়া হয়েছে — বোর্ডের যেকোনো জায়গায় আঙুল
    টেনেই সাপ ঘোরানো যায়, তাই বোতামগুলো শুধু জায়গা খাচ্ছিল। ওই জায়গাটুকু এখন
@@ -5098,6 +5128,7 @@ const SNAKE_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset
 </style></head><body>
 ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#12331f)")}
 
+<div class="buildTag">v${GAMING_BUILD}</div>
 <div class="hdr"><h1>🐍 Beat the Grandmaster</h1></div>
 
 <!-- ধাপ ১ — শুধু নাম আর ছবি -->
@@ -5309,7 +5340,8 @@ ${queueClientJS("snake", "startGame", "drawWatched")}
 const BALLSORT_CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Play Ball Sort Live</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<style>${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
+<style>.buildTag{position:fixed;left:4px;bottom:2px;z-index:99;font-size:8px;color:rgba(255,255,255,0.28);font-family:monospace;pointer-events:none;}
+${CHALLENGE_SHARED_CSS}${PLAY_SHELL_CSS}
 #tubes{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 6px;width:100%;touch-action:none;}
 .tube{aspect-ratio:1/4.05;background:linear-gradient(180deg,rgba(255,255,255,0.13),rgba(10,14,31,0.55));
 border:2px solid rgba(255,255,255,0.30);border-top:none;border-radius:4px 4px 16px 16px;
@@ -5329,6 +5361,7 @@ box-shadow:0 6px 16px rgba(0,0,0,0.6);transform:translate(-50%,-50%);display:non
 </style></head><body>
 ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45%,#241442)")}
 
+<div class="buildTag">v${GAMING_BUILD}</div>
 <div class="hdr"><h1>🧪 Beat the Grandmaster</h1></div>
 
 <div id="joinCard">
@@ -6855,7 +6888,7 @@ ${celebrationJS("codelive")}
 // ---------------------------------------------------------------------------
 // এই ফাইলটার পরিচয়পত্র। প্রতিবার নতুন সংস্করণ দিলে এটা বদলায় — তাই /gaming/health খুলেই
 // নিশ্চিত হওয়া যায় সার্ভারে আসলেই নতুন ফাইলটা উঠেছে কিনা, নাকি পুরনোটাই রয়ে গেছে।
-const GAMING_BUILD = "2026-08-16 · codelive + queue + celebration + live-embed";
+
 
 module.exports = function mountGaming(app) {
   // ⚠️ /gaming/health সবার আগে রেজিস্টার করা — ইচ্ছে করেই।
@@ -6863,6 +6896,19 @@ module.exports = function mountGaming(app) {
   // তখন /gaming/* সব রুট উধাও হয়ে "Cannot GET" দেখাত — কেন, তা বোঝার কোনো উপায় থাকত না।
   // এখন এই একটা রুট সবসময় বেঁচে থাকে আর ঠিক কী ভেঙেছে তা বলে দেয়।
   let mountError = null;
+
+  // ⚠️ সম্ভবত এটাই ছিল আসল সমস্যা। ফোনের ব্রাউজার চ্যালেঞ্জ পেজটা নিজের কাছে জমিয়ে রাখত
+  // (cache), আর আমি কোড ঠিক করে পাঠালেও ফোনে পুরনো পেজটাই খুলত — তাই বারবার "একই সমস্যা"
+  // দেখা যাচ্ছিল। এখন প্রতিটা gaming পেজের সাথে স্পষ্ট নির্দেশ যায়: এটা কখনো জমিয়ে রেখো না।
+  app.use("/gaming", (req, res, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/uploads")) {
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+      res.set("Pragma", "no-cache");
+      res.set("Expires", "0");
+      res.set("X-Gaming-Build", GAMING_BUILD); // ব্রাউজারের Network ট্যাবেও দেখা যাবে
+    }
+    next();
+  });
   function listGamingRoutes() {
     // Express 4 আর 5-এ router-এর নাম আলাদা, তাই দুটোই দেখা হয়
     const router = app._router || app.router;
