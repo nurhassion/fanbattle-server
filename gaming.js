@@ -5539,13 +5539,21 @@ function pointerDown(x, y){
   // সবসময় ছোঁয়া বোতল থেকেই — আগে কী সিলেক্ট ছিল তাতে কিছু যায় আসে না
   if (idx < 0 || !tubes[idx] || !tubes[idx].length) return;
   sel = idx; dragFrom = idx; dragging = true; dragMoved = false;
-  render();
-  // বলটা বোতলের উপরের বলের জায়গা থেকেই ওড়া শুরু করে, তাই কোনটা উঠল স্পষ্ট বোঝা যায়
+
+  // ⚠️⚠️ এখানে কখনোই render() ডাকা যাবে না — এটাই ছিল বারবার ফিরে আসা আসল বাগ।
+  // render() পুরো #tubes মুছে নতুন করে বানায়। কিন্তু ফোনে touchmove আর touchend সবসময়
+  // যায় ঠিক সেই element-এ, যেখানে আঙুল প্রথম পড়েছিল। সেই বলটা তো ততক্ষণে মুছে গেছে —
+  // তাই বাকি ইভেন্টগুলো আর কোথাও পৌঁছাত না, আঙুল টানলেও কিছু হতো না।
+  // (কম্পিউটারে মাউস দিয়ে সমস্যা হতো না, কারণ mousemove/mouseup window-এ বাঁধা ছিল।
+  //  ফোনেই শুধু আটকাত — আর ঠিক সেটাই আপনি বারবার দেখছিলেন।)
+  // এখন DOM ভাঙা হয় না; শুধু class বসিয়ে আর উপরের বলটা লুকিয়ে একই চেহারা তৈরি করা হয়।
   var tubeEl = document.querySelectorAll("#tubes .tube")[idx];
+  if (tubeEl) tubeEl.classList.add("sel");
   var topBall = tubeEl && tubeEl.lastElementChild; // column-reverse — শেষ সন্তানই উপরের বল
   var colorIdx = tubes[idx][tubes[idx].length - 1];
   if (topBall){
     var tb = topBall.getBoundingClientRect();
+    topBall.style.visibility = "hidden"; // বলটা যেন দুই জায়গায় একসাথে না দেখায়
     showDragBall(tb.left + tb.width / 2, tb.top + tb.height / 2, colorIdx);
   } else {
     showDragBall(x, y, colorIdx);
@@ -5577,16 +5585,26 @@ function doMove(from, to){
 }
 (function bindControls(){
   var wrap = document.getElementById("tubes");
+  // touchstart বোতলের উপরেই ধরা পড়ে (তখন DOM অক্ষত, তাই bubble করে wrap পর্যন্ত আসে)
   wrap.addEventListener("touchstart", function(e){
     var t = e.touches[0]; pointerDown(t.clientX, t.clientY);
   }, { passive: true });
-  wrap.addEventListener("touchmove", function(e){
+  // ⚠️ বাকি দুটো ইচ্ছে করেই document-এ বাঁধা, wrap-এ নয়। ফোনে touchmove/touchend সবসময়
+  // প্রথম ছোঁয়া element-এ যায়; সেটা কোনো কারণে DOM থেকে সরে গেলে wrap-এর listener আর
+  // ডাক পেত না। document-এ বাঁধলে ইভেন্ট যেখানেই যাক, ধরা পড়বেই — টান কখনো আটকাবে না।
+  document.addEventListener("touchmove", function(e){
     if (!dragging) return;
     e.preventDefault(); // পেজ স্ক্রল আটকানো, নাহলে বল টানা যেত না
     var t = e.touches[0]; pointerMove(t.clientX, t.clientY);
   }, { passive: false });
-  wrap.addEventListener("touchend", function(e){
+  document.addEventListener("touchend", function(e){
+    if (!dragging) return;
     var t = e.changedTouches[0]; pointerUp(t.clientX, t.clientY);
+  }, { passive: true });
+  // আঙুল হঠাৎ বাতিল হলেও (ফোন কল এলো, নোটিফিকেশন নামল) বলটা যেন ঝুলে না থাকে
+  document.addEventListener("touchcancel", function(e){
+    if (!dragging) return;
+    dragging = false; hideDragBall(); sel = -1; dragFrom = -1; render();
   }, { passive: true });
   wrap.addEventListener("mousedown", function(e){ pointerDown(e.clientX, e.clientY); });
   window.addEventListener("mousemove", function(e){ pointerMove(e.clientX, e.clientY); });
