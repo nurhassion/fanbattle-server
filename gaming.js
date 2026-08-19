@@ -162,6 +162,12 @@ let chessLoopActive = false;
 // লাইভ চ্যালেঞ্জ / queue সিস্টেম — দর্শক লাইনে দাঁড়িয়ে Nur-এর বিরুদ্ধে সত্যিই খেলতে পারবে
 // ---------------------------------------------------------------------------
 let challengeQueue = []; // [{ id, name, photoUrl, joinedAt, lastNotifiedPosition }]
+
+// ⚠️ আগে কেউ লাইনে দাঁড়ালেও AI vs AI খেলাটা **শেষ না হওয়া পর্যন্ত** অপেক্ষা করতে হতো —
+// একটা পুরো দাবার খেলা কয়েক মিনিটও চলতে পারে, তাই দর্শক বিরক্ত হয়ে চলে যেত।
+// এখন সে টিপসের পপআপ পেরিয়ে, ৫ সেকেন্ডের নিয়ম দেখে "তৈরি" হলেই এই পতাকা ওঠে,
+// আর AI-এর খেলা যে অবস্থাতেই থাকুক সাথে সাথে থেমে গিয়ে তার খেলা শুরু হয়।
+let chessAbortAiGame = false;
 let activeChallenge = null; // { id, name, photoUrl, chess, lastHumanMoveAt }
 const TIP_URL = process.env.CHALLENGE_TIP_URL || ""; // আপনার payment/tip লিংক, .env এ CHALLENGE_TIP_URL হিসেবে বসান
 
@@ -181,16 +187,45 @@ function sleep(ms) {
 // ---------------------------------------------------------------------------
 const VAPID_FILE = path.join(STATE_DIR, "vapid-keys.json");
 let VAPID_PUBLIC_KEY = "";
-if (webpush) {
-  let keys;
-  if (fs.existsSync(VAPID_FILE)) {
-    keys = JSON.parse(fs.readFileSync(VAPID_FILE, "utf-8"));
+let PUSH_READY = false;
+let PUSH_PROBLEM = "";
+
+// ⚠️⚠️ এখানে একটা মারাত্মক লুকানো সমস্যা ছিল।
+// VAPID চাবি দুটো .gaming-state ফোল্ডারে রাখা হতো। কিন্তু Render-এর ফ্রি প্ল্যানে প্রতিবার
+// deploy বা restart করলে সার্ভারের ডিস্ক মুছে যায় — তাই প্রতিবার **নতুন চাবি** তৈরি হতো।
+// আর চাবি বদলে গেলে দর্শকদের ফোনে আগে থেকে নেওয়া সব সাবস্ক্রিপশন **অচল** হয়ে যেত।
+// ফলাফল: আপনি একবার deploy করলেই আর কারও ফোনে নোটিফিকেশন যেত না, অথচ কোনো error-ও দেখাত না।
+//
+// এখন চাবি দুটো Environment Variable থেকে নেওয়া হয় — deploy করলেও একই থাকে, তাই
+// সাবস্ক্রিপশনও বেঁচে থাকে। সেট করা না থাকলে একবার তৈরি করে লগে ছাপিয়ে দেওয়া হয়,
+// আপনি কপি করে Render-এ বসিয়ে দিলেই চিরস্থায়ী।
+if (!webpush) {
+  PUSH_PROBLEM = "web-push প্যাকেজটা ইনস্টল নেই — package.json এ \"web-push\": \"^3.6.7\" যোগ করুন";
+} else {
+  let keys = null;
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    keys = { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+    console.log("🔔 VAPID চাবি environment variable থেকে নেওয়া হয়েছে — deploy করলেও নোটিফিকেশন চালু থাকবে");
   } else {
-    keys = webpush.generateVAPIDKeys();
-    fs.writeFileSync(VAPID_FILE, JSON.stringify(keys, null, 2));
+    try {
+      if (fs.existsSync(VAPID_FILE)) keys = JSON.parse(fs.readFileSync(VAPID_FILE, "utf-8"));
+      else { keys = webpush.generateVAPIDKeys(); fs.writeFileSync(VAPID_FILE, JSON.stringify(keys, null, 2)); }
+    } catch (e) { keys = webpush.generateVAPIDKeys(); }
+    PUSH_PROBLEM = "VAPID চাবি environment variable-এ সেট করা নেই — deploy করলেই সবার নোটিফিকেশন বন্ধ হয়ে যাবে";
+    console.log("");
+    console.log("⚠️  নোটিফিকেশন স্থায়ী করতে Render → Environment এ এই দুটো বসিয়ে দিন:");
+    console.log("    VAPID_PUBLIC_KEY  = " + keys.publicKey);
+    console.log("    VAPID_PRIVATE_KEY = " + keys.privateKey);
+    console.log("    (একবার বসালেই যথেষ্ট — এরপর deploy করলেও কারও নোটিফিকেশন নষ্ট হবে না)");
+    console.log("");
   }
-  VAPID_PUBLIC_KEY = keys.publicKey;
-  webpush.setVapidDetails("mailto:admin@example.com", keys.publicKey, keys.privateKey);
+  try {
+    VAPID_PUBLIC_KEY = keys.publicKey;
+    webpush.setVapidDetails("mailto:admin@example.com", keys.publicKey, keys.privateKey);
+    PUSH_READY = true;
+  } catch (e) {
+    PUSH_PROBLEM = "VAPID চাবি ঠিকভাবে বসানো যায়নি: " + e.message;
+  }
 }
 let pushSubscriptions = {}; // { [queueId]: subscriptionObject }
 
@@ -363,6 +398,18 @@ function gqNotifyPositions(game) {
     if (q.lastNotifiedPosition === position) return;
     q.lastNotifiedPosition = position;
     const mins = Math.round((position * GQ_TURN_MS) / 60000);
+    // ⚠️ আগে শুধু #১ এ পৌঁছালেই খবর যেত। কিন্তু কেউ ফোন থেকে দূরে থাকলে ৫ মিনিটের একটা
+    // সংকেত যথেষ্ট নয় — তাই #৩ এ পৌঁছালেই একটা আগাম খবর যায় ("আর ~১৫ মিনিট"),
+    // যাতে সে হাতের কাজ গুছিয়ে ফোনের কাছে আসতে পারে।
+    if (position === 3) {
+      sendPushToId(q.id, {
+        title: "⏳ Your turn is coming — " + mins + " min",
+        body: `${q.name}, you are #3 in line. Come back to your phone soon!`,
+        tag: "gq-soon-" + game, requireInteraction: true,
+        url: `/gaming/challenge/${game}?id=${q.id}`,
+      });
+      return;
+    }
     if (position === 1) {
       sendPushToId(q.id, {
         title: "🔔 Almost your turn!",
@@ -454,10 +501,14 @@ async function runChessLoop() {
   while (chessLoopActive) {
     if (challengeQueue.length > 0) {
       await playChallengeGame(Chess).catch((e) => console.error("challenge game error:", e.message));
+      // লাইনে আরও কেউ থাকলে বিরতি ছোট — পরের জনকে বসিয়ে রাখা হয় না
+      await sleep(challengeQueue.length > 0 ? 2500 : 8000);
     } else {
+      chessAbortAiGame = false;
       await playOneChessGame(Chess).catch((e) => console.error("chess game error:", e.message));
+      // AI-এর খেলা কেউ এসে থামিয়ে দিয়ে থাকলে সাথে সাথেই তার খেলা শুরু হবে
+      await sleep(chessAbortAiGame || challengeQueue.length > 0 ? 1200 : 8000);
     }
-    await sleep(8000);
   }
 }
 function stopChessLoop() {
@@ -508,6 +559,7 @@ async function playChallengeGame(Chess) {
     capturedByBlack,
     boardTheme,
     whiteMs, blackMs, clockMax: CLOCK_MS,
+    whiteWinPct: 50, // শুরুতে দুজনেই সমান — বারটা প্রথম মুহূর্ত থেকেই দেখা যাবে
   };
   writeState("chess", state);
 
@@ -545,6 +597,15 @@ async function playChallengeGame(Chess) {
         break;
       } else {
         blackMs = Math.max(0, blackMs - (Date.now() - turnStart));
+        // মানুষ চাল দেওয়ার পরেও বারটা নড়বে — আগে শুধু সাদার চালেই বদলাত, তাই মনে হতো
+        // বারটা আটকে আছে বা কাজ করছে না
+        try {
+          const quick = await getCandidateMoves(engine, chess.fen(), 300);
+          const cp = quick && quick.candidates && quick.candidates[0] ? quick.candidates[0].cp : 0;
+          // এখন সাদার চাল, তাই cp সাদার দৃষ্টিকোণ থেকেই আসছে
+          const clamped = Math.max(-1000, Math.min(1000, cp));
+          state.whiteWinPct = Math.round(100 / (1 + Math.pow(10, -clamped / 400)));
+        } catch (e) { /* বার হালনাগাদ না হলেও খেলা চলবে */ }
         const lastHist = chess.history({ verbose: true }).slice(-1)[0];
         if (lastHist) {
           state.lastMove = { from: lastHist.from, to: lastHist.to };
@@ -732,6 +793,14 @@ async function playOneChessGame(Chess) {
   let moveCount = 0;
   const MAX_MOVES = 140;
   while (!chess.isGameOver() && moveCount < MAX_MOVES && chessLoopActive) {
+    // চ্যালেঞ্জার তৈরি — খেলা যে অবস্থাতেই থাক, এখানেই থেমে যাবে আর তার খেলা শুরু হবে
+    if (chessAbortAiGame) {
+      console.log("[chess] চ্যালেঞ্জার তৈরি — AI-এর খেলা থামিয়ে দেওয়া হলো");
+      state.status = "gameover";
+      state.resultText = "⏹️ Stopped — a live challenger is stepping in!";
+      writeState("chess", state);
+      break;
+    }
     const isWhiteTurn = chess.turn() === "w";
     engineProc.send(`setoption name Skill Level value ${isWhiteTurn ? whiteSkill : blackSkill}`); // একই process, শুধু পালা বদলালে skill level বদলে দেওয়া
 
@@ -1923,12 +1992,46 @@ ${challengeBgLayer("chess-bg.mp4", "linear-gradient(135deg,#1a1206,#0a0e1f 45%,#
 </form>
 ${liveEmbedHTML("LIVE NOW")}
 <script>
-fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
+var tipUrlForChess = "";
+fetch("/gaming/challenge/tip-info?game=chess").then(r=>r.json()).then(d=>{
   if (d.tipUrl) {
+    tipUrlForChess = d.tipUrl;
     document.getElementById("tipLink").href = d.tipUrl;
     document.getElementById("tipBox").style.display="block";
   }
 });
+// লাইনে দাঁড়ানোর পরের ঐচ্ছিক পপআপ — সাপ ও বল সর্টে যেমন
+function showTipPrompt(qid){
+  var go = tipUrlForChess
+    ? tipUrlForChess + "&dn=" + encodeURIComponent((document.querySelector('[name=name]')||{}).value || "")
+      + "&nophoto=1"
+    : "";
+  var box = document.createElement("div");
+  box.style.cssText = "position:fixed;inset:0;z-index:99;background:rgba(4,7,18,0.9);display:flex;align-items:center;justify-content:center;padding:20px;";
+  box.innerHTML = '<div style="background:#161b2e;border:1px solid #2a3352;border-radius:18px;padding:22px 20px;text-align:center;max-width:340px;width:100%;">'
+    + '<h3 style="margin:0 0 8px;font-size:18px;color:#FFD866;">🙏 Want to help me out?</h3>'
+    + '<p style="font-size:12.5px;color:#B8C4D9;line-height:1.6;margin:0 0 4px;">You are in the queue. Playing is <b>free</b>.</p>'
+    + '<p style="font-size:12.5px;color:#B8C4D9;line-height:1.6;margin:0 0 4px;">If you like, send a small tip to support the stream.</p>'
+    + (go ? '<a href="' + go + '" style="display:block;margin:14px 0 4px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#FF8A5B,#FFC53D);color:#0a0e1f;font-weight:800;text-decoration:none;">💛 Send a Tip</a>' : '')
+    + '<button id="tipSkipChess" style="width:100%;padding:12px;border-radius:10px;border:none;background:#242c48;color:#cfd8ef;font-weight:700;margin-top:8px;">No thanks — take me to the queue</button>'
+    + '<div style="font-size:11px;color:#7C8AAD;margin-top:10px;line-height:1.5;">A tip does not change your turn or your place in the queue. After paying you come straight back here.</div>'
+    + '</div>';
+  document.body.appendChild(box);
+  document.getElementById("tipSkipChess").addEventListener("click", function(){
+    location.href = "/gaming/challenge/status?id=" + qid;
+  });
+}
+// পেমেন্ট সেরে ফিরে এলে সোজা লাইনে — আবার নাম-ছবি চাওয়া হয় না
+(function restoreChessQueue(){
+  var saved = null;
+  try { saved = localStorage.getItem("gq_chess"); } catch(e){}
+  if (!saved) return;
+  fetch("/gaming/challenge/queue-state?id=" + saved).then(function(r){ return r.json(); })
+    .then(function(st){
+      if (st.position == null && !st.isYourTurn){ try { localStorage.removeItem("gq_chess"); } catch(e){} return; }
+      location.href = "/gaming/challenge/status?id=" + saved;
+    }).catch(function(){});
+})();
 ${PUSH_SETUP_JS}
 document.getElementById("joinForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1948,7 +2051,11 @@ document.getElementById("joinForm").addEventListener("submit", async (e) => {
     const data = await res.json();
     if (data.id) {
       setupPush(data.id, null).catch(()=>{}); // ব্যাকগ্রাউন্ডে চেষ্টা করবে, আটকাবে না
-      location.href = "/gaming/challenge/status?id=" + data.id;
+      // ⚠️ পেমেন্ট সেরে ফিরে এলে যেন আবার নাম-ছবি দিতে না হয় — localStorage সব ট্যাবেই থাকে
+      try { localStorage.setItem("gq_chess", data.id); } catch(e){}
+      // সাপ/বল সর্টের মতোই — লাইনে দাঁড়ানোর পর একবার ঐচ্ছিক টিপসের পপআপ, তারপর status পেজ
+      showTipPrompt(data.id);
+      return;
     } else {
       throw new Error("No queue id returned");
     }
@@ -2053,6 +2160,37 @@ document.getElementById("leaveBtn").addEventListener("click", async () => {
 });
 let lastPosition = null;
 let ringTimer = null;
+let readyShown = false;
+// নতুন অ্যাপ ইনস্টল করলে যেমন প্রথমে নিয়মটা দেখিয়ে দেয় — তেমনই, ৫ সেকেন্ড।
+// এটা শেষ হলেই সার্ভারকে "আমি তৈরি" জানানো হয়, আর AI-এর খেলা থেমে যায়।
+function showRulesThenReady(){
+  if (readyShown) return;
+  readyShown = true;
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;inset:0;z-index:99;background:rgba(4,7,18,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;";
+  box.innerHTML = '<h3 style="color:#FFD866;font-size:20px;margin:0 0 14px;">You are next — how to play</h3>'
+    + '<div style="font-size:14px;color:#E6ECFF;line-height:1.9;">'
+    + 'You play the <b style="color:#8BE28B;">black</b> pieces<br>'
+    + '👆 <b>Tap the piece</b> you want to move<br>'
+    + 'then <b>tap the square</b> to move it to<br><br>'
+    + 'Legal squares light up automatically<br>'
+    + 'You have <b>10 minutes</b> on your clock<br><br>'
+    + '<span style="color:#FFD866;">Your game goes out live on the stream</span></div>'
+    + '<div id="rdyCount" style="margin-top:18px;font-size:34px;font-weight:900;color:#FFD866;">5</div>';
+  document.body.appendChild(box);
+  let n = 5;
+  const iv = setInterval(() => {
+    n--;
+    document.getElementById("rdyCount").textContent = n > 0 ? n : "GO!";
+    if (n <= 0) {
+      clearInterval(iv);
+      // এখনই সার্ভারকে জানানো — AI-এর খেলা এই মুহূর্তেই থেমে যাবে
+      fetch("/gaming/challenge/ready", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ id }) }).catch(()=>{});
+      setTimeout(() => { box.remove(); }, 700);
+    }
+  }, 1000);
+}
 function startRinging(){
   if (ringTimer) return; // আগে থেকেই বাজতে থাকলে আবার শুরু করার দরকার নেই
   beep([600,900], true);
@@ -2067,6 +2205,10 @@ async function pollQueue(){
     const res = await fetch("/gaming/challenge/queue-state?id="+id);
     const data = await res.json();
     if (data.isYourTurn) { stopRinging(); location.href = "/gaming/challenge/play?id="+id; return; }
+    // ⚠️ লাইনের একদম সামনে পৌঁছে গেছেন — এখনই নিয়মটা দেখিয়ে "তৈরি" সংকেত পাঠানো হয়।
+    // সংকেত পাওয়ামাত্র সার্ভার AI-এর চলতি খেলা থামিয়ে দেয় (যে অবস্থাতেই থাক), তাই
+    // পুরো একটা AI খেলা শেষ হওয়ার জন্য আর অপেক্ষা করতে হয় না।
+    if (data.position === 1 && !readyShown) { showRulesThenReady(); }
     if (data.position) {
       document.getElementById("pos").textContent = "#"+data.position;
       document.getElementById("msg").textContent = data.total+" people total in the queue, please wait...";
@@ -5024,6 +5166,54 @@ function pollQueue(){
       }
     }).catch(function(){});
 }
+/* ---------- দর্শক যেন জানে ফোন রেখে যাওয়া নিরাপদ কি না ----------
+   ১০ নম্বরে থাকা কেউ দু ঘণ্টা পর্দার দিকে তাকিয়ে বসে থাকবে না — সে ফোন রেখে অন্য কাজে
+   যাবে। তাই তাকে স্পষ্ট করে জানানো দরকার: নোটিফিকেশন সত্যিই চালু আছে, নাকি পেজটা
+   খোলা রাখতে হবে। আগে এটা কোথাও লেখা থাকত না, তাই সে ভরসা করে চলে যেত আর পালা হারাত। */
+function checkAlerts(){
+  var el = document.getElementById("alertState");
+  if (!el) return;
+  fetch("/gaming/push-status?id=" + myQueueId).then(function(r){ return r.json(); }).then(function(d){
+    if (d.serverReady && d.subscribed){
+      el.innerHTML = "🔔 <b>Alerts are ON</b> — you can close this page.<br>"
+        + "Your phone will ring and vibrate when your turn is close.";
+      el.style.color = "#8BE28B";
+    } else {
+      el.innerHTML = "⚠️ <b>Alerts are OFF</b> — please keep this page open.<br>"
+        + "It will ring here when your turn comes.";
+      el.style.color = "#FFD866";
+      startLocalAlarmWatch(); // পেজ খোলা থাকলে অন্তত এখানেই বাজবে
+    }
+  }).catch(function(){});
+}
+// নোটিফিকেশন না পেলে শেষ ভরসা — পেজ খোলা থাকলে এখানেই রিং ও কম্পন
+var localAlarmOn = false;
+function startLocalAlarmWatch(){
+  if (localAlarmOn) return;
+  localAlarmOn = true;
+  var ringing = null;
+  setInterval(function(){
+    if (!myQueueId || myTurnStarted) return;
+    fetch("/gaming/gq/${gameKey}/state?id=" + myQueueId).then(function(r){ return r.json(); })
+      .then(function(st){
+        var close = st.isYourTurn || st.position === 1;
+        if (close && !ringing){
+          ringing = setInterval(function(){
+            if (navigator.vibrate) navigator.vibrate([400,150,400,150,400]);
+            try {
+              var ac = new (window.AudioContext || window.webkitAudioContext)();
+              var o = ac.createOscillator(), g = ac.createGain();
+              o.frequency.value = 880; g.gain.value = 0.25;
+              o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.35);
+            } catch(e){}
+          }, 2500);
+        }
+        if (!close && ringing){ clearInterval(ringing); ringing = null; }
+        if (st.isYourTurn && ringing){ clearInterval(ringing); ringing = null; }
+      }).catch(function(){});
+  }, 4000);
+}
+
 function joinQueue(){
   var name = document.getElementById("nameInput").value.trim();
   if (name.length < 2){ document.getElementById("startMsg").textContent = "Please type your name (2 letters or more)."; return; }
@@ -5064,7 +5254,7 @@ function joinQueue(){
       try { localStorage.setItem("gq_${gameKey}", d.id); } catch(e){}
       playerName = name;
       show("joinCard", false);
-      setupPush(myQueueId, null).catch(function(){});
+      setupPush(myQueueId, null).catch(function(){}).finally(checkAlerts);
       openTipModal();
     })
     .catch(function(){
@@ -5163,6 +5353,9 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
     <span class="pos" id="qPos">Joining…</span>
     <span class="eta" id="qEta"></span>
   </div>
+  <!-- ১০ নম্বরে থাকা কেউ দু ঘণ্টা পর্দার দিকে তাকিয়ে বসে থাকবে না — সে ফোন রেখে অন্য কাজে
+       যাবে। তাই স্পষ্ট করে জানানো দরকার: ফোন রেখে যাওয়া নিরাপদ, নাকি পেজটা খোলা রাখতে হবে। -->
+  <div id="alertState" style="font-size:10.5px;color:#7C8AAD;text-align:center;line-height:1.45;flex-shrink:0;">Checking alerts…</div>
   <div class="boardArea">
     <canvas id="board"></canvas>
   </div>
@@ -5393,6 +5586,9 @@ ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45
     <span class="pos" id="qPos">Joining…</span>
     <span class="eta" id="qEta"></span>
   </div>
+  <!-- ১০ নম্বরে থাকা কেউ দু ঘণ্টা পর্দার দিকে তাকিয়ে বসে থাকবে না — সে ফোন রেখে অন্য কাজে
+       যাবে। তাই স্পষ্ট করে জানানো দরকার: ফোন রেখে যাওয়া নিরাপদ, নাকি পেজটা খোলা রাখতে হবে। -->
+  <div id="alertState" style="font-size:10.5px;color:#7C8AAD;text-align:center;line-height:1.45;flex-shrink:0;">Checking alerts…</div>
   <div class="boardArea"><div id="tubes"></div></div>
 <div id="dragBall"></div>
   <div class="watchTag" id="watchTag"></div>
@@ -6943,6 +7139,13 @@ module.exports = function mountGaming(app) {
       mountedOk: !mountError,
       mountError: mountError ? { message: mountError.message, stack: mountError.stack } : null,
       optionalModules: { multer: !!multer, webPush: !!webpush },
+      // নোটিফিকেশন সত্যিই কাজ করছে কি না — এক নজরে
+      push: {
+        ready: PUSH_READY,
+        problem: PUSH_PROBLEM || null,
+        keyFromEnv: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+        activeSubscriptions: Object.keys(pushSubscriptions).length,
+      },
       gamingRouteCount: routes.length,
       hasCodeliveOverlay: routes.some((r) => r.includes("/gaming/overlay/codelive")),
       routes,
@@ -7000,6 +7203,22 @@ module.exports = function mountGaming(app) {
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
 
   // --- লাইভ চ্যালেঞ্জ / queue রুটগুলো ---
+  // চ্যালেঞ্জার নিয়ম দেখা শেষ করে খেলতে প্রস্তুত — এই মুহূর্তেই AI-এর খেলা থামে
+  app.post("/gaming/challenge/ready", express.json(), (req, res) => {
+    const { id } = req.body || {};
+    const inQueue = challengeQueue.some((q) => q.id === id);
+    const isActive = !!(activeChallenge && activeChallenge.id === id);
+    if (!inQueue && !isActive) return res.json({ ok: false, reason: "not_in_queue" });
+    // ⚠️ শুধু লাইনের প্রথম ব্যক্তি পারবে। নাহলে পাঁচ নম্বরে থাকা কেউ "তৈরি" পাঠিয়ে
+    // চলতি খেলা থামিয়ে দিতে পারত, আর লাইনের নিয়মটাই অর্থহীন হয়ে যেত।
+    const isFirst = challengeQueue.length > 0 && challengeQueue[0].id === id;
+    if (isFirst && !activeChallenge) {
+      chessAbortAiGame = true;
+      console.log(`[chess] ${challengeQueue[0].name} তৈরি — AI-এর খেলা থামানো হচ্ছে`);
+    }
+    res.json({ ok: true, willStartSoon: isFirst, isYourTurn: isActive, position: inQueue ? challengeQueue.findIndex((q) => q.id === id) + 1 : 0 });
+  });
+
   app.get("/gaming/challenge/join", (req, res) => res.type("html").send(CHALLENGE_JOIN_HTML));
   app.get("/gaming/challenge/status", (req, res) => res.type("html").send(CHALLENGE_STATUS_HTML));
   app.get("/gaming/challenge/play", (req, res) => res.type("html").send(CHALLENGE_PLAY_HTML));
@@ -7364,7 +7583,18 @@ module.exports = function mountGaming(app) {
     res.json({ nowPlaying: gqPublicActive(game), queue: gqPublicQueue(game), total: gameQueues[game].queue.length });
   });
 
-  app.get("/gaming/vapid-public-key", (req, res) => res.json({ key: VAPID_PUBLIC_KEY }));
+  app.get("/gaming/vapid-public-key", (req, res) => res.json({ key: VAPID_PUBLIC_KEY, ready: PUSH_READY }));
+
+  // চ্যালেঞ্জারের ফোন এটা জিজ্ঞেস করে — "আমার সাবস্ক্রিপশন সার্ভারে সত্যিই পৌঁছেছে তো?"
+  // এতে সে নিশ্চিত হয়ে ফোন রেখে অন্য কাজে যেতে পারে, নয়তো পেজ খোলা রাখতে জানে।
+  app.get("/gaming/push-status", (req, res) => {
+    const id = req.query.id;
+    res.json({
+      serverReady: PUSH_READY,
+      subscribed: !!(id && pushSubscriptions[id]),
+      problem: PUSH_PROBLEM || null,
+    });
+  });
   app.post("/gaming/challenge/push-subscribe", express.json(), (req, res) => {
     const { id, subscription } = req.body || {};
     if (id && subscription) pushSubscriptions[id] = subscription;
