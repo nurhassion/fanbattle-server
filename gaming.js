@@ -2002,9 +2002,14 @@ fetch("/gaming/challenge/tip-info?game=chess").then(r=>r.json()).then(d=>{
 });
 // লাইনে দাঁড়ানোর পরের ঐচ্ছিক পপআপ — সাপ ও বল সর্টে যেমন
 function showTipPrompt(qid){
+  // ⚠️ ret এখানে হাতে বসানো হচ্ছে — সার্ভারের ডিফল্ট /gaming/challenge/join নয়।
+  // ওটা হলে পেমেন্ট সেরে ফিরে এসে এক ঝলক নাম-ছবির ফর্মটা আবার দেখা যেত (যদিও পরক্ষণেই
+  // সরে যেত), আর মনে হতো আবার সব দিতে হবে। এখন সোজা লাইনের পেজেই ফেরে।
+  var backTo = "/gaming/challenge/status?id=" + qid;
+  var nameVal = (document.querySelector('input[name="name"]') || {}).value || "";
   var go = tipUrlForChess
-    ? tipUrlForChess + "&dn=" + encodeURIComponent((document.querySelector('[name=name]')||{}).value || "")
-      + "&nophoto=1"
+    ? tipUrlForChess.replace(/ret=[^&]*/, "ret=" + encodeURIComponent(backTo))
+      + "&dn=" + encodeURIComponent(nameVal) + "&nophoto=1"
     : "";
   var box = document.createElement("div");
   box.style.cssText = "position:fixed;inset:0;z-index:99;background:rgba(4,7,18,0.9);display:flex;align-items:center;justify-content:center;padding:20px;";
@@ -2128,6 +2133,7 @@ ${LIVE_EMBED_CSS}
     <button id="leaveBtn">✖ Leave the queue</button>
   </div>
   <div id="pushStatus"></div>
+  <div id="alertState" style="font-size:11px;color:#7C8AAD;margin-top:8px;line-height:1.5;">Checking alerts…</div>
 </div>
 <script>
 ${PUSH_SETUP_JS}
@@ -2161,6 +2167,25 @@ document.getElementById("leaveBtn").addEventListener("click", async () => {
 let lastPosition = null;
 let ringTimer = null;
 let readyShown = false;
+
+/* ---------- দর্শক জানবে ফোন রেখে যাওয়া নিরাপদ কি না ----------
+   সাপ ও বল সর্টে এটা আছে, চেসে ছিল না। ১০ নম্বরে থাকা কেউ দু ঘণ্টা পর্দার দিকে তাকিয়ে
+   বসে থাকবে না — তাই স্পষ্ট করে বলা দরকার নোটিফিকেশন সত্যিই চালু আছে কি না। */
+function checkAlerts(){
+  const el = document.getElementById("alertState");
+  if (!el) return;
+  fetch("/gaming/push-status?id=" + id).then(r => r.json()).then(d => {
+    if (d.serverReady && d.subscribed){
+      el.innerHTML = "🔔 <b>Alerts are ON</b> — you can close this page.<br>Your phone will ring and vibrate when your turn is close.";
+      el.style.color = "#8BE28B";
+    } else {
+      el.innerHTML = "⚠️ <b>Alerts are OFF</b> — please keep this page open.<br>It will ring here when your turn comes.";
+      el.style.color = "#FFD866";
+    }
+  }).catch(() => {});
+}
+setTimeout(checkAlerts, 2500);
+setInterval(checkAlerts, 30000);
 // নতুন অ্যাপ ইনস্টল করলে যেমন প্রথমে নিয়মটা দেখিয়ে দেয় — তেমনই, ৫ সেকেন্ড।
 // এটা শেষ হলেই সার্ভারকে "আমি তৈরি" জানানো হয়, আর AI-এর খেলা থেমে যায়।
 function showRulesThenReady(){
