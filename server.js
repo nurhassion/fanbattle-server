@@ -782,7 +782,7 @@ app.post('/paypal-capture-order', async (req, res) => {
 // STEP 3: name is REQUIRED (already enforced in createOrder below) and now
 // amount is also explicitly validated client-side before the PayPal button
 // flow even starts; email is never asked at all; phone stays optional.
-function paypalPageHtml(side, teamName, ret, knownName) {
+function paypalPageHtml(side, teamName, ret, knownName, noPhoto) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Support ${teamName}</title>
@@ -1357,9 +1357,11 @@ app.get('/pay/:channel', async (req, res) => {
   const ret = safeReturnPath(req.query.ret); // চ্যালেঞ্জ পেজ থেকে এলে সেখানেই ফেরত
   // লাইনে দাঁড়ানোর সময় সে নাম আর ছবি দুটোই দিয়ে ফেলেছে, তাই এখানে আর চাওয়া হয় না
   const knownName = (req.query.dn || '').toString().trim().slice(0, 40);
+  // লাইনে দাঁড়ানোর সময় ছবি দিয়ে থাকলে পেমেন্টের পর আর ছবি চাওয়া হবে না
+  const noPhoto = req.query.nophoto === '1' || !!knownName;
   if (req.query.force === 'paypal') {
     if (!gw.internationalEnabled) return res.send(pausedPageHtml(label));
-    return res.send(paypalPageHtml(channel, label, ret, knownName));
+    return res.send(paypalPageHtml(channel, label, ret, knownName, noPhoto));
   }
   if (req.query.force === 'instamojo') {
     if (!gw.domesticEnabled) return res.send(pausedPageHtml(label));
@@ -1371,7 +1373,7 @@ app.get('/pay/:channel', async (req, res) => {
     return res.send(instamojoAmountPageHtml(channel, label, ret, knownName));
   }
   if (!gw.internationalEnabled) return res.send(pausedPageHtml(label));
-  res.send(paypalPageHtml(channel, label, ret, knownName));
+  res.send(paypalPageHtml(channel, label, ret, knownName, noPhoto));
 });
 
 // NOTE: the /gateway-settings page and its toggle endpoint are registered
