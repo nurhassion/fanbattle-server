@@ -329,15 +329,38 @@ function registerQueuePhotoAsDonorPhoto(name, filePath) {
 // ⚠️ আগে খেলোয়াড় নিজেই "কত টিপস দিয়েছি" টাইপ করে দিত — যে কেউ ₹৯৯৯৯ লিখে দিতে পারত।
 // এখন সংখ্যাটা আসে সার্ভারে সত্যিই রেকর্ড হওয়া পেমেন্ট থেকে, নাম মিলিয়ে। কেউ টাকা না দিলে
 // শূন্য দেখাবে, আর যত টাকা সত্যিই দিয়েছে ঠিক ততটাই দেখাবে।
-function gqRealTipTotal(game, name) {
+// ⚠️ আগে এই ফাংশনটা **প্রতিবার** পুরো records.json ফাইল পড়ে JSON parse করত।
+// লাইনে ২০ জন থাকলে overlay-র একটামাত্র ডাকেই ২০ বার পুরো ফাইল পড়া হতো। রেকর্ড বাড়তে
+// বাড়তে (৫০০০ রেকর্ড = ৭৫০ KB) এটা মাপা গেছে **৯৪ms প্রতি ডাক** — আর Render-এর ফ্রি
+// CPU প্রায় ১০ গুণ ধীর, অর্থাৎ সেখানে প্রায় ১ সেকেন্ড। প্রতি ৩ সেকেন্ডে ১ সেকেন্ড CPU
+// খেয়ে ফেললে পুরো সার্ভারই ঢিমে হয়ে যেত, আর রেকর্ড যত বাড়ত তত খারাপ হতো।
+//
+// এখন ফাইলটা একবার পড়ে সবার মোট হিসেব করে ৫ সেকেন্ডের জন্য মনে রাখা হয়। ফাইল বদলালে
+// (নতুন পেমেন্ট এলে) আকার/সময় দেখে সাথে সাথেই নতুন করে হিসেব হয় — তাই টাকার অঙ্ক
+// কখনো পুরনো দেখাবে না, অথচ ফাইল-পড়া ৪২০ বার থেকে কমে ১ বারে নেমে আসে।
+let gqTipCache = { at: 0, mtimeMs: 0, size: 0, totals: {} };
+function gqRefreshTipCache() {
   try {
+    const st = fs.statSync(DONATION_RECORDS_FILE);
+    const fresh = Date.now() - gqTipCache.at < 5000;
+    const unchanged = st.mtimeMs === gqTipCache.mtimeMs && st.size === gqTipCache.size;
+    if (fresh && unchanged) return;            // কিছুই বদলায়নি — আগের হিসাবই চলবে
     const records = JSON.parse(fs.readFileSync(DONATION_RECORDS_FILE, "utf-8"));
-    const key = (name || "").trim().toLowerCase();
-    if (!key) return 0;
-    return Math.round(records
-      .filter((r) => r.side === game && (r.name || "").trim().toLowerCase() === key)
-      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0));
-  } catch (e) { return 0; }
+    const totals = {};
+    for (const r of records) {
+      const key = r.side + "|" + (r.name || "").trim().toLowerCase();
+      totals[key] = (totals[key] || 0) + (parseFloat(r.amount) || 0);
+    }
+    gqTipCache = { at: Date.now(), mtimeMs: st.mtimeMs, size: st.size, totals };
+  } catch (e) {
+    gqTipCache = { at: Date.now(), mtimeMs: 0, size: 0, totals: {} };
+  }
+}
+function gqRealTipTotal(game, name) {
+  const key = (name || "").trim().toLowerCase();
+  if (!key) return 0;
+  gqRefreshTipCache();
+  return Math.round(gqTipCache.totals[game + "|" + key] || 0);
 }
 function gqPublicQueue(game) {
   return gameQueues[game].queue.map((q, i) => ({
@@ -6449,6 +6472,288 @@ const CODELIVE_APPS = [
           "}"] },
     ],
   },
+  {
+    name: "MediTrack", tag: "Health & Medicine", accent: "#22C55E", lang: "React Native",
+    screens: [
+      { file: "PillReminder.jsx", label: "ওষুধের সময়", ui: [
+          {t:"status"},{t:"appbar",title:"MediTrack"},
+          {t:"big",value:"3",label:"doses left today"},
+          {t:"check",items:["Vitamin D — 8:00 AM ✓","Omega 3 — 2:00 PM","Calcium — 9:00 PM"]},
+          {t:"tabbar",items:["Today","History","Doctor","Me"]}],
+        code: [
+          "import React, { useEffect, useState } from 'react';",
+          "import { View, Text, FlatList } from 'react-native';",
+          "import { scheduleNotification } from './notify';",
+          "",
+          "export default function PillReminder({ doses }) {",
+          "  const [taken, setTaken] = useState([]);",
+          "",
+          "  useEffect(() => {",
+          "    doses.forEach(d => scheduleNotification(d.time, d.name));",
+          "  }, [doses]);",
+          "",
+          "  const left = doses.length - taken.length;",
+          "  return (",
+          "    <View style={styles.wrap}>",
+          "      <Text style={styles.count}>{left}</Text>",
+          "      <Text style={styles.label}>doses left today</Text>",
+          "    </View>",
+          "  );",
+          "}"] }
+    ]
+  },
+  {
+    name: "LinguaGo", tag: "Language Learning", accent: "#F59E0B", lang: "React Native",
+    screens: [
+      { file: "LessonCard.jsx", label: "শেখার কার্ড", ui: [
+          {t:"status"},{t:"appbar",title:"LinguaGo"},
+          {t:"progress",pct:62},
+          {t:"hero",title:"¿Cómo estás?",sub:"How are you?"},
+          {t:"pick",items:["I am fine","Good morning","See you later"]},
+          {t:"btn",label:"Check answer"}],
+        code: [
+          "import React, { useState } from 'react';",
+          "import { View, Text, Pressable } from 'react-native';",
+          "",
+          "export default function LessonCard({ question, options, answer }) {",
+          "  const [picked, setPicked] = useState(null);",
+          "  const correct = picked === answer;",
+          "",
+          "  return (",
+          "    <View>",
+          "      <Text style={styles.q}>{question}</Text>",
+          "      {options.map(o => (",
+          "        <Pressable key={o} onPress={() => setPicked(o)}>",
+          "          <Text>{o}</Text>",
+          "        </Pressable>",
+          "      ))}",
+          "    </View>",
+          "  );",
+          "}"] }
+    ]
+  },
+  {
+    name: "TripMate", tag: "Travel Planner", accent: "#06B6D4", lang: "React Native",
+    screens: [
+      { file: "ItineraryScreen.jsx", label: "ভ্রমণের পরিকল্পনা", ui: [
+          {t:"status"},{t:"appbar",title:"TripMate"},
+          {t:"hero",title:"Goa — 3 Days",sub:"12–14 March"},
+          {t:"step",items:["Day 1 — Baga Beach","Day 2 — Old Goa Churches","Day 3 — Dudhsagar Falls"]},
+          {t:"tabbar",items:["Trips","Map","Saved","Me"]}],
+        code: [
+          "import React from 'react';",
+          "import { View, Text, SectionList } from 'react-native';",
+          "",
+          "export default function ItineraryScreen({ trip }) {",
+          "  const sections = trip.days.map((d, i) => ({",
+          "    title: `Day ${i + 1}`,",
+          "    data: d.stops,",
+          "  }));",
+          "",
+          "  return (",
+          "    <SectionList",
+          "      sections={sections}",
+          "      keyExtractor={(item) => item.id}",
+          "      renderItem={({ item }) => <Text>{item.name}</Text>}",
+          "    />",
+          "  );",
+          "}"] }
+    ]
+  },
+  {
+    name: "BudgetBee", tag: "Expense Tracker", accent: "#EAB308", lang: "React Native",
+    screens: [
+      { file: "SpendChart.jsx", label: "খরচের হিসাব", ui: [
+          {t:"status"},{t:"appbar",title:"BudgetBee"},
+          {t:"balance",value:"₹12,480",label:"spent this month"},
+          {t:"chart"},
+          {t:"row",title:"Groceries",sub:"18 items",meta:"₹4,200"},
+          {t:"row",title:"Transport",sub:"9 trips",meta:"₹1,850"},
+          {t:"tabbar",items:["Home","Add","Stats","Me"]}],
+        code: [
+          "import React, { useMemo } from 'react';",
+          "import { VictoryPie } from 'victory-native';",
+          "",
+          "export default function SpendChart({ expenses }) {",
+          "  const byCategory = useMemo(() => {",
+          "    const map = {};",
+          "    expenses.forEach(e => {",
+          "      map[e.category] = (map[e.category] || 0) + e.amount;",
+          "    });",
+          "    return Object.entries(map).map(([x, y]) => ({ x, y }));",
+          "  }, [expenses]);",
+          "",
+          "  return <VictoryPie data={byCategory} innerRadius={60} />;",
+          "}"] }
+    ]
+  },
+  {
+    name: "StudyDeck", tag: "Flashcards", accent: "#A855F7", lang: "React Native",
+    screens: [
+      { file: "FlipCard.jsx", label: "কার্ড উল্টানো", ui: [
+          {t:"status"},{t:"appbar",title:"StudyDeck"},
+          {t:"progress",pct:45},
+          {t:"hero",title:"Photosynthesis",sub:"Tap to reveal"},
+          {t:"chips",items:["Again","Hard","Good","Easy"]}],
+        code: [
+          "import React, { useRef } from 'react';",
+          "import { Animated, Pressable } from 'react-native';",
+          "",
+          "export default function FlipCard({ front, back }) {",
+          "  const spin = useRef(new Animated.Value(0)).current;",
+          "",
+          "  const flip = () => {",
+          "    Animated.spring(spin, {",
+          "      toValue: 180,",
+          "      useNativeDriver: true,",
+          "    }).start();",
+          "  };",
+          "",
+          "  return <Pressable onPress={flip}>{front}</Pressable>;",
+          "}"] }
+    ]
+  },
+  {
+    name: "PetPal", tag: "Pet Care", accent: "#FB7185", lang: "React Native",
+    screens: [
+      { file: "FeedLog.jsx", label: "খাওয়ানোর হিসাব", ui: [
+          {t:"status"},{t:"appbar",title:"PetPal"},
+          {t:"hero",title:"Bruno",sub:"Golden Retriever · 3 yrs"},
+          {t:"tiles",items:["Fed 2×","Walk 40m","Vet in 12d","Weight 28kg"]},
+          {t:"btn",label:"Log a meal"},
+          {t:"tabbar",items:["Home","Health","Vet","Me"]}],
+        code: [
+          "import React from 'react';",
+          "import { View, Text, Pressable } from 'react-native';",
+          "import { addMeal } from './store';",
+          "",
+          "export default function FeedLog({ pet }) {",
+          "  const onFeed = async () => {",
+          "    await addMeal({ petId: pet.id, at: Date.now() });",
+          "  };",
+          "",
+          "  return (",
+          "    <Pressable onPress={onFeed}>",
+          "      <Text>Log a meal</Text>",
+          "    </Pressable>",
+          "  );",
+          "}"] }
+    ]
+  },
+  {
+    name: "NewsPulse", tag: "News Reader", accent: "#EF4444", lang: "React Native",
+    screens: [
+      { file: "FeedScreen.jsx", label: "খবরের তালিকা", ui: [
+          {t:"status"},{t:"appbar",title:"NewsPulse"},
+          {t:"chips",items:["Top","India","Tech","Sport"]},
+          {t:"card",title:"Markets close higher",sub:"2 hours ago"},
+          {t:"row",title:"New telescope images",sub:"Science · 4h",meta:""},
+          {t:"tabbar",items:["Feed","Search","Saved","Me"]}],
+        code: [
+          "import React, { useEffect, useState } from 'react';",
+          "import { FlatList, RefreshControl } from 'react-native';",
+          "",
+          "export default function FeedScreen({ category }) {",
+          "  const [items, setItems] = useState([]);",
+          "  const [busy, setBusy] = useState(false);",
+          "",
+          "  const load = async () => {",
+          "    setBusy(true);",
+          "    const res = await api.get(`/news?cat=${category}`);",
+          "    setItems(res.articles);",
+          "    setBusy(false);",
+          "  };",
+          "",
+          "  useEffect(() => { load(); }, [category]);",
+          "  return <FlatList data={items} onRefresh={load} refreshing={busy} />;",
+          "}"] }
+    ]
+  },
+  {
+    name: "HabitLoop", tag: "Habit Builder", accent: "#14B8A6", lang: "React Native",
+    screens: [
+      { file: "StreakRing.jsx", label: "ধারাবাহিকতা", ui: [
+          {t:"status"},{t:"appbar",title:"HabitLoop"},
+          {t:"rings",pct:78},
+          {t:"big",value:"21",label:"day streak"},
+          {t:"check",items:["Drink water ✓","Read 20 min ✓","Walk 5k steps"]},
+          {t:"tabbar",items:["Today","Stats","Add","Me"]}],
+        code: [
+          "import React from 'react';",
+          "import Svg, { Circle } from 'react-native-svg';",
+          "",
+          "export default function StreakRing({ done, total }) {",
+          "  const pct = done / total;",
+          "  const R = 54;",
+          "  const C = 2 * Math.PI * R;",
+          "",
+          "  return (",
+          "    <Svg width={140} height={140}>",
+          "      <Circle cx={70} cy={70} r={R} strokeDasharray={C}",
+          "        strokeDashoffset={C * (1 - pct)} />",
+          "    </Svg>",
+          "  );",
+          "}"] }
+    ]
+  },
+  {
+    name: "SnapEdit", tag: "Photo Editor", accent: "#8B5CF6", lang: "React Native",
+    screens: [
+      { file: "FilterBar.jsx", label: "ফিল্টার", ui: [
+          {t:"status"},{t:"appbar",title:"SnapEdit"},
+          {t:"art"},
+          {t:"seek",pct:55},
+          {t:"chips",items:["Warm","Cool","Mono","Vivid"]},
+          {t:"btn",label:"Save to gallery"}],
+        code: [
+          "import React, { useState } from 'react';",
+          "import { Image, ScrollView, Pressable } from 'react-native';",
+          "import { applyFilter } from './filters';",
+          "",
+          "export default function FilterBar({ uri, onDone }) {",
+          "  const [active, setActive] = useState('none');",
+          "",
+          "  const pick = async (name) => {",
+          "    setActive(name);",
+          "    const out = await applyFilter(uri, name);",
+          "    onDone(out);",
+          "  };",
+          "",
+          "  return <ScrollView horizontal>{/* filter chips */}</ScrollView>;",
+          "}"] }
+    ]
+  },
+  {
+    name: "GateKey", tag: "Smart Home", accent: "#0EA5E9", lang: "React Native",
+    screens: [
+      { file: "DeviceGrid.jsx", label: "ঘরের যন্ত্র", ui: [
+          {t:"status"},{t:"appbar",title:"GateKey"},
+          {t:"grid",items:["Living Light","AC 24°C","Front Door","Camera"]},
+          {t:"row",title:"Front Door",sub:"Locked",meta:"🔒"},
+          {t:"tabbar",items:["Home","Rooms","Auto","Me"]}],
+        code: [
+          "import React from 'react';",
+          "import { View, Switch } from 'react-native';",
+          "import { useMqtt } from './mqtt';",
+          "",
+          "export default function DeviceGrid({ devices }) {",
+          "  const { publish } = useMqtt();",
+          "",
+          "  const toggle = (id, on) => {",
+          "    publish(`home/${id}/set`, on ? 'ON' : 'OFF');",
+          "  };",
+          "",
+          "  return (",
+          "    <View style={styles.grid}>",
+          "      {devices.map(d => (",
+          "        <Switch key={d.id} value={d.on}",
+          "          onValueChange={v => toggle(d.id, v)} />",
+          "      ))}",
+          "    </View>",
+          "  );",
+          "}"] }
+    ]
+  }
 ];
 
 const CODELIVE_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
@@ -6675,7 +6980,7 @@ ${CELEBRATION_HTML}
 <div id="bgDim"></div>
 <!-- ⚠️ src এখানে সরাসরি বসানো — Snake/Ball Sort যেভাবে কাজ করে ঠিক সেভাবেই।
      রিপোর ভিডিও-ফোল্ডারে ফাইলটা রাখলেই কোনো সেটিংস ছাড়াই নিজে থেকে চলতে শুরু করবে। -->
-<video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/codelive-bg.mp4"></video>
+<video id="bgVideo" autoplay muted loop playsinline preload="auto"></video>
 
 <div class="stage"><div class="laptop">
   <div class="lid">
@@ -6746,6 +7051,48 @@ ${CELEBRATION_HTML}
 
 <script>
 var APPS = ${JSON.stringify(CODELIVE_APPS)};
+
+/* ---------------------------------------------------------------------------
+   একদিনে একটাই সেটআপ — ?set=0..19
+   ---------------------------------------------------------------------------
+   ⚠️ কেন এটা দরকার: আগে সব অ্যাপ এলোমেলো করে একটার পর একটা চলত, অর্থাৎ
+   প্রতিদিনের স্ট্রিম প্রায় একই দেখাত। YouTube-এর "reused content" নীতিতে
+   সেটা ঝুঁকির। এখন প্রতিদিন **একটাই অ্যাপ** পুরো দিন ধরে তৈরি হতে দেখা যায়,
+   আর ২০ দিনে একবার ফিরে আসে — মাঝে ভিডিও/মিউজিক বদলে দিলে বছরের পর বছর নিরাপদ।
+   ?set= না দিলে আগের মতোই সব ঘুরে ঘুরে চলবে (পুরনো লিংক ভাঙবে না)। */
+var qs = new URLSearchParams(location.search);
+var SET_ID = qs.get("set");
+var SINGLE = null;
+if (SET_ID !== null && SET_ID !== "") {
+  var n = parseInt(SET_ID, 10);
+  if (!isNaN(n) && n >= 0 && n < APPS.length) SINGLE = n;
+  else {
+    // নাম দিয়েও বাছা যায়: ?set=chatwave
+    var byName = APPS.findIndex(function(a){
+      return a.name.toLowerCase() === String(SET_ID).toLowerCase();
+    });
+    if (byName >= 0) SINGLE = byName;
+  }
+}
+
+/* প্রতিটা সেটআপের নিজস্ব ব্যাকগ্রাউন্ড ও কোনার ভিডিও।
+   ফাইলের নাম: codelive-bg-0.mp4 … codelive-bg-19.mp4
+   ওই নামের ফাইল না থাকলে নিজে থেকেই সাধারণ codelive-bg.mp4 চলবে —
+   তাই ২০টা ভিডিও একসাথে বানাতে হবে না, ধীরে ধীরে যোগ করলেই হবে। */
+(function pickVideos(){
+  var v = document.getElementById("bgVideo");
+  var c = document.getElementById("camVideo");
+  var mainBg = "/game-assets/codelive-bg.mp4";
+  var mainCam = "/game-assets/codelive-cam.mp4";
+  if (SINGLE === null) { v.src = mainBg; if (c) c.src = mainCam; return; }
+
+  var perSetBg = "/game-assets/codelive-bg-" + SINGLE + ".mp4";
+  var perSetCam = "/game-assets/codelive-cam-" + SINGLE + ".mp4";
+  // ⚠️ error হলে সাধারণটায় ফিরে যাওয়া — নাহলে ফাইল না থাকলে কালো পর্দা যেত
+  v.onerror = function(){ if (v.src.indexOf(mainBg) < 0) v.src = mainBg; };
+  v.src = perSetBg;
+  if (c) { c.onerror = function(){ if (c.src.indexOf(mainCam) < 0) c.src = mainCam; }; c.src = perSetCam; }
+})();
 
 /* =========================================================================
    ভিডিও, মিউজিক ও কমেন্ট্রি
@@ -7105,13 +7452,15 @@ function tick(){
       document.getElementById("statusText").textContent = "🎉 " + app.name + " build complete — starting next project";
       setTimeout(function(){
         oi++;
-        if (oi >= order.length){ order = shuffled(APPS.length); oi = 0; }
+        // একটাই সেটআপ বাছা থাকলে সেটাই বারবার — অন্য অ্যাপে যাবে না
+        if (SINGLE !== null) { oi = 0; }
+        else if (oi >= order.length){ order = shuffled(APPS.length); oi = 0; }
         startApp();
       }, APP_PAUSE);
     }
   }, 700);
 }
-order = shuffled(APPS.length);
+order = (SINGLE !== null) ? [SINGLE] : shuffled(APPS.length);
 startApp();
 
 /* Code Live-এ পাশে ডোনার প্যানেল নেই, তাই এই দুটো কিছুই করে না —
