@@ -1067,7 +1067,15 @@ box-shadow:0 0 0 3px #FFD866,0 8px 24px rgba(255,216,102,0.25);}
 .miniListRow .miniAvatar{width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;}
 .miniListRow .miniAvatarFallback{width:24px;height:24px;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
 font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+#bgFallback{position:fixed;inset:0;z-index:-3;
+background:linear-gradient(135deg,#2a1810,#0a0e1f 45%,#1a1005);}
+#bgVideo{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:0;
+transition:opacity 1.2s ease;}
+#bgDim{position:fixed;inset:0;z-index:-1;background:rgba(4,6,16,0.42);pointer-events:none;}
 </style></head><body>
+<div id="bgFallback"></div>
+<video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/chess-bg.mp4"></video>
+<div id="bgDim"></div>
 <h1>♟️ Chess Battle — Live</h1>
 <div class="layout">
   <div class="sideCol">
@@ -1799,6 +1807,17 @@ function showDonorCelebration(name, amount, photo){
   clearTimeout(donorCelebTimeout);
   donorCelebTimeout = setTimeout(() => card.classList.remove("show"), 4500);
 }
+
+/* ব্যাকগ্রাউন্ড ভিডিও — Ball Sort ও Snake-এ যেমন আছে, চেসেও তেমনই।
+   ⚠️ ভিডিও না থাকলে বা চালু না হলে opacity 0-ই থাকে, তাই নিচের gradient
+   দেখা যায় — কালো পর্দা কখনো যাবে না। */
+(function(){
+  var v = document.getElementById("bgVideo");
+  if (!v) return;
+  v.addEventListener("loadeddata", function(){ v.style.opacity = "0.85"; });
+  v.addEventListener("error", function(){ v.style.opacity = "0"; });
+  var p = v.play(); if (p && p.catch) p.catch(function(){});
+})();
 </script></body></html>`;
 
 // ---------------------------------------------------------------------------
@@ -7086,12 +7105,27 @@ if (SET_ID !== null && SET_ID !== "") {
   var mainCam = "/game-assets/codelive-cam.mp4";
   if (SINGLE === null) { v.src = mainBg; if (c) c.src = mainCam; return; }
 
-  var perSetBg = "/game-assets/codelive-bg-" + SINGLE + ".mp4";
-  var perSetCam = "/game-assets/codelive-cam-" + SINGLE + ".mp4";
-  // ⚠️ error হলে সাধারণটায় ফিরে যাওয়া — নাহলে ফাইল না থাকলে কালো পর্দা যেত
-  v.onerror = function(){ if (v.src.indexOf(mainBg) < 0) v.src = mainBg; };
-  v.src = perSetBg;
-  if (c) { c.onerror = function(){ if (c.src.indexOf(mainCam) < 0) c.src = mainCam; }; c.src = perSetCam; }
+  /* ⚠️ ভিডিওর নাম **অ্যাপের নাম দিয়েই** খোঁজা হয়, নম্বর দিয়ে নয়।
+     কারণ "codelive-bg-7.mp4" দেখে কেউ মনে রাখতে পারবে না ওটা কোন অ্যাপের;
+     "codelive-bg-skycast.mp4" দেখলে সাথে সাথেই বোঝা যায়। ভবিষ্যতে সেটআপের
+     ক্রম বদলালেও ভিডিও ঠিক জায়গাতেই থাকবে।
+     খোঁজার ক্রম: নাম → নম্বর → সাধারণ। যেটা প্রথমে পাওয়া যায় সেটাই চলে,
+     তাই ২০টা ভিডিও একসাথে বানাতে হবে না। */
+  var appName = (APPS[SINGLE].name || "").toLowerCase();
+  var tries = {
+    bg:  ["/game-assets/codelive-bg-" + appName + ".mp4",
+          "/game-assets/codelive-bg-" + SINGLE + ".mp4", mainBg],
+    cam: ["/game-assets/codelive-cam-" + appName + ".mp4",
+          "/game-assets/codelive-cam-" + SINGLE + ".mp4", mainCam],
+  };
+
+  function tryNext(el, list, i){
+    if (!el || i >= list.length) return;
+    el.onerror = function(){ tryNext(el, list, i + 1); };
+    el.src = list[i];
+  }
+  tryNext(v, tries.bg, 0);
+  tryNext(c, tries.cam, 0);
 })();
 
 /* =========================================================================
