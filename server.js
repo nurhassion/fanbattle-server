@@ -1856,6 +1856,10 @@ app.get('/app', requireDashboardAuth, (req, res) => {
     <div class="quick-links" id="channelSwitcher">
       <a class="quick-link channel-pill active" data-channel="fanbattle" onclick="switchChannel('fanbattle')" style="cursor:pointer;">⚔️ Fan Battle Live</a>
       <a class="quick-link channel-pill" data-channel="dailyneedle" onclick="switchChannel('dailyneedle')" style="cursor:pointer;">🧵 Daily Needle</a>
+      <a class="quick-link channel-pill" data-channel="chessbattle" onclick="switchChannel('chessbattle')" style="cursor:pointer;">♟️ Chess Battle</a>
+      <a class="quick-link channel-pill" data-channel="snake" onclick="switchChannel('snake')" style="cursor:pointer;">🐍 Snake</a>
+      <a class="quick-link channel-pill" data-channel="ballsort" onclick="switchChannel('ballsort')" style="cursor:pointer;">🧪 Ball Sort</a>
+      <a class="quick-link channel-pill" data-channel="codelive" onclick="switchChannel('codelive')" style="cursor:pointer;">💻 Code Live</a>
     </div>
 
     <div class="section-title" style="margin-top:22px;">Save a content idea (no time needed)</div>
@@ -2209,7 +2213,22 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   // links, and "currently live" marker are completely independent of the
   // others — switching tabs never affects another channel's saved ideas.
   let currentScheduleChannel = 'fanbattle';
+  // ⚠️ গেমিং ও Code Live চ্যানেলে "বাম পক্ষ / ডান পক্ষ" বলে কিছু নেই — ওখানে
+  //    দুই দলের লড়াই হয় না। ঘরগুলো দেখালে বিভ্রান্তি হতো, তাই লুকিয়ে দেওয়া হয়।
+  //    এই চ্যানেলগুলোতে টাইটেল, ডেসক্রিপশন, হ্যাশট্যাগ, থাম্বনেইল, কমেন্ট্রি ও
+  //    ব্যাকগ্রাউন্ড মিউজিক — এগুলোই কাজে লাগে।
+  var GAMING_CHANNELS = ['chessbattle','snake','ballsort','codelive'];
+  function applyChannelFields(channel){
+    var isGaming = GAMING_CHANNELS.indexOf(channel) >= 0;
+    ['schLeftNameLabel','schLeftName','schLeftPhotoLabel','schLeftPhoto',
+     'schLeftPhotoPreview','schRightFieldsWrap'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) el.style.display = isGaming ? 'none' : '';
+    });
+  }
+
   function switchChannel(channel){
+    applyChannelFields(channel);
     currentScheduleChannel = channel;
     document.querySelectorAll('.channel-pill').forEach(p => p.classList.toggle('active', p.dataset.channel === channel));
     document.getElementById('zttLossFieldWrap').style.display = 'none';
