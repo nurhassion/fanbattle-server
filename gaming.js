@@ -1074,7 +1074,7 @@ transition:opacity 1.2s ease;}
 #bgDim{position:fixed;inset:0;z-index:-1;background:rgba(4,6,16,0.42);pointer-events:none;}
 </style></head><body>
 <div id="bgFallback"></div>
-<video id="bgVideo" autoplay muted loop playsinline preload="auto" src="/game-assets/chess-bg.mp4"></video>
+<video id="bgVideo" autoplay muted loop playsinline preload="auto"></video>
 <div id="bgDim"></div>
 <h1>♟️ Chess Battle — Live</h1>
 <div class="layout">
@@ -1814,9 +1814,72 @@ function showDonorCelebration(name, amount, photo){
 (function(){
   var v = document.getElementById("bgVideo");
   if (!v) return;
+  /* ⚠️ তিনটে গেমের ব্যাকগ্রাউন্ডে **একই ভিডিও** — মালিক তাই চেয়েছেন।
+     তাই chess-bg.mp4 আলাদা করে বানাতে হবে না; না থাকলে Ball Sort বা Snake-এর
+     ভিডিওটাই ব্যবহার হয়। একটাও না থাকলে নিচের gradient থাকে, কালো পর্দা যায় না। */
+  var tries = ["/game-assets/chess-bg.mp4", "/game-assets/ballsort-bg.mp4",
+               "/game-assets/snake-bg.mp4"];
+  var i = 0;
+  function next(){
+    if (i >= tries.length) { v.style.opacity = "0"; return; }
+    v.src = tries[i++];
+    var p = v.play(); if (p && p.catch) p.catch(function(){});
+  }
   v.addEventListener("loadeddata", function(){ v.style.opacity = "0.85"; });
-  v.addEventListener("error", function(){ v.style.opacity = "0"; });
-  var p = v.play(); if (p && p.catch) p.catch(function(){});
+  v.addEventListener("error", next);
+  next();
+})();
+
+/* ---------------------------------------------------------------------------
+   আজকের সেটআপ থেকে ভিডিও / মিউজিক / কমেন্ট্রি নেওয়া
+   ---------------------------------------------------------------------------
+   ⚠️ মূল নিয়ম: **যা নেই তা দেখানো হয় না।** কোনো ঘর খালি থাকলে ওই জিনিসটা
+   ছাড়াই স্ট্রিম চলে — মিউজিক না দিলে নীরব, কোনার ভিডিও না দিলে বাক্সটাই
+   দেখা যায় না। কিছুই না দিলেও গেম স্বাভাবিকভাবে চলবে। */
+(function applyTodaySetup(){
+  var q = new URLSearchParams(location.search);
+  var forced = q.get("set");
+  var url = "/gaming/today-setup/chess" + (forced !== null ? "?set=" + forced : "");
+  fetch(url).then(function(r){ return r.json(); }).then(function(s){
+    if (!s) return;
+
+    // ব্যাকগ্রাউন্ড ভিডিও — লিংক দিলে সেটা, নাহলে যা আছে তাই
+    if (s.bgVideoUrl) {
+      var v = document.getElementById("bgVideo");
+      if (v) { v.src = s.bgVideoUrl; var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+    }
+
+    // কোনার ভিডিও — না দিলে বাক্সটাই লুকানো থাকে
+    var camBox = document.getElementById("camBox");
+    var camV = document.getElementById("camVideo");
+    if (s.camVideoUrl && camV) {
+      camV.src = s.camVideoUrl;
+      if (camBox) camBox.style.display = "";
+      var p2 = camV.play(); if (p2 && p2.catch) p2.catch(function(){});
+    }
+
+    // ব্যাকগ্রাউন্ড মিউজিক — একাধিক দিলে একটার পর একটা
+    if (s.musicUrls && s.musicUrls.length && typeof bgMusicEl !== "undefined" && bgMusicEl) {
+      var mi = 0;
+      function playNext(){
+        bgMusicEl.src = s.musicUrls[mi % s.musicUrls.length];
+        mi++;
+        var p3 = bgMusicEl.play(); if (p3 && p3.catch) p3.catch(function(){});
+      }
+      bgMusicEl.loop = s.musicUrls.length === 1;
+      bgMusicEl.onended = playNext;
+      if (typeof baseMusicVolume !== "undefined") {
+        baseMusicVolume = typeof s.bgMusicVolume === "number" ? s.bgMusicVolume : 0.15;
+        if (typeof applyMusicVolume === "function") applyMusicVolume();
+      }
+      playNext();
+    }
+
+    // কমেন্ট্রি — না দিলে কিছুই বাজে না
+    if (s.commentaryUrls && typeof commentaryList !== "undefined") {
+      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    }
+  }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
 })();
 </script></body></html>`;
 
@@ -4297,6 +4360,58 @@ setInterval(function(){
   }).catch(function(){});
 }, 220);
 ${celebrationJS("snake")}
+
+/* ---------------------------------------------------------------------------
+   আজকের সেটআপ থেকে ভিডিও / মিউজিক / কমেন্ট্রি নেওয়া
+   ---------------------------------------------------------------------------
+   ⚠️ মূল নিয়ম: **যা নেই তা দেখানো হয় না।** কোনো ঘর খালি থাকলে ওই জিনিসটা
+   ছাড়াই স্ট্রিম চলে — মিউজিক না দিলে নীরব, কোনার ভিডিও না দিলে বাক্সটাই
+   দেখা যায় না। কিছুই না দিলেও গেম স্বাভাবিকভাবে চলবে। */
+(function applyTodaySetup(){
+  var q = new URLSearchParams(location.search);
+  var forced = q.get("set");
+  var url = "/gaming/today-setup/snake" + (forced !== null ? "?set=" + forced : "");
+  fetch(url).then(function(r){ return r.json(); }).then(function(s){
+    if (!s) return;
+
+    // ব্যাকগ্রাউন্ড ভিডিও — লিংক দিলে সেটা, নাহলে যা আছে তাই
+    if (s.bgVideoUrl) {
+      var v = document.getElementById("bgVideo");
+      if (v) { v.src = s.bgVideoUrl; var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+    }
+
+    // কোনার ভিডিও — না দিলে বাক্সটাই লুকানো থাকে
+    var camBox = document.getElementById("camBox");
+    var camV = document.getElementById("camVideo");
+    if (s.camVideoUrl && camV) {
+      camV.src = s.camVideoUrl;
+      if (camBox) camBox.style.display = "";
+      var p2 = camV.play(); if (p2 && p2.catch) p2.catch(function(){});
+    }
+
+    // ব্যাকগ্রাউন্ড মিউজিক — একাধিক দিলে একটার পর একটা
+    if (s.musicUrls && s.musicUrls.length && typeof bgMusicEl !== "undefined" && bgMusicEl) {
+      var mi = 0;
+      function playNext(){
+        bgMusicEl.src = s.musicUrls[mi % s.musicUrls.length];
+        mi++;
+        var p3 = bgMusicEl.play(); if (p3 && p3.catch) p3.catch(function(){});
+      }
+      bgMusicEl.loop = s.musicUrls.length === 1;
+      bgMusicEl.onended = playNext;
+      if (typeof baseMusicVolume !== "undefined") {
+        baseMusicVolume = typeof s.bgMusicVolume === "number" ? s.bgMusicVolume : 0.15;
+        if (typeof applyMusicVolume === "function") applyMusicVolume();
+      }
+      playNext();
+    }
+
+    // কমেন্ট্রি — না দিলে কিছুই বাজে না
+    if (s.commentaryUrls && typeof commentaryList !== "undefined") {
+      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    }
+  }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
+})();
 </script></body></html>`;
 
 const BALLSORT_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Ball Sort Puzzle — Live</title>
@@ -4932,6 +5047,58 @@ setInterval(function(){
   }).catch(function(){});
 }, 500);
 ${celebrationJS("ballsort")}
+
+/* ---------------------------------------------------------------------------
+   আজকের সেটআপ থেকে ভিডিও / মিউজিক / কমেন্ট্রি নেওয়া
+   ---------------------------------------------------------------------------
+   ⚠️ মূল নিয়ম: **যা নেই তা দেখানো হয় না।** কোনো ঘর খালি থাকলে ওই জিনিসটা
+   ছাড়াই স্ট্রিম চলে — মিউজিক না দিলে নীরব, কোনার ভিডিও না দিলে বাক্সটাই
+   দেখা যায় না। কিছুই না দিলেও গেম স্বাভাবিকভাবে চলবে। */
+(function applyTodaySetup(){
+  var q = new URLSearchParams(location.search);
+  var forced = q.get("set");
+  var url = "/gaming/today-setup/ballsort" + (forced !== null ? "?set=" + forced : "");
+  fetch(url).then(function(r){ return r.json(); }).then(function(s){
+    if (!s) return;
+
+    // ব্যাকগ্রাউন্ড ভিডিও — লিংক দিলে সেটা, নাহলে যা আছে তাই
+    if (s.bgVideoUrl) {
+      var v = document.getElementById("bgVideo");
+      if (v) { v.src = s.bgVideoUrl; var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+    }
+
+    // কোনার ভিডিও — না দিলে বাক্সটাই লুকানো থাকে
+    var camBox = document.getElementById("camBox");
+    var camV = document.getElementById("camVideo");
+    if (s.camVideoUrl && camV) {
+      camV.src = s.camVideoUrl;
+      if (camBox) camBox.style.display = "";
+      var p2 = camV.play(); if (p2 && p2.catch) p2.catch(function(){});
+    }
+
+    // ব্যাকগ্রাউন্ড মিউজিক — একাধিক দিলে একটার পর একটা
+    if (s.musicUrls && s.musicUrls.length && typeof bgMusicEl !== "undefined" && bgMusicEl) {
+      var mi = 0;
+      function playNext(){
+        bgMusicEl.src = s.musicUrls[mi % s.musicUrls.length];
+        mi++;
+        var p3 = bgMusicEl.play(); if (p3 && p3.catch) p3.catch(function(){});
+      }
+      bgMusicEl.loop = s.musicUrls.length === 1;
+      bgMusicEl.onended = playNext;
+      if (typeof baseMusicVolume !== "undefined") {
+        baseMusicVolume = typeof s.bgMusicVolume === "number" ? s.bgMusicVolume : 0.15;
+        if (typeof applyMusicVolume === "function") applyMusicVolume();
+      }
+      playNext();
+    }
+
+    // কমেন্ট্রি — না দিলে কিছুই বাজে না
+    if (s.commentaryUrls && typeof commentaryList !== "undefined") {
+      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    }
+  }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
+})();
 </script></body></html>`;
 
 // ===========================================================================
@@ -7503,6 +7670,58 @@ function refreshTopDonors(){}
 function refreshRecentDonors(){}
 var audioCtx = null;
 ${celebrationJS("codelive")}
+
+/* ---------------------------------------------------------------------------
+   আজকের সেটআপ থেকে ভিডিও / মিউজিক / কমেন্ট্রি নেওয়া
+   ---------------------------------------------------------------------------
+   ⚠️ মূল নিয়ম: **যা নেই তা দেখানো হয় না।** কোনো ঘর খালি থাকলে ওই জিনিসটা
+   ছাড়াই স্ট্রিম চলে — মিউজিক না দিলে নীরব, কোনার ভিডিও না দিলে বাক্সটাই
+   দেখা যায় না। কিছুই না দিলেও গেম স্বাভাবিকভাবে চলবে। */
+(function applyTodaySetup(){
+  var q = new URLSearchParams(location.search);
+  var forced = q.get("set");
+  var url = "/gaming/today-setup/codelive" + (forced !== null ? "?set=" + forced : "");
+  fetch(url).then(function(r){ return r.json(); }).then(function(s){
+    if (!s) return;
+
+    // ব্যাকগ্রাউন্ড ভিডিও — লিংক দিলে সেটা, নাহলে যা আছে তাই
+    if (s.bgVideoUrl) {
+      var v = document.getElementById("bgVideo");
+      if (v) { v.src = s.bgVideoUrl; var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+    }
+
+    // কোনার ভিডিও — না দিলে বাক্সটাই লুকানো থাকে
+    var camBox = document.getElementById("camBox");
+    var camV = document.getElementById("camVideo");
+    if (s.camVideoUrl && camV) {
+      camV.src = s.camVideoUrl;
+      if (camBox) camBox.style.display = "";
+      var p2 = camV.play(); if (p2 && p2.catch) p2.catch(function(){});
+    }
+
+    // ব্যাকগ্রাউন্ড মিউজিক — একাধিক দিলে একটার পর একটা
+    if (s.musicUrls && s.musicUrls.length && typeof bgMusicEl !== "undefined" && bgMusicEl) {
+      var mi = 0;
+      function playNext(){
+        bgMusicEl.src = s.musicUrls[mi % s.musicUrls.length];
+        mi++;
+        var p3 = bgMusicEl.play(); if (p3 && p3.catch) p3.catch(function(){});
+      }
+      bgMusicEl.loop = s.musicUrls.length === 1;
+      bgMusicEl.onended = playNext;
+      if (typeof baseMusicVolume !== "undefined") {
+        baseMusicVolume = typeof s.bgMusicVolume === "number" ? s.bgMusicVolume : 0.15;
+        if (typeof applyMusicVolume === "function") applyMusicVolume();
+      }
+      playNext();
+    }
+
+    // কমেন্ট্রি — না দিলে কিছুই বাজে না
+    if (s.commentaryUrls && typeof commentaryList !== "undefined") {
+      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    }
+  }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
+})();
 </script></body></html>`;
 
 // ---------------------------------------------------------------------------
@@ -7989,6 +8208,81 @@ module.exports = function mountGaming(app) {
   app.get("/gaming/gq/:game/public", (req, res) => {
     const game = gqValid(req, res); if (!game) return;
     res.json({ nowPlaying: gqPublicActive(game), queue: gqPublicQueue(game), total: gameQueues[game].queue.length });
+  });
+
+  // ---------------------------------------------------------------------------
+  //  ২০টা সেটআপ — প্রতি চ্যানেলে দিনভিত্তিক ব্যাকগ্রাউন্ড/মিউজিক/কমেন্ট্রি
+  // ---------------------------------------------------------------------------
+  //  ⚠️ মালিক শুধু লিংক বসাতে চান — টাইটেল, থাম্বনেইল, বাম/ডান পক্ষ কিছুই নয়
+  //     (ওগুলো এখন AI নিজে করে)। তাই এই অংশটা ইচ্ছে করেই খুব সরল: প্রতিটা
+  //     সেটআপে মাত্র ৪টে ঘর — ব্যাকগ্রাউন্ড ভিডিও, কোনার ভিডিও, মিউজিক, কমেন্ট্রি।
+  //
+  //  ⚠️ **যা নেই তা দেখানো হয় না** — কোনো ঘর খালি থাকলে ওই দিন সেটা ছাড়াই চলে।
+  //     মিউজিক না দিলে নীরব, ভিডিও না দিলে gradient — স্ট্রিম কখনো আটকায় না।
+  const SETUP_GAMES = ["chess", "snake", "ballsort", "codelive"];
+  const SETUP_COUNT = 20;
+  function setupsFile(game) { return path.join(STATE_DIR, game + "-setups.json"); }
+
+  function loadSetups(game) {
+    try {
+      const arr = JSON.parse(fs.readFileSync(setupsFile(game), "utf-8"));
+      if (Array.isArray(arr) && arr.length === SETUP_COUNT) return arr;
+    } catch (e) {}
+    // প্রথমবার — ২০টা খালি ঘর
+    return Array.from({ length: SETUP_COUNT }, () => ({
+      bgVideoUrl: "", camVideoUrl: "", musicUrls: [], commentaryUrls: "",
+      bgMusicVolume: 0.15, loopIntervalSec: 90,
+    }));
+  }
+
+  // আজ কোন সেটআপ চলবে — livestream.js এর মতোই ক্রমিক হিসাব,
+  // যাতে দুই জায়গায় একই দিন একই নম্বর আসে
+  function todaySetupIndex(game) {
+    const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
+    const d = ist.toISOString().slice(0, 10).split("-").map(Number);
+    const days = Math.floor(Date.UTC(d[0], d[1] - 1, d[2]) / 86400000);
+    return ((days % SETUP_COUNT) + SETUP_COUNT) % SETUP_COUNT;
+  }
+
+  app.get("/gaming/setups/:game", (req, res) => {
+    const g = req.params.game;
+    if (!SETUP_GAMES.includes(g)) return res.status(404).json({ error: "unknown_game" });
+    res.json({ game: g, count: SETUP_COUNT, todayIndex: todaySetupIndex(g), setups: loadSetups(g) });
+  });
+
+  app.post("/gaming/setups/:game", express.json({ limit: "1mb" }), (req, res) => {
+    const g = req.params.game;
+    if (!SETUP_GAMES.includes(g)) return res.status(404).json({ error: "unknown_game" });
+    const body = req.body || {};
+    const idx = parseInt(body.index, 10);
+    if (!(idx >= 0 && idx < SETUP_COUNT)) return res.status(400).json({ error: "bad_index" });
+    const all = loadSetups(g);
+    const clean = (v) => (v || "").toString().trim().slice(0, 2000);
+    all[idx] = {
+      bgVideoUrl: clean(body.bgVideoUrl),
+      camVideoUrl: clean(body.camVideoUrl),
+      // একাধিক মিউজিক — এক লাইনে একটা
+      musicUrls: clean(body.musicUrls).split(/\n+/).map((x) => x.trim()).filter(Boolean).slice(0, 10),
+      commentaryUrls: clean(body.commentaryUrls),
+      bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.15)),
+      loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
+    };
+    try { fs.mkdirSync(STATE_DIR, { recursive: true }); } catch (e) {}
+    fs.writeFileSync(setupsFile(g), JSON.stringify(all, null, 2));
+    console.log(`[${g}] setup #${idx + 1} সেভ হলো`);
+    res.json({ ok: true, index: idx });
+  });
+
+  // overlay এটা ডাকে — আজকের সেটআপে কী কী আছে
+  app.get("/gaming/today-setup/:game", (req, res) => {
+    const g = req.params.game;
+    if (!SETUP_GAMES.includes(g)) return res.status(404).json({ error: "unknown_game" });
+    // ?set= দিয়ে জোর করে নির্দিষ্ট সেটআপও চাওয়া যায় (Code Live যেভাবে ডাকে)
+    let idx = todaySetupIndex(g);
+    const forced = parseInt(req.query.set, 10);
+    if (forced >= 0 && forced < SETUP_COUNT) idx = forced;
+    const s = loadSetups(g)[idx] || {};
+    res.json({ index: idx, number: idx + 1, ...s });
   });
 
   app.get("/gaming/vapid-public-key", (req, res) => res.json({ key: VAPID_PUBLIC_KEY, ready: PUSH_READY }));
