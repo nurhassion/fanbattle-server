@@ -1862,6 +1862,43 @@ app.get('/app', requireDashboardAuth, (req, res) => {
       <a class="quick-link channel-pill" data-channel="codelive" onclick="switchChannel('codelive')" style="cursor:pointer;">💻 Code Live</a>
     </div>
 
+    <!-- ⚠️ গেমিং ও Code Live চ্যানেলে টাইটেল/থাম্বনেইল/পক্ষ কিছুই লাগে না —
+         ওগুলো AI নিজে করে। এখানে শুধু ৪টে লিংকের ঘর, ২০টা দিনের জন্য। -->
+    <div id="gamingSetupPanel" style="display:none;">
+      <div class="section-title" style="margin-top:22px;">২০টি সেটআপ — শুধু লিংক বসান</div>
+      <div class="form-card">
+        <label class="f-label">কোন সেটআপ (দিন)</label>
+        <select id="setupPicker" onchange="loadSetup()"></select>
+        <div id="setupTodayNote" style="font-size:11px;color:#8BE28B;margin-top:6px;"></div>
+
+        <label class="f-label" style="margin-top:16px;">🎬 ব্যাকগ্রাউন্ড ভিডিওর লিংক</label>
+        <input type="text" id="setBgVideo" placeholder="https://... .mp4 (খালি রাখলে ডিফল্ট চলবে)">
+
+        <label class="f-label">📹 কোনার ভিডিওর লিংক</label>
+        <input type="text" id="setCamVideo" placeholder="https://... .mp4 (খালি রাখলে কোনার বাক্স দেখা যাবে না)">
+
+        <label class="f-label">🎵 ব্যাকগ্রাউন্ড মিউজিক (এক লাইনে একটা, ১০টা পর্যন্ত)</label>
+        <textarea id="setMusic" rows="4" placeholder="https://... .mp3&#10;https://... .mp3"></textarea>
+
+        <label class="f-label">🔊 মিউজিকের আওয়াজ (০.০ – ১.০)</label>
+        <input type="number" id="setMusicVol" step="0.05" min="0" max="1" value="0.15">
+
+        <label class="f-label">🗣️ কমেন্ট্রির লিংক (এক লাইনে একটা)</label>
+        <textarea id="setCommentary" rows="4" placeholder="https://... .mp3"></textarea>
+
+        <label class="f-label">⏱️ কমেন্ট্রির মাঝে বিরতি (সেকেন্ড)</label>
+        <input type="number" id="setLoopSec" min="20" value="90">
+
+        <button class="btn-primary" style="width:100%;margin-top:16px;padding:13px;"
+                onclick="saveSetup()">এই সেটআপটি সেভ করুন</button>
+        <div id="setupMsg" style="font-size:12px;color:#8BE28B;margin-top:10px;min-height:16px;"></div>
+        <div style="font-size:11px;color:#7C8AAD;margin-top:12px;line-height:1.6;">
+          যেটা খালি রাখবেন সেটা ওই দিন চলবে না — বাকিগুলো স্বাভাবিকভাবেই চলবে।<br>
+          লিংক Google Drive বা যেকোনো জায়গা থেকে নিতে পারেন (সরাসরি ফাইলের লিংক হতে হবে)।
+        </div>
+      </div>
+    </div>
+
     <div class="section-title" style="margin-top:22px;">Save a content idea (no time needed)</div>
     <div class="form-card">
       <label class="f-label">Title</label>
@@ -2218,13 +2255,86 @@ app.get('/app', requireDashboardAuth, (req, res) => {
   //    এই চ্যানেলগুলোতে টাইটেল, ডেসক্রিপশন, হ্যাশট্যাগ, থাম্বনেইল, কমেন্ট্রি ও
   //    ব্যাকগ্রাউন্ড মিউজিক — এগুলোই কাজে লাগে।
   var GAMING_CHANNELS = ['chessbattle','snake','ballsort','codelive'];
+  var SETUP_LABELS = {
+    codelive: ["ChatWave","QuickBite","RideNow","PulseFit","Vaultly","Soundrift","Shopr",
+               "SkyCast","Loop","Taskly","MediTrack","LinguaGo","TripMate","BudgetBee",
+               "StudyDeck","PetPal","NewsPulse","HabitLoop","SnapEdit","GateKey"]
+  };
+  var currentSetupGame = null;
+
   function applyChannelFields(channel){
     var isGaming = GAMING_CHANNELS.indexOf(channel) >= 0;
-    ['schLeftNameLabel','schLeftName','schLeftPhotoLabel','schLeftPhoto',
-     'schLeftPhotoPreview','schRightFieldsWrap'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (el) el.style.display = isGaming ? 'none' : '';
+    // গেমিং চ্যানেলে পুরনো ফর্মটাই লুকিয়ে দেওয়া — ওখানে টাইটেল/থাম্বনেইল/পক্ষ
+    // কিছুই লাগে না, সব AI নিজে করে
+    var oldForm = document.querySelector('.form-card');
+    if (oldForm) oldForm.style.display = isGaming ? 'none' : '';
+    var oldTitle = document.querySelector('#gamingSetupPanel')
+      ? document.querySelector('#gamingSetupPanel').previousElementSibling : null;
+    if (oldTitle && oldTitle.classList.contains('section-title')) {
+      // "Save a content idea" শিরোনামটা পরের ভাইবোন
+    }
+    document.querySelectorAll('.section-title').forEach(function(t){
+      if (t.textContent.indexOf('Save a content idea') >= 0) t.style.display = isGaming ? 'none' : '';
     });
+    var panel = document.getElementById('gamingSetupPanel');
+    if (panel) panel.style.display = isGaming ? 'block' : 'none';
+    if (isGaming) { currentSetupGame = (channel === 'chessbattle') ? 'chess' : channel; buildSetupPicker(); }
+  }
+
+  function buildSetupPicker(){
+    var sel = document.getElementById('setupPicker');
+    if (!sel) return;
+    var names = SETUP_LABELS[currentSetupGame];
+    sel.innerHTML = '';
+    for (var i = 0; i < 20; i++){
+      var o = document.createElement('option');
+      o.value = i;
+      o.textContent = 'সেটআপ ' + (i + 1) + (names ? ' — ' + names[i] : '');
+      sel.appendChild(o);
+    }
+    fetch('/gaming/setups/' + currentSetupGame).then(function(r){ return r.json(); })
+      .then(function(d){
+        sel.value = d.todayIndex;
+        loadSetup();
+      }).catch(function(){});
+  }
+
+  function loadSetup(){
+    if (!currentSetupGame) return;
+    var idx = parseInt(document.getElementById('setupPicker').value, 10) || 0;
+    fetch('/gaming/setups/' + currentSetupGame).then(function(r){ return r.json(); })
+      .then(function(d){
+        var s = d.setups[idx] || {};
+        document.getElementById('setBgVideo').value = s.bgVideoUrl || '';
+        document.getElementById('setCamVideo').value = s.camVideoUrl || '';
+        document.getElementById('setMusic').value = (s.musicUrls || []).join('\n');
+        document.getElementById('setMusicVol').value = s.bgMusicVolume != null ? s.bgMusicVolume : 0.15;
+        document.getElementById('setCommentary').value = s.commentaryUrls || '';
+        document.getElementById('setLoopSec').value = s.loopIntervalSec || 90;
+        document.getElementById('setupTodayNote').textContent =
+          (idx === d.todayIndex) ? '⭐ আজ এই সেটআপটাই চলছে' : 'আজ চলছে সেটআপ ' + (d.todayIndex + 1);
+        document.getElementById('setupMsg').textContent = '';
+      }).catch(function(){});
+  }
+
+  function saveSetup(){
+    if (!currentSetupGame) return;
+    var idx = parseInt(document.getElementById('setupPicker').value, 10) || 0;
+    fetch('/gaming/setups/' + currentSetupGame, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        index: idx,
+        bgVideoUrl: document.getElementById('setBgVideo').value,
+        camVideoUrl: document.getElementById('setCamVideo').value,
+        musicUrls: document.getElementById('setMusic').value,
+        commentaryUrls: document.getElementById('setCommentary').value,
+        bgMusicVolume: document.getElementById('setMusicVol').value,
+        loopIntervalSec: document.getElementById('setLoopSec').value,
+      })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('setupMsg').textContent =
+        d.ok ? '✅ সেটআপ ' + (idx + 1) + ' সেভ হয়েছে' : '❌ সেভ হয়নি';
+    }).catch(function(){ document.getElementById('setupMsg').textContent = '❌ সেভ হয়নি'; });
   }
 
   function switchChannel(channel){
