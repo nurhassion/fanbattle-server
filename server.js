@@ -2307,7 +2307,7 @@ app.get('/app', requireDashboardAuth, (req, res) => {
         var s = d.setups[idx] || {};
         document.getElementById('setBgVideo').value = s.bgVideoUrl || '';
         document.getElementById('setCamVideo').value = s.camVideoUrl || '';
-        document.getElementById('setMusic').value = (s.musicUrls || []).join('\n');
+        document.getElementById('setMusic').value = (s.musicUrls || []).join(String.fromCharCode(10));
         document.getElementById('setMusicVol').value = s.bgMusicVolume != null ? s.bgMusicVolume : 0.15;
         document.getElementById('setCommentary').value = s.commentaryUrls || '';
         document.getElementById('setLoopSec').value = s.loopIntervalSec || 90;
