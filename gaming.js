@@ -1877,7 +1877,8 @@ function showDonorCelebration(name, amount, photo){
 
     // কমেন্ট্রি — না দিলে কিছুই বাজে না
     if (s.commentaryUrls && typeof commentaryList !== "undefined") {
-      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+      commentaryList = String(s.commentaryUrls).split(String.fromCharCode(10))
+        .map(function(x){ return x.trim(); }).filter(Boolean);
     }
   }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
 })();
@@ -4408,7 +4409,8 @@ ${celebrationJS("snake")}
 
     // কমেন্ট্রি — না দিলে কিছুই বাজে না
     if (s.commentaryUrls && typeof commentaryList !== "undefined") {
-      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+      commentaryList = String(s.commentaryUrls).split(String.fromCharCode(10))
+        .map(function(x){ return x.trim(); }).filter(Boolean);
     }
   }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
 })();
@@ -5095,7 +5097,8 @@ ${celebrationJS("ballsort")}
 
     // কমেন্ট্রি — না দিলে কিছুই বাজে না
     if (s.commentaryUrls && typeof commentaryList !== "undefined") {
-      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+      commentaryList = String(s.commentaryUrls).split(String.fromCharCode(10))
+        .map(function(x){ return x.trim(); }).filter(Boolean);
     }
   }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
 })();
@@ -7718,7 +7721,8 @@ ${celebrationJS("codelive")}
 
     // কমেন্ট্রি — না দিলে কিছুই বাজে না
     if (s.commentaryUrls && typeof commentaryList !== "undefined") {
-      commentaryList = s.commentaryUrls.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+      commentaryList = String(s.commentaryUrls).split(String.fromCharCode(10))
+        .map(function(x){ return x.trim(); }).filter(Boolean);
     }
   }).catch(function(){ /* সেটআপ না পেলেও গেম স্বাভাবিক চলবে */ });
 })();
