@@ -905,6 +905,53 @@ async function playOneChessGame(Chess) {
 // ---------------------------------------------------------------------------
 // ৬. Overlay HTML — ইনলাইন টেমপ্লেট (আলাদা .html ফাইল লাগে না)
 // ---------------------------------------------------------------------------
+
+/* ─── OBS-এর ভেতরে আওয়াজ আপনাআপনি চালু করার বুটস্ট্র্যাপ ────────────────
+ * ব্রাউজারের নিয়ম: কেউ ক্লিক না করলে পাতা নিজে থেকে আওয়াজ বাজায় না।
+ * OBS-এ ক্লিক করার কেউ নেই, তাই স্ট্রিম নীরব থাকত।
+ * OBS-এর ব্রাউজার autoplay অনুমতি দেয়, তাই নিচের কোড শুরুতেই সব
+ * audio/video চালিয়ে দেয় আর "Turn on sound" বোতামটা লুকিয়ে দেয়।
+ * সাধারণ দর্শকের ব্রাউজারে কিছুই বদলায় না — সেখানে ব্যর্থ হলে চুপচাপ
+ * আগের মতোই বোতামের অপেক্ষা করবে।
+ * ------------------------------------------------------------------ */
+const AUTO_SOUND_JS = `
+<script>
+(function(){
+  var n = 0;
+  function kick(){
+    n++;
+    try {
+      var b = document.getElementById("soundBtn");
+      if (b) { b.click(); b.style.display = "none"; }
+    } catch(e){}
+    if (n <= 3) { try { document.body && document.body.click(); } catch(e){} }
+    try { if (window.audioCtx && window.audioCtx.resume) window.audioCtx.resume(); } catch(e){}
+    try {
+      var m = document.querySelectorAll("audio,video");
+      for (var i = 0; i < m.length; i++) {
+        if (m[i].paused) { var p = m[i].play(); if (p && p.catch) p.catch(function(){}); }
+      }
+    } catch(e){}
+  }
+  function start(){
+    kick();
+    var t = setInterval(function(){
+      kick();
+      if (n > 30) { clearInterval(t); setInterval(kick, 15000); }
+    }, 1000);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
+})();
+<\/script>`;
+
+function withAutoSound(html) {
+  if (typeof html !== "string") return html;
+  return /<\/body>/i.test(html)
+    ? html.replace(/<\/body>/i, AUTO_SOUND_JS + "</body>")
+    : html + AUTO_SOUND_JS;
+}
+
 const CHESS_OVERLAY_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Chess</title>
 <style>
 *{box-sizing:border-box;}
@@ -7829,8 +7876,8 @@ module.exports = function mountGaming(app) {
       repoRoot: rootListing,
     });
   });
-  app.get("/gaming/overlay/chess", (req, res) => res.type("html").send(CHESS_OVERLAY_HTML));
-  app.get("/gaming/overlay/codelive", (req, res) => res.type("html").send(CODELIVE_OVERLAY_HTML));
+  app.get("/gaming/overlay/chess", (req, res) => res.type("html").send(withAutoSound(CHESS_OVERLAY_HTML)));
+  app.get("/gaming/overlay/codelive", (req, res) => res.type("html").send(withAutoSound(CODELIVE_OVERLAY_HTML)));
   app.get("/gaming/status", (req, res) => res.json({ ok: true, activeBlockId }));
 
   // --- লাইভ চ্যালেঞ্জ / queue রুটগুলো ---
@@ -8315,8 +8362,8 @@ module.exports = function mountGaming(app) {
   setInterval(() => schedulerTick().catch((e) => console.error("❌ schedulerTick এ error:", e)), 60000);
 
   // ---------- নতুন গেম: Snake ও Ball Sort Puzzle — সিডিউলারের বাইরে, নিজে থেকেই ২৪/৭ চলবে ----------
-  app.get("/gaming/overlay/snake", (req, res) => res.type("html").send(SNAKE_OVERLAY_HTML));
-  app.get("/gaming/overlay/ballsort", (req, res) => res.type("html").send(BALLSORT_OVERLAY_HTML));
+  app.get("/gaming/overlay/snake", (req, res) => res.type("html").send(withAutoSound(SNAKE_OVERLAY_HTML)));
+  app.get("/gaming/overlay/ballsort", (req, res) => res.type("html").send(withAutoSound(BALLSORT_OVERLAY_HTML)));
   // ⚠️ Snake আর সার্ভার থেকে চালানো হয় না। আগে সার্ভার প্রতি ১১০ms-এ এক ধাপ হিসেব করে ফাইলে লিখত
   // আর ব্রাউজার প্রতি ১১০ms-এ HTTP দিয়ে সেটা টেনে আনত — Render-এর ফ্রি সার্ভারে প্রতিটা রিকোয়েস্টের
   // দেরি একেকবার একেকরকম হওয়ায় সাপ "আটকে আটকে" চলত। এখন পুরো সাপের ইঞ্জিন ব্রাউজারের ভেতরেই চলে,
