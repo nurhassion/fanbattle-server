@@ -1376,6 +1376,207 @@ app.get('/pay/:channel', async (req, res) => {
   res.send(paypalPageHtml(channel, label, ret, knownName, noPhoto));
 });
 
+// =====================================================================
+// ======  Code Live — কোড ডাউনলোড, টিপস উইন্ডো ও লাইসেন্স ক্রেডিট  ======
+// =====================================================================
+// প্রতিটা লাইভে একটা সেটআপ তৈরি হয় (set-0001 … set-1000), আর তার পুরো
+// কোডটা একটা ZIP-এ বাঁধা থাকে। ডেসক্রিপশনে যে লিংকটা যাবে সেটা ZIP-এর
+// সরাসরি ঠিকানা নয় — এই পাতাটার ঠিকানা:
+//
+//     https://…/code/0007
+//
+// কেন সরাসরি নয়: ZIP-এর লিংক বদলালে (GitHub release নতুন করে বানালে,
+// বা হোস্টিং বদলালে) হাজারটা পুরনো ভিডিওর ডেসক্রিপশন মরে যেত। এই পাতাটা
+// মাঝখানে থাকায় ঠিকানা একবারই লেখা হয়, বদল হয় শুধু এক জায়গায়।
+//
+// পথটা এরকম:
+//     /code/0007            → কী বানানো হয়েছে, ৫ ধাপের গাইড, ক্রেডিট
+//     /code/0007/get        → টিপস উইন্ডো (Skip আছে, জোর করা নেই)
+//     /code/0007/zip        → আসল ফাইলে পাঠিয়ে দেয়
+//     /code/0007/description.txt → controller এটা টেনে নিয়ে ডেসক্রিপশনে বসাবে
+//
+// ZIP কোথায় আছে সেটা দুভাবে বলা যায়:
+//   ১. CODE_ZIP_BASE env — যেমন
+//      https://github.com/USER/REPO/releases/download/code-packages/
+//      তাহলে set-0007 এর ফাইল হবে   …/set-0007.zip
+//   ২. অথবা controller নিজে রেজিস্ট্রি পাঠাবে (নিচের POST /code/registry),
+//      যেখানে প্রতিটা সেটের নাম, ZIP ঠিকানা আর মিউজিকের ক্রেডিট থাকে।
+// দুটোই থাকলে রেজিস্ট্রিরটাই আগে।
+
+const CODE_ZIP_BASE = (process.env.CODE_ZIP_BASE || '').replace(/\/+$/, '');
+const CODE_REGISTRY_FILE = path.join(__dirname, 'code-packages.json');
+const CODELIVE_KEY = process.env.CODELIVE_KEY || '';
+
+function loadCodeRegistry() {
+  try { return JSON.parse(fs.readFileSync(CODE_REGISTRY_FILE, 'utf-8')); }
+  catch (e) { return {}; }
+}
+function pad4(n) { return ('000' + n).slice(-4); }
+function codeEntry(setNo) {
+  const reg = loadCodeRegistry();
+  const e = reg[String(parseInt(setNo, 10))] || {};
+  const id = pad4(parseInt(setNo, 10));
+  return {
+    setNo: parseInt(setNo, 10),
+    id,
+    appName: e.appName || ('Set ' + id),
+    zipUrl: e.zipUrl || (CODE_ZIP_BASE ? CODE_ZIP_BASE + '/set-' + id + '.zip' : ''),
+    stack: e.stack || '',
+    credits: e.credits || ''
+  };
+}
+function esc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// controller ল্যাপটপ থেকে একবার পাঠিয়ে দিলেই হাজারটা সেটের নাম, ZIP আর
+// ক্রেডিট এখানে বসে যায়:
+//   POST /code/registry  { "key":"…", "packages": { "7": { "appName":"ChatWave", … } } }
+// merge:true পাঠালে আগেরগুলো মুছবে না, শুধু যোগ হবে।
+app.post('/code/registry', (req, res) => {
+  const b = req.body || {};
+  if (CODELIVE_KEY && b.key !== CODELIVE_KEY) return res.status(403).json({ error: 'bad key' });
+  const incoming = b.packages && typeof b.packages === 'object' ? b.packages : null;
+  if (!incoming) return res.status(400).json({ error: 'packages প্রয়োজন' });
+  const out = b.merge ? loadCodeRegistry() : {};
+  Object.keys(incoming).slice(0, 2000).forEach(k => {
+    const v = incoming[k] || {};
+    out[String(parseInt(k, 10))] = {
+      appName: String(v.appName || '').slice(0, 120),
+      zipUrl: String(v.zipUrl || '').slice(0, 500),
+      stack: String(v.stack || '').slice(0, 120),
+      credits: String(v.credits || '').slice(0, 4000)
+    };
+  });
+  fs.writeFileSync(CODE_REGISTRY_FILE, JSON.stringify(out, null, 2));
+  res.json({ ok: true, count: Object.keys(out).length });
+});
+
+const CODE_PAGE_CSS = `
+*{box-sizing:border-box}body{margin:0;background:#070a14;color:#E6ECFF;
+font-family:'Segoe UI',system-ui,-apple-system,sans-serif;line-height:1.65;}
+.wrap{max-width:720px;margin:0 auto;padding:28px 20px 60px;}
+h1{font-size:26px;margin:0 0 6px;line-height:1.25;}
+.sub{color:#8FA3C8;margin:0 0 26px;font-size:15px;}
+.card{background:#0e1424;border:1px solid #1d2942;border-radius:14px;padding:20px;margin:18px 0;}
+ol{padding-left:20px;margin:0;} ol li{margin:10px 0;}
+code{background:#050810;border:1px solid #1d2942;border-radius:6px;padding:2px 7px;
+font-size:13px;color:#7DE3B8;}
+.btn{display:block;width:100%;text-align:center;background:#2f6bff;color:#fff;
+text-decoration:none;font-weight:700;font-size:17px;padding:16px;border-radius:12px;
+margin:22px 0 10px;border:none;cursor:pointer;}
+.btn:hover{background:#1d55e0;}
+.btn.ghost{background:transparent;color:#8FA3C8;border:1px solid #26324d;font-weight:500;font-size:15px;padding:13px;}
+.btn.ghost:hover{background:#0e1424;color:#E6ECFF;}
+.credit{font-size:13px;color:#7286A8;white-space:pre-wrap;margin-top:8px;}
+.foot{margin-top:34px;font-size:13px;color:#5C6D8C;text-align:center;}
+a.plain{color:#6FA0FF;}
+`;
+
+function codePage(title, bodyHtml) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title><style>${CODE_PAGE_CSS}</style></head>
+<body><div class="wrap">${bodyHtml}</div></body></html>`;
+}
+
+// ---- ১. মূল পাতা: ডেসক্রিপশনের লিংক এখানেই আসে ----
+app.get('/code/:setNo', (req, res) => {
+  const n = parseInt(req.params.setNo, 10);
+  if (!n || n < 1 || n > 5000) return res.status(404).send('Unknown set');
+  const c = codeEntry(n);
+  // টাকা দেওয়ার পর ?dl=1 নিয়ে ফিরে আসে — তখন ডাউনলোড নিজে থেকেই শুরু হয়
+  const auto = req.query.dl === '1' && c.zipUrl
+    ? `<script>setTimeout(function(){location.href="/code/${c.id}/zip";},700);</script>
+       <div class="card">ধন্যবাদ! ডাউনলোড শুরু হচ্ছে… না হলে
+       <a class="plain" href="/code/${c.id}/zip">এখানে চাপুন</a>।</div>`
+    : '';
+  res.type('html').send(codePage(c.appName + ' — source code', `
+<h1>${esc(c.appName)}</h1>
+<p class="sub">Set ${c.id} &middot; built live on Code Knowledge${c.stack ? ' &middot; ' + esc(c.stack) : ''}</p>
+${auto}
+<div class="card">
+  <b>What you get</b>
+  <p style="margin:8px 0 0;color:#9FB2D4;">The complete project exactly as it was typed on stream —
+  all nine screens, the shared components and the service layer. No paid packages, no hidden setup.</p>
+</div>
+<a class="btn" href="/code/${c.id}/get">⬇ Download the code (free)</a>
+<div class="card">
+  <b>Five steps to run it</b>
+  <ol>
+    <li>Download and unzip the folder.</li>
+    <li>Open a terminal inside it.</li>
+    <li>Run <code>npm install</code> and wait for it to finish.</li>
+    <li>Run <code>npm start</code>.</li>
+    <li>Open the address it prints — the app is running.</li>
+  </ol>
+</div>
+${c.credits ? `<div class="card"><b>Credits &amp; licences</b><div class="credit">${esc(c.credits)}</div></div>` : ''}
+<p class="foot">Every session on the channel has its own page like this one.</p>
+`));
+});
+
+// ---- ২. টিপস উইন্ডো — চাইলে দেবেন, না চাইলে Skip ----
+// জোর করা হয় না, দেয়াল তোলা হয় না। Skip বোতামটা সমান স্পষ্ট, কারণ
+// ডাউনলোড আটকে রাখলে দর্শক ফিরে আসে না — আর ওই ফিরে আসাটাই আসল সম্পদ।
+app.get('/code/:setNo/get', (req, res) => {
+  const n = parseInt(req.params.setNo, 10);
+  if (!n || n < 1 || n > 5000) return res.status(404).send('Unknown set');
+  const c = codeEntry(n);
+  if (!c.zipUrl) return res.status(503).type('html').send(codePage('Not ready yet',
+    `<h1>Almost ready</h1><p class="sub">This session's download link is still being prepared. Please check back a little later.</p>`));
+  // ফেরার ঠিকানায় ?dl=1 — টাকা দেওয়ার পর দর্শক এই পাতাতেই ফেরে আর
+  // ডাউনলোডটা নিজে থেকে শুরু হয়ে যায়। টাকার অঙ্ক বাছাই /pay পাতাতেই আছে
+  // (₹9 থেকে), তাই এখানে আর আলাদা অঙ্ক দেখানো হচ্ছে না — এক জায়গাতেই থাক।
+  const back = encodeURIComponent('/code/' + c.id + '?dl=1');
+  res.type('html').send(codePage('Download — ' + c.appName, `
+<h1>It's yours, free</h1>
+<p class="sub">${esc(c.appName)} &middot; Set ${c.id}</p>
+<div class="card">
+  <p style="margin:0;color:#9FB2D4;">Nothing is locked and nothing is required. If the session was
+  useful and you feel like putting something back in, it helps keep the next one being made.
+  Skipping is completely fine &mdash; the file is the same either way.</p>
+</div>
+<a class="btn" href="/pay/codelive?ret=${back}">💛 Leave a tip, then download</a>
+<a class="btn ghost" href="/code/${c.id}/zip">Skip &mdash; just download</a>
+<p class="foot"><a class="plain" href="/code/${c.id}">Back to the session page</a></p>
+`));
+});
+
+// ---- ৩. আসল ফাইলে পাঠানো ----
+app.get('/code/:setNo/zip', (req, res) => {
+  const n = parseInt(req.params.setNo, 10);
+  if (!n || n < 1 || n > 5000) return res.status(404).send('Unknown set');
+  const c = codeEntry(n);
+  if (!c.zipUrl) return res.status(503).send('Download link not configured yet.');
+  res.redirect(302, c.zipUrl);
+});
+
+// ---- ৪. ডেসক্রিপশনের লেখাটা তৈরি করে দেওয়া ----
+// controller.js এটাই টেনে নিয়ে YouTube ডেসক্রিপশনের নিচে জুড়ে দেবে, ফলে
+// ZIP লিংক আর মিউজিকের ক্রেডিট দুটোই এক জায়গা থেকে আসে — হাতে লিখতে হয় না।
+app.get('/code/:setNo/description.txt', (req, res) => {
+  const n = parseInt(req.params.setNo, 10);
+  if (!n || n < 1 || n > 5000) return res.status(404).send('Unknown set');
+  const c = codeEntry(n);
+  const link = `${PUBLIC_BASE_URL}/code/${c.id}`;
+  const lines = [
+    `📦 FULL SOURCE CODE (free): ${link}`,
+    '',
+    'HOW TO RUN IT',
+    '1. Download and unzip the folder',
+    '2. Open a terminal inside it',
+    '3. npm install',
+    '4. npm start',
+    '5. Open the address it prints',
+    ''
+  ];
+  if (c.credits) lines.push('MUSIC & LICENCES', c.credits, '');
+  res.type('text/plain; charset=utf-8').send(lines.join('\n'));
+});
+
 // NOTE: the /gateway-settings page and its toggle endpoint are registered
 // further below, right after requireDashboardAuth is defined (they need
 // that middleware to exist first).
