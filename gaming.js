@@ -3681,11 +3681,11 @@ ${CELEBRATION_HTML}
   <form id="bgSettingsForm">
     <label>Music link (copyright-free MP3/audio URL — leave blank for no music)</label>
     <input type="text" id="bgMusicUrlInput" placeholder="https://...mp3">
-    <label>Volume — <span id="volLabel">15%</span></label>
-    <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.15">
-    <label>Your own recorded commentary audio links (one URL per line — cycles through them)</label>
+    <label>Volume — <span id="volLabel">25%</span></label>
+    <input type="range" id="bgMusicVolumeInput" min="0" max="1" step="0.05" value="0.25">
+    <label>Commentary clips (one URL per line, in order 01–10 — leave blank to use the laptop folder)</label>
     <textarea id="commentaryUrlsInput" placeholder="https://example.com/commentary1.mp3"></textarea>
-    <label>Seconds between commentary clips (example: 90 = every 1.5 minutes)</label>
+    <label>Seconds between clips — <b>no longer used</b>; each clip now has its own place in the stream (opening at the start, closing in the last 5 minutes)</label>
     <input type="number" id="loopIntervalInput" min="20" value="90">
     <label>Announcement voice (which voice reads out names and tips)</label>
     <select id="celebVoiceSelect"></select>
@@ -7376,15 +7376,166 @@ function applyVideo(el, url){
   el.src = url; el.load();
   el.play().catch(function(){});
 }
-function scheduleCommentary(intervalSec){
-  if (commentaryTimer) clearInterval(commentaryTimer);
-  if (!commentaryList.length) return;
-  commentaryTimer = setInterval(function(){
-    commentaryAudioEl.src = commentaryList[commentaryIdx % commentaryList.length];
-    commentaryAudioEl.play().catch(function(){});
-    commentaryIdx++;
-  }, Math.max(20, intervalSec) * 1000);
+/* =========================================================================
+   কমেন্ট্রি — ঘড়ি ধরে, ঘুরিয়ে নয়
+   -------------------------------------------------------------------------
+   আগে দশটা ক্লিপ ৯০ সেকেন্ড পরপর একটার পর একটা বাজত। ফল: "স্বাগত জানাচ্ছি,
+   আজ শুরু করছি" কথাটা স্ট্রিমের মাঝখানে বাজত, আর "আজকের মতো এখানেই শেষ"
+   কথাটা প্রথম দশ মিনিটেই বেজে যেত।
+
+   এখন প্রতিটা ক্লিপের নিজের সময় আছে। নিচের ছকটাই একমাত্র নিয়ম —
+     atMin    = স্ট্রিম শুরুর কত মিনিট পরে প্রথমবার
+     everyMin = তারপর কত মিনিট অন্তর ফিরে আসবে (না থাকলে একবারই)
+     lastMin  = শেষ কত মিনিটে (10-closing শুধু এখানেই)
+     prio     = একসাথে দুটো পাওনা হলে কোনটা আগে
+
+   শেষ পাঁচ মিনিটে closing ছাড়া আর কিছুই বাজে না, আর closing একবার বেজে
+   গেলে সেদিনের কমেন্ট্রি ওখানেই থামে।
+   ========================================================================= */
+var CLIP_PLAN = [
+  { key: "10-closing", lastMin: 5,                prio: 100 },
+  { key: "01-opening", atMin: 0,  everyMin: 20,   prio: 90 },
+  { key: "02-setup",   atMin: 3,                  prio: 80 },
+  { key: "03-screen1", atMin: 8,                  prio: 80 },
+  { key: "05-hard",    atMin: 45,                 prio: 70 },
+  { key: "09-money",   atMin: 55,                 prio: 70 },
+  { key: "06-styling", atMin: 70,                 prio: 70 },
+  { key: "07-errors",  atMin: 95,                 prio: 70 },
+  { key: "04-mid",     atMin: 30, everyMin: 30,   prio: 60 },
+  { key: "08-filler",  atMin: 15, everyMin: 12,   prio: 10 }
+];
+var MIN_GAP_MS = 45000;          // দুটো ক্লিপের মাঝে অন্তত এতটুকু চুপ
+
+var sessStart = Date.now();      // কিছু জানা না গেলে পাতা খোলার মুহূর্তই শুরু
+var sessPlannedMin = 150;
+var sessSetNo = 0;
+var mediaBase = "";
+var clipOverride = null;         // controller ইচ্ছে করলে সরাসরি ঠিকানা পাঠাতে পারে
+var playedAt = {}, closingDone = false, lastClipAt = 0, commentaryTick2 = null;
+
+var mq = new URLSearchParams(location.search);
+if (mq.get("mins"))  sessPlannedMin = Math.max(10, parseInt(mq.get("mins"), 10) || 150);
+if (mq.get("media")) mediaBase = mq.get("media").replace(/[/]+$/, "");
+if (mq.get("set"))   sessSetNo = parseInt(mq.get("set"), 10) || 0;
+
+function pad4(n){ var t = "000" + n; return t.slice(-4); }
+
+/* একটা ক্লিপের ঠিকানা তিন জায়গা থেকে আসতে পারে, এই ক্রমে:
+   ১. controller যা পাঠিয়েছে   ২. ল্যাপটপের ফোল্ডার   ৩. সেটিংসের তালিকা */
+function clipUrlFor(key){
+  if (clipOverride && clipOverride[key]) return clipOverride[key];
+  if (mediaBase && sessSetNo > 0)
+    return mediaBase + "/02-codelive/set-" + pad4(sessSetNo) + "/commentary/" + key + ".mp3";
+  var n = parseInt(key, 10);
+  if (commentaryList.length >= n && n > 0) return commentaryList[n - 1];
+  return "";
 }
+
+function commentaryDue(){
+  if (closingDone) return null;
+  var now = Date.now();
+  if (now - lastClipAt < MIN_GAP_MS) return null;
+  if (!commentaryAudioEl.paused && !commentaryAudioEl.ended) return null;
+
+  var elapsedMin = (now - sessStart) / 60000;
+  var remainMin  = sessPlannedMin - elapsedMin;
+  var best = null;
+
+  for (var i = 0; i < CLIP_PLAN.length; i++){
+    var p = CLIP_PLAN[i];
+    if (!clipUrlFor(p.key)) continue;
+
+    var due = false;
+    if (p.lastMin != null){
+      due = (remainMin <= p.lastMin) && (remainMin > -3) && !playedAt[p.key];
+    } else {
+      // শেষ পাঁচ মিনিট শুধু closing-এর — বাকি সব চুপ
+      if (remainMin <= 5) continue;
+      if (elapsedMin < p.atMin) continue;
+      if (!p.everyMin) due = !playedAt[p.key];
+      else due = !playedAt[p.key] || ((now - playedAt[p.key]) / 60000 >= p.everyMin);
+    }
+    if (due && (!best || p.prio > best.prio)) best = p;
+  }
+  return best;
+}
+
+function playClip(p){
+  var url = clipUrlFor(p.key);
+  if (!url) return;
+  playedAt[p.key] = Date.now();
+  if (p.lastMin != null) closingDone = true;
+  duckMusic(true);
+  commentaryAudioEl.src = url;
+  commentaryAudioEl.play().catch(function(){ lastClipAt = Date.now(); duckMusic(false); });
+}
+
+function commentaryStep(){
+  var p = commentaryDue();
+  if (p) playClip(p);
+}
+commentaryAudioEl.addEventListener("ended", function(){ lastClipAt = Date.now(); duckMusic(false); });
+commentaryAudioEl.addEventListener("error", function(){ lastClipAt = Date.now(); duckMusic(false); });
+if (commentaryTick2) clearInterval(commentaryTick2);
+commentaryTick2 = setInterval(commentaryStep, 5000);
+
+/* ---- কথা বলার সময় মিউজিক নামিয়ে দেওয়া ---------------------------------
+   কমেন্ট্রি চলাকালীন মিউজিক ২৫% থেকে ৭%-এ নেমে যায়, কথা শেষ হলে আবার ওঠে।
+   না করলে ২৫% মিউজিকও Brian-এর কণ্ঠের উপর চেপে বসে। */
+var musicVol = 0.25, duckTimer = null;
+function duckMusic(on){
+  var target = on ? Math.min(musicVol, 0.07) : musicVol;
+  if (duckTimer) clearInterval(duckTimer);
+  var steps = 10, k = 0;
+  var from = bgMusicEl.volume;
+  duckTimer = setInterval(function(){
+    k++;
+    bgMusicEl.volume = Math.max(0, Math.min(1, from + (target - from) * (k / steps)));
+    if (k >= steps){ bgMusicEl.volume = target; clearInterval(duckTimer); duckTimer = null; }
+  }, 50);
+}
+
+/* ---- ১০টা মিউজিক ঘুরিয়ে বাজানো ---------------------------------------- */
+var musicList = [], musicIdx = 0;
+function applyMusicList(list){
+  musicList = list.filter(Boolean);
+  if (!musicList.length){ bgMusicEl.loop = true; return; }
+  bgMusicEl.loop = musicList.length === 1;
+  // প্রতিটা সেট আলাদা গান দিয়ে শুরু করে, তাই পরপর দুদিন একই সুর শোনা যায় না
+  musicIdx = sessSetNo > 0 ? (sessSetNo % musicList.length) : 0;
+  if (bgMusicEl.getAttribute("src") !== musicList[musicIdx]){
+    bgMusicEl.src = musicList[musicIdx];
+    bgMusicEl.volume = musicVol;
+    bgMusicEl.play().catch(function(){});
+  }
+}
+bgMusicEl.addEventListener("ended", function(){
+  if (musicList.length < 2) return;
+  musicIdx = (musicIdx + 1) % musicList.length;
+  bgMusicEl.src = musicList[musicIdx];
+  bgMusicEl.play().catch(function(){});
+});
+
+/* ---- controller কী পাঠিয়েছে, প্রতি আধ মিনিটে দেখে নেওয়া ----------------- */
+function loadSession(){
+  fetch("/gaming/codelive/session").then(function(r){ return r.json(); }).then(function(sess){
+    if (!sess || !sess.active) return;
+    if (sess.startedAt && sess.startedAt !== sessStart){
+      // নতুন স্ট্রিম শুরু হয়েছে — সব হিসাব গোড়া থেকে
+      if (Math.abs(sess.startedAt - sessStart) > 60000){ playedAt = {}; closingDone = false; }
+      sessStart = sess.startedAt;
+    }
+    if (sess.plannedMinutes) sessPlannedMin = sess.plannedMinutes;
+    if (sess.setNo && !mq.get("set")) sessSetNo = sess.setNo;
+    if (sess.mediaBase && !mq.get("media")) mediaBase = sess.mediaBase;
+    if (sess.clips) clipOverride = sess.clips;
+    if (sess.musicUrls && sess.musicUrls.length) applyMusicList(sess.musicUrls);
+  }).catch(function(){});
+}
+loadSession(); setInterval(loadSession, 30000);
+
+// পুরনো নামটা রেখে দেওয়া হলো যাতে অন্য কোথাও ডাকা থাকলে কিছু ভাঙে না
+function scheduleCommentary(){ /* এখন সময়সূচি নিজেই চলে, আলাদা টাইমার লাগে না */ }
 function setIfNotTyping(id, value){
   var el = document.getElementById(id);
   if (document.activeElement !== el) el.value = value;
@@ -7394,20 +7545,20 @@ function loadConfig(){
     if (cfg.bgVideoUrl && cfg.bgVideoUrl !== lastBg){ lastBg = cfg.bgVideoUrl; applyVideo(bgVideoEl, cfg.bgVideoUrl); }
     if (cfg.camVideoUrl && cfg.camVideoUrl !== lastCam){ lastCam = cfg.camVideoUrl; applyVideo(camVideoEl, cfg.camVideoUrl); }
 
-    if (cfg.bgMusicUrl && cfg.bgMusicUrl !== lastMusicUrl){
+    // ১০টার তালিকা থাকলে সেটাই চলে; একটামাত্র লিংক দেওয়া থাকলে পুরনো নিয়মেই
+    if (!musicList.length && cfg.bgMusicUrl && cfg.bgMusicUrl !== lastMusicUrl){
       lastMusicUrl = cfg.bgMusicUrl;
       bgMusicEl.src = cfg.bgMusicUrl;
       bgMusicEl.play().catch(function(){}); // autoplay নীতির কারণে প্রথম ক্লিকের পর বাজবে
     }
-    bgMusicEl.volume = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    musicVol = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.25;
+    if (!duckTimer && (commentaryAudioEl.paused || commentaryAudioEl.ended)) bgMusicEl.volume = musicVol;
+    if (Array.isArray(cfg.musicUrls) && cfg.musicUrls.length) applyMusicList(cfg.musicUrls);
 
     var newList = Array.isArray(cfg.commentaryUrls) ? cfg.commentaryUrls : [];
-    if (JSON.stringify(newList) !== JSON.stringify(commentaryList)){
-      commentaryList = newList; commentaryIdx = 0;
-      scheduleCommentary(cfg.loopIntervalSec || 90);
-    }
+    if (JSON.stringify(newList) !== JSON.stringify(commentaryList)) commentaryList = newList;
 
-    var vol = typeof cfg.bgMusicVolume === "number" ? cfg.bgMusicVolume : 0.15;
+    var vol = musicVol;
     setIfNotTyping("bgMusicUrlInput", cfg.bgMusicUrl || "");
     document.getElementById("bgMusicVolumeInput").value = vol;
     document.getElementById("volLabel").textContent = Math.round(vol * 100) + "%";
@@ -7986,9 +8137,12 @@ module.exports = function mountGaming(app) {
   function readMindGameConfig(game) {
     let cfg;
     try { cfg = JSON.parse(fs.readFileSync(path.join(STATE_DIR, `${game}-config.json`), "utf-8")); }
-    catch (e) { cfg = { bgMusicUrl: "", bgMusicVolume: 0.15, commentaryUrls: [], loopIntervalSec: 90, bgVideoUrl: "", celebVoiceURI: "" }; }
+    catch (e) { cfg = { bgMusicUrl: "", bgMusicVolume: 0.25, commentaryUrls: [], loopIntervalSec: 90, bgVideoUrl: "", celebVoiceURI: "" }; }
     if (!cfg.bgVideoUrl) cfg.bgVideoUrl = ENV_BG_VIDEO[game] || "";
     if (!cfg.camVideoUrl) cfg.camVideoUrl = process.env.CODELIVE_CAM_VIDEO_URL || "";
+    // ২৫% — কথার নিচে মিউজিক শোনা যাবে, কিন্তু কণ্ঠ ঢাকবে না
+    if (typeof cfg.bgMusicVolume !== "number") cfg.bgMusicVolume = 0.25;
+    if (!Array.isArray(cfg.musicUrls)) cfg.musicUrls = [];
     return cfg;
   }
   function writeMindGameConfig(game, cfg) {
@@ -7999,8 +8153,10 @@ module.exports = function mountGaming(app) {
       const body = req.body || {};
       writeMindGameConfig(game, {
         bgMusicUrl: (body.bgMusicUrl || "").toString().slice(0, 500),
-        bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.15)),
+        bgMusicVolume: Math.max(0, Math.min(1, parseFloat(body.bgMusicVolume) || 0.25)),
         commentaryUrls: Array.isArray(body.commentaryUrls) ? body.commentaryUrls.slice(0, 20).map(s => (s || "").toString().slice(0, 500)) : [],
+        // ১০টা মিউজিক ঘুরিয়ে বাজানোর তালিকা — একটা শেষ হলে পরেরটা
+        musicUrls: Array.isArray(body.musicUrls) ? body.musicUrls.slice(0, 40).map(s => (s || "").toString().slice(0, 500)) : [],
         loopIntervalSec: Math.max(20, parseInt(body.loopIntervalSec, 10) || 90),
         bgVideoUrl: (body.bgVideoUrl || "").toString().slice(0, 500),
         camVideoUrl: (body.camVideoUrl || "").toString().slice(0, 500),
@@ -8016,6 +8172,64 @@ module.exports = function mountGaming(app) {
   app.post("/gaming/ballsort-config", express.json(), saveMindGameConfigRoute("ballsort"));
   app.get("/gaming/codelive-config", (req, res) => res.json(readMindGameConfig("codelive")));
   app.post("/gaming/codelive-config", express.json(), saveMindGameConfigRoute("codelive"));
+
+  /* ======================================================================
+     Code Live — আজকের সেশন (ল্যাপটপের controller এটা পাঠায়)
+     ----------------------------------------------------------------------
+     কমেন্ট্রির দশটা ক্লিপ "কখন" বাজবে সেটা ঘড়ি ধরে ঠিক হয় — ঘুরিয়ে ঘুরিয়ে নয়।
+     তার জন্য ওভারলেকে দুটো জিনিস জানতে হয়: স্ট্রিম কখন শুরু হয়েছে, আর কতক্ষণ
+     চলবে। ওই দুটোই এখানে জমা থাকে।
+
+     controller.js লাইভ শুরু করার সময় একবার পাঠাবে:
+
+       POST /gaming/codelive/session
+       { "key":"<CODELIVE_KEY>", "setNo":7, "appName":"ChatWave",
+         "plannedMinutes":150, "mediaBase":"http://localhost:8899",
+         "zipUrl":"https://.../set-0007.zip", "credits":"Music: ..." }
+
+     startedAt না পাঠালে "এখন" ধরা হয়। মুছতে: { "key":"...", "clear":true }
+
+     ⚠️ ওভারলে ?set= / ?mins= / ?media= দিয়েও চলতে পারে — অর্থাৎ controller
+     কিছু না পাঠালেও কমেন্ট্রি সময়মতোই বাজবে, শুধু ব্রাউজার-সোর্স খোলার
+     মুহূর্তটাকে শুরু ধরে নেবে।
+     ====================================================================== */
+  const CODELIVE_SESSION_FILE = path.join(STATE_DIR, "codelive-session.json");
+  const CODELIVE_KEY = process.env.CODELIVE_KEY || "";
+  function readCodeliveSession() {
+    try { return JSON.parse(fs.readFileSync(CODELIVE_SESSION_FILE, "utf-8")); }
+    catch (e) { return null; }
+  }
+  app.get("/gaming/codelive/session", (req, res) => {
+    const sess = readCodeliveSession();
+    if (!sess) return res.json({ active: false });
+    // অনেকক্ষণ আগের সেশন পড়ে থাকলে ওটা আর আজকের নয় — নিজে থেকেই বাতিল
+    const ageMin = (Date.now() - (sess.startedAt || 0)) / 60000;
+    if (ageMin > (sess.plannedMinutes || 150) + 120) return res.json({ active: false });
+    res.json(Object.assign({ active: true }, sess));
+  });
+  app.post("/gaming/codelive/session", express.json({ limit: "256kb" }), (req, res) => {
+    const b = req.body || {};
+    // CODELIVE_KEY সেট করা না থাকলে যেকেউ পাঠাতে পারবে না — শুধু একই মেশিন থেকে
+    if (CODELIVE_KEY && b.key !== CODELIVE_KEY) return res.status(403).json({ error: "bad key" });
+    if (b.clear) {
+      try { fs.unlinkSync(CODELIVE_SESSION_FILE); } catch (e) {}
+      return res.json({ ok: true, cleared: true });
+    }
+    const sess = {
+      setNo: parseInt(b.setNo, 10) || 0,
+      appName: (b.appName || "").toString().slice(0, 120),
+      startedAt: parseInt(b.startedAt, 10) || Date.now(),
+      plannedMinutes: Math.max(10, Math.min(600, parseInt(b.plannedMinutes, 10) || 150)),
+      mediaBase: (b.mediaBase || "").toString().replace(/\/+$/, "").slice(0, 300),
+      zipUrl: (b.zipUrl || "").toString().slice(0, 500),
+      credits: (b.credits || "").toString().slice(0, 4000),
+      clips: (b.clips && typeof b.clips === "object") ? b.clips : null,
+      musicUrls: Array.isArray(b.musicUrls) ? b.musicUrls.slice(0, 40).map(u => (u || "").toString().slice(0, 500)) : [],
+    };
+    try { fs.mkdirSync(STATE_DIR, { recursive: true }); } catch (e) {}
+    fs.writeFileSync(CODELIVE_SESSION_FILE, JSON.stringify(sess, null, 2));
+    res.json({ ok: true });
+  });
 
   // কুকি পড়া/লেখার জন্য হালকা helper — নতুন কোনো npm প্যাকেজ ছাড়াই
   function readCookie(req, name) {
