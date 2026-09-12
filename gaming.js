@@ -88,6 +88,14 @@ const GAMING_BUILD = (() => {
 const STATE_DIR = path.join(__dirname, ".gaming-state");
 if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 const AUDIO_DIR = path.join(STATE_DIR, "audio");
+
+/* ⚠️ ওভারলে এখন এখান থেকে অ্যাপ পায় — নিচের হাতে লেখা CODELIVE_APPS থেকে নয়।
+   ওই ২০টার তালিকা আর ব্যবহার হয় না; শুধু পুরনো লিংক না ভাঙার জন্য রাখা আছে।
+   overlay-app.js একই codegen.js ব্যবহার করে যেটা ZIP বানায়, তাই পর্দার কোড
+   আর ডাউনলোডের কোড সবসময় হুবহু এক থাকে। */
+let overlayApp = null;
+try { overlayApp = require("./overlay-app.js"); }
+catch (e) { console.error("overlay-app.js পাওয়া গেল না:", e.message); }
 if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
 
 function writeState(name, data) {
@@ -7286,7 +7294,11 @@ ${CELEBRATION_HTML}
 </div>
 
 <script>
-var APPS = ${JSON.stringify(CODELIVE_APPS)};
+var APPS = [];   /* ⚠️ ফাঁকা রাখা হচ্ছে — ইচ্ছে করেই।
+   আগে এখানে ২০টা অ্যাপ পুরোটা বসানো ছিল, তাই প্রতিবার পাতা খুললে ৩৪ KB
+   যেত। ১০০০টা বসালে ১.৭ MB যেত, প্রতি লোডে। এখন নিচের boot() শুধু
+   আজকের সেটটা সার্ভার থেকে চেয়ে নেয় — আর ওটা আসে ঠিক সেই codegen.js
+   থেকে যেটা ZIP বানায়, তাই পর্দা আর ডাউনলোড কখনো আলাদা হতে পারে না। */
 
 /* ---------------------------------------------------------------------------
    একদিনে একটাই সেটআপ — ?set=0..19
@@ -7297,25 +7309,15 @@ var APPS = ${JSON.stringify(CODELIVE_APPS)};
    আর ২০ দিনে একবার ফিরে আসে — মাঝে ভিডিও/মিউজিক বদলে দিলে বছরের পর বছর নিরাপদ।
    ?set= না দিলে আগের মতোই সব ঘুরে ঘুরে চলবে (পুরনো লিংক ভাঙবে না)। */
 var qs = new URLSearchParams(location.search);
-var SET_ID = qs.get("set");
-var SINGLE = null;
-if (SET_ID !== null && SET_ID !== "") {
-  var n = parseInt(SET_ID, 10);
-  if (!isNaN(n) && n >= 0 && n < APPS.length) SINGLE = n;
-  else {
-    // নাম দিয়েও বাছা যায়: ?set=chatwave
-    var byName = APPS.findIndex(function(a){
-      return a.name.toLowerCase() === String(SET_ID).toLowerCase();
-    });
-    if (byName >= 0) SINGLE = byName;
-  }
-}
+var SET_NO = parseInt(qs.get("set"), 10);
+if (!SET_NO || SET_NO < 1 || SET_NO > 1000) SET_NO = 1;
+var SINGLE = 0;   /* সবসময় একটাই অ্যাপ, তাই তালিকায় ঘর শূন্য */
 
 /* প্রতিটা সেটআপের নিজস্ব ব্যাকগ্রাউন্ড ও কোনার ভিডিও।
    ফাইলের নাম: codelive-bg-0.mp4 … codelive-bg-19.mp4
    ওই নামের ফাইল না থাকলে নিজে থেকেই সাধারণ codelive-bg.mp4 চলবে —
    তাই ২০টা ভিডিও একসাথে বানাতে হবে না, ধীরে ধীরে যোগ করলেই হবে। */
-(function pickVideos(){
+function pickVideos(){
   var v = document.getElementById("bgVideo");
   var c = document.getElementById("camVideo");
   var mainBg = "/game-assets/codelive-bg.mp4";
@@ -7328,12 +7330,12 @@ if (SET_ID !== null && SET_ID !== "") {
      ক্রম বদলালেও ভিডিও ঠিক জায়গাতেই থাকবে।
      খোঁজার ক্রম: নাম → নম্বর → সাধারণ। যেটা প্রথমে পাওয়া যায় সেটাই চলে,
      তাই ২০টা ভিডিও একসাথে বানাতে হবে না। */
-  var appName = (APPS[SINGLE].name || "").toLowerCase();
+  var appName = (APPS[SINGLE].name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   var tries = {
     bg:  ["/game-assets/codelive-bg-" + appName + ".mp4",
-          "/game-assets/codelive-bg-" + SINGLE + ".mp4", mainBg],
+          "/game-assets/codelive-bg-" + SET_NO + ".mp4", mainBg],
     cam: ["/game-assets/codelive-cam-" + appName + ".mp4",
-          "/game-assets/codelive-cam-" + SINGLE + ".mp4", mainCam],
+          "/game-assets/codelive-cam-" + SET_NO + ".mp4", mainCam],
   };
 
   function tryNext(el, list, i){
@@ -7343,7 +7345,7 @@ if (SET_ID !== null && SET_ID !== "") {
   }
   tryNext(v, tries.bg, 0);
   tryNext(c, tries.cam, 0);
-})();
+}
 
 /* =========================================================================
    ভিডিও, মিউজিক ও কমেন্ট্রি
@@ -7862,8 +7864,30 @@ function tick(){
     }
   }, 700);
 }
-order = (SINGLE !== null) ? [SINGLE] : shuffled(APPS.length);
-startApp();
+/* ---------------------------------------------------------------------------
+   শুরু — আজকের সেটটা সার্ভার থেকে নিয়ে
+   ---------------------------------------------------------------------------
+   নেট এক মুহূর্তের জন্য না থাকলেও যেন স্ট্রিম ফাঁকা না পড়ে থাকে, তাই
+   ব্যর্থ হলে ৫ সেকেন্ড পরে আবার চেষ্টা করে — যতক্ষণ না পায়। */
+function boot(tries){
+  tries = tries || 0;
+  document.getElementById("statusText").textContent =
+    tries === 0 ? "Loading today's project…" : "Reconnecting… (" + tries + ")";
+  fetch("/gaming/codelive/app/" + SET_NO)
+    .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function(a){
+      if (!a || !a.screens || !a.screens.length) throw new Error("খালি উত্তর");
+      APPS = [a];
+      order = [0]; oi = 0;
+      pickVideos();
+      startApp();
+    })
+    .catch(function(e){
+      document.getElementById("statusText").textContent = "Could not load set " + SET_NO + " — retrying";
+      setTimeout(function(){ boot(tries + 1); }, 5000);
+    });
+}
+boot();
 
 /* Code Live-এ পাশে ডোনার প্যানেল নেই, তাই এই দুটো কিছুই করে না —
    কিন্তু সেলিব্রেশন কোডটা দুই গেমের সাথে হুবহু এক রাখতে এগুলো দরকার */
@@ -8170,6 +8194,21 @@ module.exports = function mountGaming(app) {
   app.post("/gaming/snake-config", express.json(), saveMindGameConfigRoute("snake"));
   app.get("/gaming/ballsort-config", (req, res) => res.json(readMindGameConfig("ballsort")));
   app.post("/gaming/ballsort-config", express.json(), saveMindGameConfigRoute("ballsort"));
+  /* একটা সেটের সব তথ্য — নাম, রং, নয়টা স্ক্রিন, আর প্রতিটার আসল কোড।
+     ওভারলে শুধু আজকের সেটটাই চায়, তাই পাতায় ~২০ KB যায়। আগে ২০টা অ্যাপ
+     পাতার ভেতরে বসানো ছিল (৩৪ KB); ১০০০টা বসালে হতো ১.৭ MB, প্রতিবার। */
+  app.get("/gaming/codelive/app/:setNo", (req, res) => {
+    if (!overlayApp) return res.status(500).json({ error: "overlay-app.js নেই" });
+    try {
+      const a = overlayApp.appForSet(req.params.setNo);
+      if (!a) return res.status(404).json({ error: "সেট নেই", max: overlayApp.count() });
+      res.set("Cache-Control", "public, max-age=3600");
+      res.json(a);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/gaming/codelive-config", (req, res) => res.json(readMindGameConfig("codelive")));
   app.post("/gaming/codelive-config", express.json(), saveMindGameConfigRoute("codelive"));
 
