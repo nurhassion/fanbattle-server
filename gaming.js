@@ -21,6 +21,7 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_CAMLEFT_V1 — কোনার ক্যামেরা বাঁদিকে, মোবাইল প্রিভিউ আর ঢাকা পড়ে না
 // MG_CODELIVE_BIG_V1 — কোডিং প্যানেল প্রায় পুরো পর্দা জুড়ে
 // MG_SHOWCASE_V1 — ফাঁকা বাক্সে আপনার রাখা নমুনা ছবি (EXAMPLE চিহ্নসহ)
 // MG_IDLEAUTO_V1 — চ্যালেঞ্জার এক মিনিট চুপ থাকলে ইঞ্জিন তার হয়ে চাল দেয়
@@ -7700,7 +7701,7 @@ font-family:ui-monospace,Menlo,Consolas,monospace;}
 /* ---- কোনার "কেউ বসে টাইপ করছে" বক্স ----
    ইউটিউব স্ট্রিমাররা ওয়েবক্যাম যেভাবে ডান-নিচের কোনায় রাখেন, ঠিক সেই চেহারা:
    ১৬:৯ ফ্রেম, হালকা সোনালি বর্ডার, উপরে লাল জ্বলজ্বলে LIVE ব্যাজ, নিচে নাম-প্লেট। */
-#camBox{position:fixed;right:20px;bottom:20px;width:264px;border-radius:14px;overflow:hidden;
+#camBox{position:fixed;left:20px;bottom:20px;width:300px;border-radius:14px;overflow:hidden;
 border:2px solid rgba(255,216,102,0.55);box-shadow:0 18px 44px rgba(0,0,0,0.75);
 background:#0c1020;z-index:5;}
 #camBox video{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;background:#0c1020;}
