@@ -21,6 +21,8 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_GAMINGLINK_V1 — /gaming → এখন যে খেলা লাইভ, তার লাইনে দাঁড়ানোর পাতা
+// MG_INVITE_V1 — ফাঁকা ছবির বাক্সে "Your photo here" আমন্ত্রণ
 // MG_ONEVOICE_V1 — মস্তিষ্ক চালু থাকলে ব্রাউজারের পুরনো কণ্ঠ চুপ
 // MG_SNAKEBRICKS_V1 — সাপের বোর্ডে ১০টা ইটের নকশা
 // MG_PLAYERVIDEO_V1 — কোনার ভিডিও, কালোর খাওয়া গুটি, মস্তিষ্কের মিউজিক
@@ -1055,6 +1057,11 @@ position:relative;min-height:0;background-size:cover;background-position:center;
 color:#0a0e1f;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;
 box-shadow:0 2px 8px rgba(0,0,0,0.5);z-index:2;}
 .tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.invite{position:absolute;inset:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,216,102,0.55);border-radius:12px;padding:8px;box-sizing:border-box;animation:invPulse 2.4s ease-in-out infinite;}
+.invite svg{width:42%;max-width:110px;height:auto;opacity:0.8;}
+.invite b{color:#FFD866;font-size:13px;font-weight:900;letter-spacing:0.3px;}
+.invite span{color:#B8C4D9;font-size:10.5px;line-height:1.3;}
+@keyframes invPulse{0%,100%{border-color:rgba(255,216,102,0.3);}50%{border-color:rgba(255,216,102,0.95);}}
 .tsPhoto .tsFallback{width:60%;height:60%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:900;
 font-size:34px;display:flex;align-items:center;justify-content:center;}
 .tsInfo{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#12172a;
@@ -1709,7 +1716,7 @@ async function poll(){try{
       '<div><b>#'+q.position+'</b> '+q.name+ (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹'+q.tipAmount+'</span>' : '') + '</div></div>'
     ).join("");
   } else {
-    document.getElementById("queueList").innerHTML = '<div style="font-size:11px;color:#5a6a8a;">No one in queue right now</div>';
+    document.getElementById("queueList").innerHTML = '<div style="font-size:11px;color:#5a6a8a;">No one in line yet. Join from the link in the description and your photo shows up here!</div>';
   }
 
   document.getElementById("moveCount").textContent=data.moves?(data.moves.length+" moves played"):"";
@@ -1821,7 +1828,7 @@ async function refreshRecentDonors(){
       '<div class="miniListRow">' +
       (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
       '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
-    ).join("") : '<div style="font-size:11px;color:#5a6a8a;">No tips yet</div>';
+    ).join("") : '<div style="font-size:11px;color:#5a6a8a;">No tips yet. Scan Help Me and your name shows up here first!</div>';
   } catch(e){}
 }
 safeInit("leftAltPanel", () => { refreshRecentDonors(); setInterval(refreshRecentDonors, 20000); setInterval(toggleAltPanel, 9000); }); // প্রতি ৯ সেকেন্ডে নিয়ম ↔ সাম্প্রতিক সাপোর্টার পালাক্রমে দেখাবে
@@ -1839,8 +1846,8 @@ function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
   if (!donor) {
-    photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="tsFallback">?</div>';
-    infoEl.innerHTML = '<span style="color:#5a6a8a;">No tips yet</span>';
+    photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>';
+    infoEl.innerHTML = '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>';
     return;
   }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' +
@@ -2021,6 +2028,26 @@ async function schedulerTick() {
 // ---------------------------------------------------------------------------
 // ৮ক. চ্যালেঞ্জ/queue পেজের HTML — join ফর্ম, status/queue-position, ও খেলার পেজ
 // ---------------------------------------------------------------------------
+// কোনো খেলা লাইভ না থাকলে (বা ওভারলে বন্ধ থাকলে) এই ছোট পাতাটা দেখানো হয়
+const GAME_PICK_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Play live — Mind Game</title>
+<style>
+ *{box-sizing:border-box} body{margin:0;background:#0a0e1f;color:#E8EEF9;font-family:system-ui,Segoe UI,Roboto,sans-serif;padding:22px;}
+ h1{font-size:20px;text-align:center;margin:6px 0 4px;color:#FFD866;}
+ p.sub{text-align:center;color:#9fb0d4;font-size:13px;margin:0 0 18px;}
+ a.card{display:flex;align-items:center;gap:14px;background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:16px;margin:0 auto 12px;max-width:430px;text-decoration:none;color:inherit;}
+ a.card:active{background:#1d2440;}
+ .emoji{font-size:30px;} .t{font-weight:800;font-size:16px;} .d{color:#9fb0d4;font-size:12px;margin-top:2px;}
+ .go{margin-left:auto;color:#FFD866;font-weight:800;font-size:13px;}
+</style></head><body>
+<h1>🎮 Play live</h1>
+<p class="sub">Pick the game you want to play. Your name and photo appear on the live stream.</p>
+<a class="card" href="/gaming/challenge/join"><span class="emoji">♟️</span><span><span class="t">Chess Battle</span><span class="d">Challenge the Grandmaster</span></span><span class="go">JOIN →</span></a>
+<a class="card" href="/gaming/challenge/snake"><span class="emoji">🐍</span><span><span class="t">Snake</span><span class="d">Beat the high score</span></span><span class="go">JOIN →</span></a>
+<a class="card" href="/gaming/challenge/ballsort"><span class="emoji">🧪</span><span><span class="t">Ball Sort Puzzle</span><span class="d">Solve it faster</span></span><span class="go">JOIN →</span></a>
+</body></html>`;
+
 const SERVICE_WORKER_JS = `
 self.addEventListener('push', function (event) {
   let data = {};
@@ -3922,6 +3949,11 @@ border:1px solid #2a3352;border-radius:14px;overflow:hidden;}
 .tsRank{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:#FFD866;
 color:#0a0e1f;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center;z-index:2;}
 .tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.invite{position:absolute;inset:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,216,102,0.55);border-radius:12px;padding:8px;box-sizing:border-box;animation:invPulse 2.4s ease-in-out infinite;}
+.invite svg{width:42%;max-width:110px;height:auto;opacity:0.8;}
+.invite b{color:#FFD866;font-size:13px;font-weight:900;letter-spacing:0.3px;}
+.invite span{color:#B8C4D9;font-size:10.5px;line-height:1.3;}
+@keyframes invPulse{0%,100%{border-color:rgba(255,216,102,0.3);}50%{border-color:rgba(255,216,102,0.95);}}
 .tsPhoto .tsFallback{width:55%;height:55%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:900;
 font-size:24px;display:flex;align-items:center;justify-content:center;}
 .tsInfo{flex:1.5;display:flex;align-items:center;justify-content:center;background:#12172a;border-top:1px solid #2a3352;
@@ -3933,6 +3965,7 @@ font-size:10px;font-weight:700;color:#fff;padding:2px 4px;text-align:center;}
 display:flex;flex-direction:column;}
 #challengerPhotoWrap{flex:1;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;}
 #challengerPhotoWrap img{width:100%;height:100%;object-fit:cover;}
+#challengerPhotoWrap{position:relative;}
 #challengerPhotoWrap .cFallback{width:60%;height:60%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
 font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:center;}
 #challengerName{padding:6px;text-align:center;font-size:12px;font-weight:800;background:#12172a;border-top:1px solid #2a3352;}
@@ -3975,7 +4008,7 @@ ${CELEBRATION_HTML}
 <div class="liveFrame">
 <div class="sideCol">
   <div id="challengerBox">
-    <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
+    <div id="challengerPhotoWrap"><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div></div>
     <div id="challengerName">No one playing right now</div>
   </div>
   <div id="tipQrWrap">
@@ -3991,7 +4024,7 @@ ${CELEBRATION_HTML}
     </div>
     <div class="altView" id="queueView">
       <h3>⏳ Challenge Queue</h3>
-      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in line yet. Join from the link in the description and your photo shows up here!</div></div>
     </div>
     <div class="altView" id="howToView">
       <h3>🎮 Beat the Grandmaster</h3>
@@ -4058,7 +4091,7 @@ document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
-  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="tsFallback">?</div>'; infoEl.innerHTML = '<span style="color:#5a6a8a;">No tips yet</span>'; return; }
+  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'; infoEl.innerHTML = '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'; return; }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
   infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
 }
@@ -4071,7 +4104,7 @@ async function refreshRecentDonors(){
     document.getElementById("recentDonorList").innerHTML = list.length ? list.map(d =>
       '<div class="miniListRow">' + (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
       '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
-    ).join("") : '<div style="font-size:10px;color:#5a6a8a;">No tips yet</div>'; } catch(e){}
+    ).join("") : '<div style="font-size:10px;color:#5a6a8a;">No tips yet. Scan Help Me and your name shows up here first!</div>'; } catch(e){}
 }
 refreshTopDonors(); refreshRecentDonors();
 setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
@@ -4102,7 +4135,7 @@ function refreshChallengeQueue(){
         : '<div class="cFallback">' + ((np.name && np.name[0]) || "?") + '</div>';
       nameEl.innerHTML = np.name + (np.tipAmount ? ' <span style="color:#FFD866;">₹' + np.tipAmount + '</span>' : '');
     } else {
-      wrap.innerHTML = '<div class="cFallback">?</div>';
+      wrap.innerHTML = '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div>';
       nameEl.textContent = "No one playing right now";
     }
     var list = d.queue || [];
@@ -4115,7 +4148,7 @@ function refreshChallengeQueue(){
             (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹' + q.tipAmount + '</span>' : '') +
             '</div></div>';
         }).join("")
-      : '<div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div>';
+      : '<div style="font-size:10px;color:#5a6a8a;">No one in line yet. Join from the link in the description and your photo shows up here!</div>';
   }).catch(function(){});
 }
 refreshChallengeQueue();
@@ -4921,6 +4954,11 @@ border:1px solid #2a3352;border-radius:14px;overflow:hidden;}
 .tsRank{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:#FFD866;
 color:#0a0e1f;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center;z-index:2;}
 .tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.invite{position:absolute;inset:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,216,102,0.55);border-radius:12px;padding:8px;box-sizing:border-box;animation:invPulse 2.4s ease-in-out infinite;}
+.invite svg{width:42%;max-width:110px;height:auto;opacity:0.8;}
+.invite b{color:#FFD866;font-size:13px;font-weight:900;letter-spacing:0.3px;}
+.invite span{color:#B8C4D9;font-size:10.5px;line-height:1.3;}
+@keyframes invPulse{0%,100%{border-color:rgba(255,216,102,0.3);}50%{border-color:rgba(255,216,102,0.95);}}
 .tsPhoto .tsFallback{width:55%;height:55%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;font-weight:900;
 font-size:24px;display:flex;align-items:center;justify-content:center;}
 .tsInfo{flex:1.5;display:flex;align-items:center;justify-content:center;background:#12172a;border-top:1px solid #2a3352;
@@ -4931,6 +4969,7 @@ font-size:10px;font-weight:700;color:#fff;padding:2px 4px;text-align:center;}
 display:flex;flex-direction:column;}
 #challengerPhotoWrap{flex:1;background:#0a0e1f;display:flex;align-items:center;justify-content:center;overflow:hidden;}
 #challengerPhotoWrap img{width:100%;height:100%;object-fit:cover;}
+#challengerPhotoWrap{position:relative;}
 #challengerPhotoWrap .cFallback{width:60%;height:60%;border-radius:50%;background:#4FC3F7;color:#0a0e1f;
 font-weight:900;font-size:30px;display:flex;align-items:center;justify-content:center;}
 #challengerName{padding:6px;text-align:center;font-size:12px;font-weight:800;background:#12172a;border-top:1px solid #2a3352;}
@@ -4972,7 +5011,7 @@ ${CELEBRATION_HTML}
 <div class="liveFrame">
 <div class="sideCol">
   <div id="challengerBox">
-    <div id="challengerPhotoWrap"><div class="cFallback">?</div></div>
+    <div id="challengerPhotoWrap"><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div></div>
     <div id="challengerName">No one playing right now</div>
   </div>
   <div id="tipQrWrap">
@@ -4988,7 +5027,7 @@ ${CELEBRATION_HTML}
     </div>
     <div class="altView" id="queueView">
       <h3>⏳ Challenge Queue</h3>
-      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div></div>
+      <div id="queueList"><div style="font-size:10px;color:#5a6a8a;">No one in line yet. Join from the link in the description and your photo shows up here!</div></div>
     </div>
     <div class="altView" id="howToView">
       <h3>🎮 Beat the Grandmaster</h3>
@@ -5044,7 +5083,7 @@ document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
-  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="tsFallback">?</div>'; infoEl.innerHTML = '<span style="color:#5a6a8a;">No tips yet</span>'; return; }
+  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'; infoEl.innerHTML = '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'; return; }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
   infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
 }
@@ -5057,7 +5096,7 @@ async function refreshRecentDonors(){
     document.getElementById("recentDonorList").innerHTML = list.length ? list.map(d =>
       '<div class="miniListRow">' + (d.photo ? '<img class="miniAvatar" src="'+d.photo+'">' : '<div class="miniAvatarFallback">'+(d.name[0]||"?")+'</div>') +
       '<div>'+d.name+' <span style="color:#FFD866;font-weight:700;">₹'+Math.round(d.amount)+'</span></div></div>'
-    ).join("") : '<div style="font-size:10px;color:#5a6a8a;">No tips yet</div>'; } catch(e){}
+    ).join("") : '<div style="font-size:10px;color:#5a6a8a;">No tips yet. Scan Help Me and your name shows up here first!</div>'; } catch(e){}
 }
 refreshTopDonors(); refreshRecentDonors();
 setInterval(refreshTopDonors, 20000); setInterval(refreshRecentDonors, 20000);
@@ -5088,7 +5127,7 @@ function refreshChallengeQueue(){
         : '<div class="cFallback">' + ((np.name && np.name[0]) || "?") + '</div>';
       nameEl.innerHTML = np.name + (np.tipAmount ? ' <span style="color:#FFD866;">₹' + np.tipAmount + '</span>' : '');
     } else {
-      wrap.innerHTML = '<div class="cFallback">?</div>';
+      wrap.innerHTML = '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div>';
       nameEl.textContent = "No one playing right now";
     }
     var list = d.queue || [];
@@ -5101,7 +5140,7 @@ function refreshChallengeQueue(){
             (q.tipAmount ? ' <span style="color:#FFD866;font-weight:700;">₹' + q.tipAmount + '</span>' : '') +
             '</div></div>';
         }).join("")
-      : '<div style="font-size:10px;color:#5a6a8a;">No one in queue right now</div>';
+      : '<div style="font-size:10px;color:#5a6a8a;">No one in line yet. Join from the link in the description and your photo shows up here!</div>';
   }).catch(function(){});
 }
 refreshChallengeQueue();
@@ -8401,6 +8440,27 @@ module.exports = function mountGaming(app) {
   });
 
   try {
+  // কোন খেলা এখন লাইভ — OBS-এর ওভারলে পাতা প্রতি সেকেন্ডে নিজের খেলার state চায়,
+  // তাই Referer দেখে বোঝা যায় এই মুহূর্তে কোন খেলার ওভারলে খোলা আছে।
+  const overlaySeen = { chess: 0, snake: 0, ballsort: 0 };
+  app.use("/gaming/state", (req, res, next) => {
+    const m = /\/gaming\/overlay\/(chess|snake|ballsort)/.exec(req.get("referer") || "");
+    if (m) overlaySeen[m[1]] = Date.now();
+    next();
+  });
+  const CHALLENGE_PAGE = { chess: "/gaming/challenge/join", snake: "/gaming/challenge/snake", ballsort: "/gaming/challenge/ballsort" };
+  function liveGame(){
+    let best = null, t = 0;
+    for (const g of Object.keys(overlaySeen)) if (overlaySeen[g] > t) { t = overlaySeen[g]; best = g; }
+    return (best && Date.now() - t < 120000) ? best : null;    // ২ মিনিটের মধ্যে দেখা গেলে সেটাই লাইভ
+  }
+  // পিন করা কমেন্টের লিংক এখানেই আসে — সোজা এখন চলতি খেলার লাইনে পাঠিয়ে দেওয়া হয়
+  app.get("/gaming", (req, res) => {
+    const g = liveGame();
+    if (g) return res.redirect(302, CHALLENGE_PAGE[g]);
+    res.type("html").send(GAME_PICK_HTML);
+  });
+  app.get("/gaming/live-game", (req, res) => res.json({ game: liveGame(), seen: overlaySeen }));
   app.use("/gaming/state", express.static(STATE_DIR));
   app.use("/gaming/audio", express.static(AUDIO_DIR));
   app.use("/gaming/uploads", express.static(CHALLENGE_UPLOAD_DIR));
