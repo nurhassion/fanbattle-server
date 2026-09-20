@@ -21,6 +21,9 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_CODELIVE_BIG_V1 — কোডিং প্যানেল প্রায় পুরো পর্দা জুড়ে
+// MG_SHOWCASE_V1 — ফাঁকা বাক্সে আপনার রাখা নমুনা ছবি (EXAMPLE চিহ্নসহ)
+// MG_IDLEAUTO_V1 — চ্যালেঞ্জার এক মিনিট চুপ থাকলে ইঞ্জিন তার হয়ে চাল দেয়
 // MG_GAMINGLINK_V1 — /gaming → এখন যে খেলা লাইভ, তার লাইনে দাঁড়ানোর পাতা
 // MG_INVITE_V1 — ফাঁকা ছবির বাক্সে "Your photo here" আমন্ত্রণ
 // MG_ONEVOICE_V1 — মস্তিষ্ক চালু থাকলে ব্রাউজারের পুরনো কণ্ঠ চুপ
@@ -182,6 +185,7 @@ let challengeQueue = []; // [{ id, name, photoUrl, joinedAt, lastNotifiedPositio
 // আর AI-এর খেলা যে অবস্থাতেই থাকুক সাথে সাথে থেমে গিয়ে তার খেলা শুরু হয়।
 let chessAbortAiGame = false;
 let activeChallenge = null; // { id, name, photoUrl, chess, lastHumanMoveAt }
+const CHALLENGE_IDLE_MS = 60000; // চ্যালেঞ্জার এতক্ষণ চাল না দিলে ইঞ্জিন তার হয়ে খেলবে
 const TIP_URL = process.env.CHALLENGE_TIP_URL || ""; // আপনার payment/tip লিংক, .env এ CHALLENGE_TIP_URL হিসেবে বসান
 
 function nextQueueId() {
@@ -617,13 +621,30 @@ async function playChallengeGame(Chess) {
     } else {
       const beforeFen = chess.fen();
       const turnDeadline = turnStart + blackMs; // মানুষের নিজের বাকি ক্লক-টাইমই এখানে deadline
+      // ⏳ চ্যালেঞ্জার এক মিনিট চুপ থাকলে খেলা থেমে থাকে না — ইঞ্জিন তার হয়ে একটা চাল দেয়,
+      // যাতে দর্শক ফাঁকা বোর্ডের দিকে তাকিয়ে না থাকে। সে ফিরে এসে চাল দিলেই আবার তার হাতে।
+      const idleDeadline = turnStart + CHALLENGE_IDLE_MS;
+      const waitUntil = Math.min(turnDeadline, idleDeadline);
       let lastTickWrite = 0;
-      while (Date.now() < turnDeadline && chess.fen() === beforeFen && chessLoopActive) {
+      while (Date.now() < waitUntil && chess.fen() === beforeFen && chessLoopActive) {
         await sleep(400);
         const elapsed = Date.now() - turnStart;
         state.blackMs = Math.max(0, blackMs - elapsed);
         // প্রতি ~সেকেন্ডে একবার state লেখা যথেষ্ট — প্রতি 400ms-এ লিখলে অপ্রয়োজনীয় I/O বাড়বে
         if (Date.now() - lastTickWrite > 900) { writeState("chess", state); if (activeChallenge) activeChallenge.blackMs = state.blackMs; lastTickWrite = Date.now(); }
+      }
+      if (chess.fen() === beforeFen && Date.now() < turnDeadline && chessLoopActive) {
+        // এক মিনিট কোনো চাল আসেনি — ইঞ্জিন তার হয়ে চাল দিচ্ছে (ক্লক চলতেই থাকে)
+        const auto = await getCandidateMoves(engine, chess.fen(), 700);
+        const pick = auto && (auto.bestmove || (auto.candidates && auto.candidates[0] && auto.candidates[0].move));
+        if (pick) {
+          const amv = chess.move(pick, { sloppy: true });
+          if (amv) {
+            state.autoPlay = true;                       // ওভারলেতে ছোট করে দেখানো হয়
+            if (activeChallenge) activeChallenge.autoPlay = true;
+            console.log(`[chess] ${challenger.name} চুপ — ইঞ্জিন তার হয়ে চাল দিল (${amv.san})`);
+          }
+        }
       }
       if (chess.fen() === beforeFen) {
         // ⏱️ ক্লক শেষ — এখন আর random চাল অটো-খেলে দেওয়া হয় না, বরং টাইম-আউটে সরাসরি হার,
@@ -632,6 +653,10 @@ async function playChallengeGame(Chess) {
         timedOutSide = "b";
         break;
       } else {
+        if (activeChallenge && activeChallenge.lastHumanMoveAt > turnStart) {
+          state.autoPlay = false;                        // সে ফিরে এসেছে — আবার তার নিজের খেলা
+          activeChallenge.autoPlay = false;
+        }
         blackMs = Math.max(0, blackMs - (Date.now() - turnStart));
         // মানুষ চাল দেওয়ার পরেও বারটা নড়বে — আগে শুধু সাদার চালেই বদলাত, তাই মনে হতো
         // বারটা আটকে আছে বা কাজ করছে না
@@ -1023,6 +1048,7 @@ font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid
 #whiteCard.hasVideo .avatar{display:none;}
 #whiteCard.hasVideo .captured{font-size:16px;letter-spacing:1px;line-height:1.35;word-break:break-all;}
 /* কালোর কার্ডে নামের নিচে তার খাওয়া গুটি */
+.autoTag{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:6px;background:rgba(255,216,102,0.16);border:1px solid rgba(255,216,102,0.5);color:#FFD866;font-size:9.5px;font-weight:800;letter-spacing:0.3px;}
 .bigInfoFooter .captured.blackCap{margin-top:3px;min-height:17px;font-size:14px;letter-spacing:1px;line-height:1.2;}
 /* দাবার ক্লক — ১০ মিনিট, চলমান turn-এর পক্ষটার ক্লক হাইলাইট থাকে, ১ মিনিটের নিচে লাল হয়ে সতর্ক করে */
 .clockDisplay{margin-top:6px;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;
@@ -1057,6 +1083,9 @@ position:relative;min-height:0;background-size:cover;background-position:center;
 color:#0a0e1f;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;
 box-shadow:0 2px 8px rgba(0,0,0,0.5);z-index:2;}
 .tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.exWrap{position:absolute;inset:0;}
+.exWrap img{width:100%;height:100%;object-fit:cover;display:block;}
+.exTag{position:absolute;left:5px;bottom:5px;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.35);color:#E8EEF9;font-size:8.5px;font-weight:800;letter-spacing:0.6px;}
 .invite{position:absolute;inset:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,216,102,0.55);border-radius:12px;padding:8px;box-sizing:border-box;animation:invPulse 2.4s ease-in-out infinite;}
 .invite svg{width:42%;max-width:110px;height:auto;opacity:0.8;}
 .invite b{color:#FFD866;font-size:13px;font-weight:900;letter-spacing:0.3px;}
@@ -1236,6 +1265,7 @@ transition:opacity 1.2s ease;}
       <div class="bigPhotoWrap" id="blackPhotoWrap"><div class="avatarFallbackBig" id="blackAvatarFallback">?</div></div>
       <div class="bigInfoFooter">
         <div class="pName" id="blackName">—</div>
+        <div class="autoTag" id="autoTag" style="display:none;">⏳ auto-play</div>
         <div class="captured blackCap" id="capturedByBlack"></div>
         <div class="clockDisplay" id="blackClock" style="display:none;">10:00</div>
       </div>
@@ -1693,6 +1723,20 @@ function playEndGameSound(isWin) {
   } catch (e) {}
 }
 
+
+/* আপনার রাখা নমুনা ছবি — StreamHub/05-common/showcase থেকে, প্রতিটায় EXAMPLE লেখা থাকে,
+   কোনো টাকার অঙ্ক দেখানো হয় না, আর আসল কেউ এলে সাথে সাথে আসলটাই জায়গা নেয় */
+function showcaseAt(i){
+  var a = window.MG_SHOWCASE || [];
+  if (!a.length || !window.MG_MEDIA_BASE) return null;
+  return a[i % a.length];
+}
+function showcaseHTML(i){
+  var it = showcaseAt(i);
+  if (!it) return null;
+  var url = window.MG_MEDIA_BASE + "/" + String(it.f).split("/").map(encodeURIComponent).join("/");
+  return '<div class="exWrap"><img src="' + url + '"><div class="exTag">EXAMPLE</div></div>';
+}
 function renderCaptured(el, pieces, glyphs) {
   if (!el) return;
   const g = glyphs || CAPTURED_GLYPH;
@@ -1741,6 +1785,8 @@ async function poll(){try{
   // (blackTipLine বাদ দেওয়া হয়েছে — blackCard এখন শুধু ছবি+নাম দেখায়, tip amount টপ-সাপোর্টার প্যানেলে দেখা যায়)
   renderCaptured(document.getElementById("capturedByWhite"), data.capturedByWhite);
   renderCaptured(document.getElementById("capturedByBlack"), data.capturedByBlack, CAPTURED_GLYPH_W);
+  const autoEl = document.getElementById("autoTag");
+  if (autoEl) autoEl.style.display = data.autoPlay ? "inline-block" : "none";
 
   document.getElementById("whiteCard").classList.toggle("active", data.fen && data.fen.includes(" w "));
   document.getElementById("blackCard").classList.toggle("active", data.fen && data.fen.includes(" b "));
@@ -1846,8 +1892,10 @@ function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
   if (!donor) {
-    photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>';
-    infoEl.innerHTML = '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>';
+    var sc = showcaseHTML(idx - 1);
+    photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (sc || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>');
+    infoEl.innerHTML = sc ? ('<span style="color:#9fb0d4;">' + (showcaseAt(idx - 1).n || '') + ' · example</span>')
+                          : '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>';
     return;
   }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' +
@@ -3699,12 +3747,15 @@ function liveCommentaryJS(gameKey) {
   });
 
   function enc(p){ return String(p).split("/").map(encodeURIComponent).join("/"); }
+  window.MG_MEDIA_BASE = MEDIA;
+  function pushShowcase(){ window.MG_SHOWCASE = (RTD && RTD.media && RTD.media.showcase) || []; }
 
   /* ---- মস্তিষ্কের তালিকা এলে: মিউজিক চালু + কোনার ভিডিও ---- */
   var pvEl = document.getElementById("pvVideo"), pvBox = document.getElementById("pvBox");
   var pvHost = pvBox ? pvBox.closest(".pvHost") : null;
   var pvList = [], pvIdx = 0, pvKey = "", pvFails = 0;
   function onMedia(){
+    pushShowcase();
     if (!window.MG_MUSIC_ON && musicList().length){ window.MG_LIVE_ON = true; started = true; startMusic(); }
     if (!pvEl) return;
     var list = (RTD && RTD.media && RTD.media.video) || [];
@@ -3949,6 +4000,9 @@ border:1px solid #2a3352;border-radius:14px;overflow:hidden;}
 .tsRank{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:#FFD866;
 color:#0a0e1f;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center;z-index:2;}
 .tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.exWrap{position:absolute;inset:0;}
+.exWrap img{width:100%;height:100%;object-fit:cover;display:block;}
+.exTag{position:absolute;left:5px;bottom:5px;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.35);color:#E8EEF9;font-size:8.5px;font-weight:800;letter-spacing:0.6px;}
 .invite{position:absolute;inset:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,216,102,0.55);border-radius:12px;padding:8px;box-sizing:border-box;animation:invPulse 2.4s ease-in-out infinite;}
 .invite svg{width:42%;max-width:110px;height:auto;opacity:0.8;}
 .invite b{color:#FFD866;font-size:13px;font-weight:900;letter-spacing:0.3px;}
@@ -4088,10 +4142,21 @@ window.addEventListener("error", (e) => {
 });
 // ---------- QR/Help Me + টপ ৩ সাপোর্টার + সাম্প্রতিক সাপোর্টার (স্থায়ী তালিকা) ----------
 document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(location.origin + "/pay/snake");
+function showcaseAt(i){
+  var a = window.MG_SHOWCASE || [];
+  if (!a.length || !window.MG_MEDIA_BASE) return null;
+  return a[i % a.length];
+}
+function showcaseHTML(i){
+  var it = showcaseAt(i);
+  if (!it) return null;
+  var url = window.MG_MEDIA_BASE + "/" + String(it.f).split("/").map(encodeURIComponent).join("/");
+  return '<div class="exWrap"><img src="' + url + '"><div class="exTag">EXAMPLE</div></div>';
+}
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
-  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'; infoEl.innerHTML = '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'; return; }
+  if (!donor) { var sc = showcaseHTML(idx - 1); photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (sc || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'); infoEl.innerHTML = sc ? ('<span style="color:#9fb0d4;">' + (showcaseAt(idx - 1).n || '') + ' · example</span>') : ('<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'); return; }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
   infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
 }
@@ -4135,7 +4200,8 @@ function refreshChallengeQueue(){
         : '<div class="cFallback">' + ((np.name && np.name[0]) || "?") + '</div>';
       nameEl.innerHTML = np.name + (np.tipAmount ? ' <span style="color:#FFD866;">₹' + np.tipAmount + '</span>' : '');
     } else {
-      wrap.innerHTML = '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div>';
+      var scp = showcaseHTML(0);
+      wrap.innerHTML = scp || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div>';
       nameEl.textContent = "No one playing right now";
     }
     var list = d.queue || [];
@@ -4954,6 +5020,9 @@ border:1px solid #2a3352;border-radius:14px;overflow:hidden;}
 .tsRank{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:#FFD866;
 color:#0a0e1f;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center;z-index:2;}
 .tsPhoto img{width:100%;height:100%;object-fit:cover;}
+.exWrap{position:absolute;inset:0;}
+.exWrap img{width:100%;height:100%;object-fit:cover;display:block;}
+.exTag{position:absolute;left:5px;bottom:5px;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.35);color:#E8EEF9;font-size:8.5px;font-weight:800;letter-spacing:0.6px;}
 .invite{position:absolute;inset:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,216,102,0.55);border-radius:12px;padding:8px;box-sizing:border-box;animation:invPulse 2.4s ease-in-out infinite;}
 .invite svg{width:42%;max-width:110px;height:auto;opacity:0.8;}
 .invite b{color:#FFD866;font-size:13px;font-weight:900;letter-spacing:0.3px;}
@@ -5080,10 +5149,21 @@ window.addEventListener("error", (e) => {
 });
 // ---------- QR/Help Me + টপ ৩ সাপোর্টার + সাম্প্রতিক সাপোর্টার (স্থায়ী তালিকা) ----------
 document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(location.origin + "/pay/ballsort");
+function showcaseAt(i){
+  var a = window.MG_SHOWCASE || [];
+  if (!a.length || !window.MG_MEDIA_BASE) return null;
+  return a[i % a.length];
+}
+function showcaseHTML(i){
+  var it = showcaseAt(i);
+  if (!it) return null;
+  var url = window.MG_MEDIA_BASE + "/" + String(it.f).split("/").map(encodeURIComponent).join("/");
+  return '<div class="exWrap"><img src="' + url + '"><div class="exTag">EXAMPLE</div></div>';
+}
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
-  if (!donor) { photoEl.innerHTML = '<div class="tsRank">' + idx + '</div><div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'; infoEl.innerHTML = '<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'; return; }
+  if (!donor) { var sc = showcaseHTML(idx - 1); photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (sc || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'); infoEl.innerHTML = sc ? ('<span style="color:#9fb0d4;">' + (showcaseAt(idx - 1).n || '') + ' · example</span>') : ('<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'); return; }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
   infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
 }
@@ -5127,7 +5207,8 @@ function refreshChallengeQueue(){
         : '<div class="cFallback">' + ((np.name && np.name[0]) || "?") + '</div>';
       nameEl.innerHTML = np.name + (np.tipAmount ? ' <span style="color:#FFD866;">₹' + np.tipAmount + '</span>' : '');
     } else {
-      wrap.innerHTML = '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div>';
+      var scp = showcaseHTML(0);
+      wrap.innerHTML = scp || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Play live: link in the description</span></div>';
       nameEl.textContent = "No one playing right now";
     }
     var list = d.queue || [];
@@ -7450,13 +7531,13 @@ min-height:100vh;padding:0;position:relative;}
 /* ---- ল্যাপটপ ---- */
 /* ল্যাপটপের চারপাশে ইচ্ছে করেই ফাঁকা জায়গা রাখা — ওই ফাঁকা অংশ দিয়েই পেছনের
    ভিডিওটা দেখা যায়। প্যাডিং বাড়ানোয় দুপাশে ও উপর-নিচে ভিডিও আরও বেশি দেখা যাবে। */
-.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:34px 48px;}
-.laptop{width:100%;max-width:1460px;}
+.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:12px 18px;}
+.laptop{width:100%;max-width:1880px;}
 .lid{background:linear-gradient(180deg,#2a2f42,#171a28);border-radius:16px 16px 4px 4px;
 padding:14px 14px 10px;box-shadow:0 30px 70px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.10);}
 .cam{width:6px;height:6px;border-radius:50%;background:#3D4562;margin:0 auto 9px;}
 .screen{background:#0c1020;border-radius:8px;overflow:hidden;border:1px solid #1e2540;
-display:flex;flex-direction:column;height:72vh;min-height:400px;}
+display:flex;flex-direction:column;height:90vh;min-height:520px;}
 .base{height:14px;background:linear-gradient(180deg,#20243a,#0e1120);border-radius:0 0 18px 18px;
 margin:0 auto;width:104%;max-width:none;position:relative;left:-2%;
 box-shadow:0 16px 30px rgba(0,0,0,0.6);}
@@ -7476,11 +7557,11 @@ padding:4px 11px;border-radius:20px;}
 .langChip{font-size:10px;color:#8FA3CC;border:1px solid #1e2540;border-radius:20px;padding:4px 10px;}
 
 /* ---- কাজের জায়গা ---- */
-.work{flex:1;display:grid;grid-template-columns:1fr 400px;min-height:0;}
+.work{flex:1;display:grid;grid-template-columns:1fr 440px;min-height:0;}
 .editor{display:flex;min-height:0;overflow:hidden;position:relative;background:#0c1020;}
-.gutter{padding:14px 10px 14px 16px;text-align:right;color:#33406b;font-size:13px;line-height:1.62;
+.gutter{padding:14px 10px 14px 16px;text-align:right;color:#33406b;font-size:14.5px;line-height:1.62;
 font-family:ui-monospace,Menlo,Consolas,monospace;user-select:none;flex-shrink:0;}
-.code{padding:14px 16px 14px 6px;font-size:13.5px;line-height:1.62;white-space:pre;flex:1;
+.code{padding:14px 16px 14px 6px;font-size:15px;line-height:1.62;white-space:pre;flex:1;
 font-family:ui-monospace,Menlo,Consolas,monospace;overflow:hidden;}
 .k{color:#C792EA;} .s{color:#C3E88D;} .c{color:#4A5578;font-style:italic;}
 .n{color:#F78C6C;} .f{color:#82AAFF;} .p{color:#89DDFF;}
@@ -7491,7 +7572,7 @@ animation:blink 1.05s step-end infinite;}
 /* ---- ফোন ---- */
 .side{border-left:1px solid #1e2540;background:#0a0d1a;display:flex;flex-direction:column;
 align-items:center;justify-content:center;gap:12px;padding:14px;min-height:0;}
-.phone{width:250px;height:100%;max-height:520px;background:#000;border-radius:32px;padding:9px;
+.phone{width:290px;height:100%;max-height:660px;background:#000;border-radius:32px;padding:9px;
 border:2px solid #262d47;box-shadow:0 22px 46px rgba(0,0,0,0.7);flex-shrink:1;}
 .pscreen{width:100%;height:100%;color:#141C2E;background:#F5F7FC;border-radius:24px;overflow:hidden;
 display:flex;flex-direction:column;position:relative;}
