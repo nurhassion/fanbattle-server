@@ -21,6 +21,7 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_SNAKEBRICKS_V1 — সাপের বোর্ডে ১০টা ইটের নকশা
 // MG_PLAYERVIDEO_V1 — কোনার ভিডিও, কালোর খাওয়া গুটি, মস্তিষ্কের মিউজিক
 const fs = require("fs");
 const path = require("path");
@@ -2995,6 +2996,11 @@ setInterval(poll, 1500); poll();
 // ৭.৫ — SNAKE GAME — AI নিজেই খেলে, ২৪/৭ দেখার জন্য satisfying/hypnotic লুপ
 // ---------------------------------------------------------------------------
 const SNAKE_COLS = 32, SNAKE_ROWS = 20;
+// সাপের বোর্ডে ইট — ১০টা নকশা, প্রতি গেম ওভারে পরেরটা। প্রতিটায় ৫-৬টা ছোট টুকরো, শুরুর জায়গা থেকে দূরে,
+// কোথাও বন্ধ খোপ তৈরি হয় না (সব খালি ঘর একে অপরের সাথে জোড়া)। [সারি, কলাম]
+const SNAKE_BRICKS_OVERLAY = [[[14,7],[15,7],[16,7],[17,7],[6,4],[6,5],[15,18],[16,18],[17,18],[4,16],[4,17],[4,18],[4,19],[4,24],[4,25],[4,26],[2,8],[3,8]],[[14,15],[14,16],[5,26],[6,26],[14,5],[15,5],[5,2],[5,3],[5,4],[14,20],[15,20],[16,20]],[[14,21],[14,22],[6,8],[6,9],[17,20],[17,21],[17,22],[17,23],[4,22],[5,22],[6,22],[9,21],[9,22],[9,23],[4,25],[5,25],[6,25]],[[5,3],[5,4],[5,5],[5,6],[14,10],[14,11],[14,12],[4,10],[4,11],[4,12],[5,25],[6,25],[7,25],[15,16],[15,17]],[[6,16],[6,17],[6,18],[2,2],[3,2],[4,2],[13,25],[14,25],[15,25],[16,4],[17,4],[2,29],[3,29],[4,29],[5,29]],[[3,4],[4,4],[16,15],[17,15],[3,18],[4,18],[5,18],[6,18],[7,23],[8,23],[9,23],[14,8],[15,8],[16,8],[17,8],[6,28],[7,28]],[[17,23],[17,24],[17,25],[17,26],[3,10],[3,11],[3,12],[3,13],[6,20],[7,20],[2,22],[2,23],[2,24],[6,27],[6,28],[6,29]],[[17,10],[17,11],[17,12],[14,17],[15,17],[16,17],[10,26],[10,27],[14,4],[14,5],[2,16],[3,16],[4,16]],[[9,2],[10,2],[11,2],[12,2],[3,15],[4,15],[5,15],[12,23],[12,24],[16,17],[16,18],[16,19],[6,19],[6,20],[6,21],[2,18],[3,18]],[[14,10],[14,11],[14,12],[14,13],[6,12],[6,13],[6,14],[15,21],[15,22],[15,23],[4,24],[5,24],[17,5],[17,6],[17,7],[3,29],[4,29],[5,29],[6,29]]];
+// দর্শকের ফোনের বোর্ড (১৫×২১) — আলাদা মাপ, তাই আলাদা নকশা
+const SNAKE_BRICKS_PLAYER = [[[3,3],[3,4],[3,10],[3,11],[3,12],[15,8],[15,9],[15,2],[15,3],[6,6],[7,6]],[[4,11],[5,11],[17,12],[18,12],[17,7],[17,8],[17,9],[4,3],[4,4],[4,5],[12,11],[13,11],[14,11]],[[13,2],[14,2],[5,9],[5,10],[14,9],[14,10],[14,11],[6,3],[7,3],[9,12],[10,12],[11,12]],[[5,9],[5,10],[2,4],[2,5],[2,6],[13,2],[13,3],[13,4],[13,7],[13,8],[13,9],[17,9],[17,10]],[[6,3],[6,4],[2,5],[2,6],[2,7],[2,10],[2,11],[2,12],[7,7],[7,8],[7,9],[12,12],[13,12]],[[14,5],[15,5],[16,5],[2,2],[2,3],[2,4],[8,11],[8,12],[17,11],[17,12]],[[13,12],[14,12],[5,8],[6,8],[14,3],[14,4],[14,5],[6,2],[6,3],[6,4]],[[14,12],[15,12],[16,12],[6,2],[6,3],[5,10],[6,10],[2,3],[3,3]],[[17,10],[18,10],[6,8],[7,8],[16,5],[17,5],[13,7],[13,8],[2,7],[3,7]],[[14,7],[15,7],[3,4],[3,5],[15,12],[16,12],[16,2],[17,2],[18,5],[18,6],[18,7]]];
 let snakeLoopActive = false;
 let snakeHighScoreState = readState("snake-highscore") || { score: 0, name: "Grandmaster" };
 let snakeHighScore = snakeHighScoreState.score || 0;
@@ -4265,17 +4271,41 @@ const _prevCell = new Int32Array(CELLS);
 const _queue = new Int32Array(CELLS);
 let _stamp = 0;
 const _DR = [-1, 1, 0, 0], _DC = [0, 0, -1, 1];
+// ইট — BFS/flood সব হিসেবে এগুলো সবসময় বাধা (markBlocked এখান থেকেই শুরু করে)
+const BRICK_LAYOUTS = ${JSON.stringify(SNAKE_BRICKS_OVERLAY)};
+const _wall = new Uint8Array(CELLS);
+let bricks = [], mirrorBricks = [];
+function nextBricks(){
+  let i = -1;
+  try { i = parseInt(localStorage.getItem("snakeBrickIdx") || "-1", 10); } catch (e) {}
+  if (isNaN(i)) i = -1;
+  i = (i + 1) % BRICK_LAYOUTS.length;
+  try { localStorage.setItem("snakeBrickIdx", String(i)); } catch (e) {}
+  bricks = BRICK_LAYOUTS[i].map(function(p){ return { r: p[0], c: p[1] }; });
+  _wall.fill(0);
+  for (let k = 0; k < bricks.length; k++) _wall[keyOf(bricks[k].r, bricks[k].c)] = 1;
+}
+// একটা ইটের ঘর আঁকা — লালচে ইট, মাঝে চুনের দাগ
+function drawBrickCell(g, x, y, s){
+  g.fillStyle = "#7a3522"; g.fillRect(x, y, s, s);
+  g.fillStyle = "#b5563a"; g.fillRect(x + 1, y + 1, s - 2, s / 2 - 1.5); g.fillRect(x + 1, y + s / 2 + 0.5, s - 2, s / 2 - 1.5);
+  g.fillStyle = "rgba(255,255,255,0.18)"; g.fillRect(x + 1, y + 1, s - 2, 2);
+  g.fillStyle = "#d9c7a8"; g.fillRect(x, y + s / 2 - 0.5, s, 1);
+  g.fillRect(x + s * 0.5, y, 1, s / 2 - 0.5); g.fillRect(x + s * 0.25, y + s / 2 + 0.5, 1, s / 2 - 0.5); g.fillRect(x + s * 0.75, y + s / 2 + 0.5, 1, s / 2 - 0.5);
+  g.strokeStyle = "rgba(0,0,0,0.45)"; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+}
+function drawBricks(g, list, s){ if (!list) return; for (var i = 0; i < list.length; i++) drawBrickCell(g, list[i].c * s, list[i].r * s, s); }
 
 // সাপের শরীর বাধা হিসেবে চিহ্নিত করা (লেজ বাদ — পরের ধাপে ওটা সরে যাবে)
 function markBlocked(body){
-  _blocked.fill(0);
+  _blocked.set(_wall);
   for (let i = 0; i < body.length - 1; i++) _blocked[keyOf(body[i].r, body[i].c)] = 1;
 }
 // এক ধাপ এগোনোর *পরের* অবস্থাটা সরাসরি চিহ্নিত করা — এর জন্য নতুন কোনো array বানাতে হয় না।
 // (নতুন মাথা + পুরনো শরীরের শেষ দুটো ঘর বাদ; কারণ এক ধাপে লেজ এক ঘর এগিয়ে যায়।)
 // সাপ বড় হলে প্রতি চালে হাজার হাজার অবজেক্ট তৈরি হচ্ছিল — সেটাই ছিল সবচেয়ে ভারী কাজ।
 function markBlockedAfterMove(body, nr, nc){
-  _blocked.fill(0);
+  _blocked.set(_wall);
   _blocked[keyOf(nr, nc)] = 1;
   for (let i = 0; i < body.length - 2; i++) _blocked[keyOf(body[i].r, body[i].c)] = 1;
 }
@@ -4355,11 +4385,12 @@ function floodCount(sr, sc){
 function randomFood(body){
   const taken = new Set(body.map((s) => keyOf(s.r, s.c)));
   const free = [];
-  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (!taken.has(keyOf(r,c))) free.push({ r, c });
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (!taken.has(keyOf(r,c)) && !_wall[keyOf(r,c)]) free.push({ r, c });
   if (!free.length) return null;
   return free[Math.floor(Math.random() * free.length)];
 }
 function newGame(){
+  nextBricks();                                   // প্রতিটা নতুন খেলায় পরের ইটের নকশা
   const r = Math.floor(ROWS/2), c = Math.floor(COLS/3);
   const body = [{r, c}, {r, c: c-1}, {r, c: c-2}];
   return { body, dir: {r:0, c:1}, food: randomFood(body) };
@@ -4589,6 +4620,7 @@ function render(now){
     ? Math.min(1, (now - mirrorAt) / MIRROR_TICK_MS)
     : Math.min(1, tickAcc / TICK_MS);
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawBricks(ctx, mirrorMode ? mirrorBricks : bricks, cellSize);
   // ব্যাকগ্রাউন্ড সম্পূর্ণ স্বচ্ছ — সবুজ ফিল আর নেই, ভিডিও ব্যাকগ্রাউন্ড সরাসরি দেখা যাবে (Ball Sort-এর প্যাটার্নে)
 
   // খাবার — গ্লসি, দুই-টোন হাইলাইট, হালকা pulsating
@@ -4701,6 +4733,7 @@ function applyMirrorState(d){
   prevBody = curBody && curBody.length ? curBody : (st.body || []);
   curBody = st.body || [];
   curFood = st.food || null;
+  mirrorBricks = st.bricks || [];
   if (typeof st.score === "number") document.getElementById("scoreVal").textContent = st.score;
   if (st.dir) lastDir = st.dir;
   updateDpad(lastDir);
@@ -4737,7 +4770,7 @@ setInterval(pollMirror, 200);
 setInterval(function(){
   if (mirrorMode || !curBody) return;
   fetch("/gaming/watch/snake", { method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ state: { body: curBody, food: curFood, score: score, dir: lastDir } })
+    body: JSON.stringify({ state: { body: curBody, food: curFood, score: score, dir: lastDir, bricks: bricks } })
   }).catch(function(){});
 }, 220);
 ${celebrationJS("snake")}
@@ -6021,6 +6054,24 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
 
 <script>
 var COLS = 15, ROWS = 21, TICK = 190;
+var BRICK_LAYOUTS = ${JSON.stringify(SNAKE_BRICKS_PLAYER)};
+var bricks = [], brickSet = {};
+function pickBricks(){
+  var L = BRICK_LAYOUTS[Math.floor(Math.random() * BRICK_LAYOUTS.length)];
+  bricks = L.map(function(p){ return { r: p[0], c: p[1] }; });
+  brickSet = {}; for (var i = 0; i < bricks.length; i++) brickSet[bricks[i].r + ":" + bricks[i].c] = 1;
+}
+// একটা ইটের ঘর আঁকা — লালচে ইট, মাঝে চুনের দাগ
+function drawBrickCell(g, x, y, s){
+  g.fillStyle = "#7a3522"; g.fillRect(x, y, s, s);
+  g.fillStyle = "#b5563a"; g.fillRect(x + 1, y + 1, s - 2, s / 2 - 1.5); g.fillRect(x + 1, y + s / 2 + 0.5, s - 2, s / 2 - 1.5);
+  g.fillStyle = "rgba(255,255,255,0.18)"; g.fillRect(x + 1, y + 1, s - 2, 2);
+  g.fillStyle = "#d9c7a8"; g.fillRect(x, y + s / 2 - 0.5, s, 1);
+  g.fillRect(x + s * 0.5, y, 1, s / 2 - 0.5); g.fillRect(x + s * 0.25, y + s / 2 + 0.5, 1, s / 2 - 0.5); g.fillRect(x + s * 0.75, y + s / 2 + 0.5, 1, s / 2 - 0.5);
+  g.strokeStyle = "rgba(0,0,0,0.45)"; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+}
+function drawBricks(g, list, s){ if (!list) return; for (var i = 0; i < list.length; i++) drawBrickCell(g, list[i].c * s, list[i].r * s, s); }
+
 var canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
 var cell = 20, snake = null, dir = null, nextDir = null, food = null, score = 0;
 var timer = null, playerName = "", alive = false;
@@ -6051,10 +6102,11 @@ function fitBoard(){
   cell = Math.max(8, Math.floor(Math.min(availW / COLS, availH / ROWS)));
   canvas.width = cell * COLS; canvas.height = cell * ROWS;
 }
-function paint(body, foodPos){
+function paint(body, foodPos, brickList){
   if (!ctx) return; // পুরনো/অস্বাভাবিক ব্রাউজারে canvas না থাকলেও যেন পুরো পেজ ভেঙে না যায়
   fitBoard();
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawBricks(ctx, brickList, cell);
   if (foodPos){
     ctx.fillStyle = "#E8443D";
     ctx.beginPath(); ctx.arc(foodPos.c*cell+cell/2, foodPos.r*cell+cell/2, cell*0.36, 0, Math.PI*2); ctx.fill();
@@ -6072,20 +6124,20 @@ function paint(body, foodPos){
   ctx.beginPath(); ctx.arc(h.c*cell+cell/2+cell*0.15, h.r*cell+cell/2-cell*0.08, cell*0.12, 0, Math.PI*2); ctx.fill();
 }
 // অপেক্ষার সময় — এখন যে খেলছে তার সাপটাই এই বোর্ডে দেখা যায়
-function drawWatched(st){ paint(st.body, st.food); }
-function draw(){ paint(snake, food); }
+function drawWatched(st){ paint(st.body, st.food, st.bricks); }
+function draw(){ paint(snake, food, bricks); }
 
 function pushMirror(){
   if (!myQueueId) return;
   fetch("/gaming/gq/snake/mirror", { method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ id: myQueueId, state: { body: snake, food: food, score: score, dir: dir } })
+    body: JSON.stringify({ id: myQueueId, state: { body: snake, food: food, score: score, dir: dir, bricks: bricks } })
   }).catch(function(){});
 }
 function placeFood(){
   var taken = {};
   for (var i = 0; i < snake.length; i++) taken[snake[i].r + ":" + snake[i].c] = 1;
   var free = [];
-  for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) if (!taken[r + ":" + c]) free.push({r:r,c:c});
+  for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) if (!taken[r + ":" + c] && !brickSet[r + ":" + c]) free.push({r:r,c:c});
   food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
 }
 function tick(){
@@ -6094,6 +6146,7 @@ function tick(){
   var h = { r: snake[0].r + dir.r, c: snake[0].c + dir.c };
   if (h.r < 0 || h.r >= ROWS || h.c < 0 || h.c >= COLS) return gameOver();
   for (var i = 0; i < snake.length - 1; i++) if (snake[i].r === h.r && snake[i].c === h.c) return gameOver();
+  if (brickSet[h.r + ":" + h.c]) return gameOver();     // ইটে ধাক্কা
   snake.unshift(h);
   if (food && h.r === food.r && h.c === food.c){ score += 10; placeFood(); }
   else snake.pop();
@@ -6121,7 +6174,7 @@ function startGame(){
   var mid = Math.floor(ROWS/2);
   snake = [{r:mid,c:5},{r:mid,c:4},{r:mid,c:3}];
   dir = {r:0,c:1}; nextDir = null; score = 0; alive = true;
-  placeFood(); draw(); pushMirror();
+  pickBricks(); placeFood(); draw(); pushMirror();
   clearInterval(timer); timer = setInterval(tick, TICK);
 }
 document.addEventListener("keydown", function(e){
