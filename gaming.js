@@ -21,6 +21,7 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_PLAYERVIDEO_V1 — কোনার ভিডিও, কালোর খাওয়া গুটি, মস্তিষ্কের মিউজিক
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -1001,6 +1002,24 @@ font-size:36px;font-weight:800;color:#0a0e1f;background:#4FC3F7;border:4px solid
 .pName{font-size:16px;font-weight:700;color:#fff;}
 .pLabel{font-size:10px;color:#7C8AAD;margin-top:2px;text-transform:uppercase;letter-spacing:1px;}
 .captured{margin-top:10px;min-height:26px;font-size:18px;letter-spacing:2px;color:#FFD866;opacity:0.9;}
+/* কোনার "কেউ খেলছে" ভিডিও — C:\\StreamHub\\01-mindgame\\<game>\\player-video থেকে (মস্তিষ্ক তালিকা পাঠায়) */
+.pvBox{position:relative;border-radius:10px;overflow:hidden;background:#0c1020;border:1px solid rgba(255,216,102,0.5);box-shadow:0 6px 18px rgba(0,0,0,0.5);}
+.pvBox video{width:100%;height:100%;object-fit:cover;display:block;}
+.pvBox .pvLive{position:absolute;left:7px;top:6px;display:flex;align-items:center;gap:4px;background:#E8443D;color:#fff;font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:5px;}
+.pvBox .pvLive i{width:5px;height:5px;border-radius:50%;background:#fff;display:block;animation:pvBlink 1.2s ease-in-out infinite;}
+@keyframes pvBlink{50%{opacity:0.25;}}
+.pvBox .pvName{position:absolute;left:0;right:0;bottom:0;padding:12px 8px 5px;font-size:11px;font-weight:700;color:#fff;text-align:left;background:linear-gradient(transparent,rgba(0,0,0,0.78));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pvBox.empty{display:none;}
+
+/* সাদার কার্ড: বাঁদিকে ভিডিও, ডানদিকে নাম + খাওয়া গুটি। ভিডিও না থাকলে আগের মতো ছবি */
+.wcRow{display:flex;align-items:center;gap:12px;}
+.wcInfo{flex:1;min-width:0;text-align:center;}
+#whiteCard .pvBox{flex:0 0 58%;aspect-ratio:16/10;}
+#whiteCard.hasVideo{padding:12px;}
+#whiteCard.hasVideo .avatar{display:none;}
+#whiteCard.hasVideo .captured{font-size:16px;letter-spacing:1px;line-height:1.35;word-break:break-all;}
+/* কালোর কার্ডে নামের নিচে তার খাওয়া গুটি */
+.bigInfoFooter .captured.blackCap{margin-top:3px;min-height:17px;font-size:14px;letter-spacing:1px;line-height:1.2;}
 /* দাবার ক্লক — ১০ মিনিট, চলমান turn-এর পক্ষটার ক্লক হাইলাইট থাকে, ১ মিনিটের নিচে লাল হয়ে সতর্ক করে */
 .clockDisplay{margin-top:6px;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;
 color:#7C8AAD;background:#0f1526;border-radius:8px;padding:4px 10px;display:inline-block;}
@@ -1013,7 +1032,7 @@ color:#7C8AAD;background:#0f1526;border-radius:8px;padding:4px 10px;display:inli
 .bigPhotoWrap img{width:100%;height:100%;object-fit:contain;}
 .bigPhotoWrap .avatarFallbackBig{width:70%;height:70%;border-radius:50%;background:#B0BEC5;color:#0a0e1f;
 display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:800;}
-.bigInfoFooter{flex:1.5;display:flex;flex-direction:column;align-items:center;justify-content:center;
+.bigInfoFooter{flex:2.4;display:flex;flex-direction:column;align-items:center;justify-content:center;
 background:#12172a;border-top:1px solid #2a3352;padding:4px 8px;}
 .bigInfoFooter .pName{font-size:17px;}
 .bigInfoFooter .pLabel{font-size:9px;}
@@ -1134,12 +1153,17 @@ transition:opacity 1.2s ease;}
 <h1>♟️ Chess Battle — Live</h1>
 <div class="layout">
   <div class="sideCol">
-    <div class="playerCard compact" id="whiteCard">
-      <div class="avatar" id="whiteAvatar">N</div>
-      <div class="pName" id="whiteName">—</div>
-      <div class="pLabel">WHITE</div>
-      <div class="clockDisplay" id="whiteClock" style="display:none;">10:00</div>
-      <div class="captured" id="capturedByWhite"></div>
+    <div class="playerCard compact pvHost" id="whiteCard">
+      <div class="wcRow">
+        <div class="pvBox empty" id="pvBox"><video id="pvVideo" autoplay muted playsinline preload="auto"></video><div class="pvLive"><i></i>LIVE</div><div class="pvName" id="pvName">🎮 Grandmaster</div></div>
+        <div class="wcInfo">
+          <div class="avatar" id="whiteAvatar">N</div>
+          <div class="pName" id="whiteName">—</div>
+          <div class="pLabel">WHITE</div>
+          <div class="clockDisplay" id="whiteClock" style="display:none;">10:00</div>
+          <div class="captured" id="capturedByWhite"></div>
+        </div>
+      </div>
     </div>
     <!-- সরাসরি টিপস — এখন উপরে, ফিক্সড উচ্চতা যাতে QR সবসময় পুরোপুরি দেখা যায় -->
     <div id="tipBoxOverlay" style="display:none;">
@@ -1203,6 +1227,7 @@ transition:opacity 1.2s ease;}
       <div class="bigPhotoWrap" id="blackPhotoWrap"><div class="avatarFallbackBig" id="blackAvatarFallback">?</div></div>
       <div class="bigInfoFooter">
         <div class="pName" id="blackName">—</div>
+        <div class="captured blackCap" id="capturedByBlack"></div>
         <div class="clockDisplay" id="blackClock" style="display:none;">10:00</div>
       </div>
     </div>
@@ -1422,6 +1447,7 @@ function applyBoardTheme(theme){
 
 const PIECE_GLYPH = { p:"♟",r:"♜",n:"♞",b:"♝",q:"♛",k:"♚", P:"♟",R:"♜",N:"♞",B:"♝",Q:"♛",K:"♚" };
 const CAPTURED_GLYPH = { p:"♟",n:"♞",b:"♝",r:"♜",q:"♛" };
+const CAPTURED_GLYPH_W = { p:"♙",n:"♘",b:"♗",r:"♖",q:"♕" };   // কালো যে সাদা গুটি খেয়েছে
 let prevFenBoard = "";
 let lastAnimatedMoveKey = "";
 function squareToRC(sq) {
@@ -1658,8 +1684,10 @@ function playEndGameSound(isWin) {
   } catch (e) {}
 }
 
-function renderCaptured(el, pieces) {
-  el.textContent = (pieces || []).map((p) => CAPTURED_GLYPH[p] || "").join(" ");
+function renderCaptured(el, pieces, glyphs) {
+  if (!el) return;
+  const g = glyphs || CAPTURED_GLYPH;
+  el.textContent = (pieces || []).map((p) => g[p] || "").join(" ");
 }
 
 let lastStatus = "";
@@ -1683,7 +1711,7 @@ async function poll(){try{
   }
 
   document.getElementById("moveCount").textContent=data.moves?(data.moves.length+" moves played"):"";
-  document.getElementById("commentary").textContent=data.lastCommentaryBn||"";
+  document.getElementById("commentary").textContent=window.MG_LIVE_ON?(window.MG_CAPTION||""):(data.lastCommentaryBn||"");
 
   document.getElementById("whiteName").textContent = data.whiteName || "—";
   document.getElementById("blackName").textContent = data.blackName || "—";
@@ -1703,6 +1731,7 @@ async function poll(){try{
   }
   // (blackTipLine বাদ দেওয়া হয়েছে — blackCard এখন শুধু ছবি+নাম দেখায়, tip amount টপ-সাপোর্টার প্যানেলে দেখা যায়)
   renderCaptured(document.getElementById("capturedByWhite"), data.capturedByWhite);
+  renderCaptured(document.getElementById("capturedByBlack"), data.capturedByBlack, CAPTURED_GLYPH_W);
 
   document.getElementById("whiteCard").classList.toggle("active", data.fen && data.fen.includes(" w "));
   document.getElementById("blackCard").classList.toggle("active", data.fen && data.fen.includes(" b "));
@@ -1754,7 +1783,7 @@ async function poll(){try{
   if (data.status === "playing") lastStatus = "";
 
   const key=JSON.stringify(data.audioPlaylist||[]);
-  if(data.audioPlaylist&&key!==lastKey){lastKey=key;queue=[...data.audioPlaylist];playQueue();}
+  if(data.audioPlaylist&&key!==lastKey){lastKey=key;if(!window.MG_LIVE_ON){queue=[...data.audioPlaylist];playQueue();}}
 }catch(e){}}
 safeInit("mainPoll", () => { setInterval(poll,1200); poll(); });
 
@@ -1841,11 +1870,12 @@ async function pollChessTips(){
       showDonorCelebration(name, amount, photo);
       playEndGameSound(true);
       // Fan Battle Live-এর মতোই Web Speech API দিয়ে — নাম + কত টাকা দিয়েছে দুটোই বলা হয়
-      speakCeleb("Thank you " + name + " for the " + amount + " rupee tip!");
+      speakCeleb("Thank you " + name + " for the " + amount + " rupee tip!"); if (window.MG) MG.event("tip");
     });
   } catch(e){}
 }
 safeInit("pollChessTips", () => { setInterval(pollChessTips, 4000); });
+${liveCommentaryJS("chess")}
 
 // Fan Battle Live-এর মতোই — ছবি (থাকলে) বড় করে, নাম আর টাকার অ্যামাউন্ট সহ সেলিব্রেশন কার্ড
 let donorCelebTimeout = null;
@@ -3486,7 +3516,7 @@ function pollTips(){
       var name = ev.name || "Anonymous";
       var amount = Math.round(ev.amount || 0);
       showDonorCelebration(name, amount, photos[name] || null);
-      speakCeleb("Thank you " + name + " for the " + amount + " rupee tip!");
+      speakCeleb("Thank you " + name + " for the " + amount + " rupee tip!"); if (window.MG) MG.event("tip");
       refreshTopDonors(); refreshRecentDonors(); // লিডারবোর্ড সাথে সাথেই আপডেট
     });
   }).catch(function(){});
@@ -3526,6 +3556,291 @@ function announceTopSupporters(){
 setInterval(announceTopSupporters, TOP_ANNOUNCE_MS);
 // প্রথম ঘোষণাটা শুরুর ৪৫ সেকেন্ড পরে, যাতে স্ট্রিম চালু হওয়ার সাথে সাথেই কথা শুরু না হয়
 setTimeout(announceTopSupporters, 45000);
+`;
+}
+
+// ---------------------------------------------------------------------------
+// MG লাইভ কমেন্ট্রি — গেমে যা ঘটছে তা দেখে কথা বলে (chess / snake / ballsort)
+// ---------------------------------------------------------------------------
+//  ক্লিপ আর মিউজিক আসে ল্যাপটপের serve.js থেকে (http://localhost:8899/01-mindgame/...)
+//  C:\StreamHub\01-mindgame\_live\manifest.js না পেলে কিছুই বদলায় না — পুরনো
+//  মিউজিক/কমেন্ট্রি ব্যবস্থা আগের মতোই চলে। পেলে:
+//    • পুরনো লুপিং কমেন্ট্রি আর চেসের বাংলা TTS বন্ধ হয়
+//    • ঘটনা অনুযায়ী ক্লিপ বাজে, হিন্দি ⇄ ইংরেজি পালা করে (টিপে হিন্দি ⇄ বাংলা)
+//    • লোকাল মিউজিক বাজে, কথার সময় ২৫%-এ নামে; টিপ-ঘোষণার ডাকিংও মানে
+function liveCommentaryJS(gameKey) {
+  return `
+(function(){
+  var GAME = "${gameKey}";
+  var qs = new URLSearchParams(location.search);
+  var MEDIA = (qs.get("media") || "http://localhost:8899").replace(/[/]+$/, "");
+  var M = null, started = false;
+  var speakEl = new Audio(); speakEl.preload = "auto";
+  var musicEl = new Audio(); musicEl.preload = "auto";
+  var musicBase = 0.16, myDuck = 1, speaking = false;
+  var lastSpokeAt = 0, lastFillerAt = 0, fillerGap = 70000, welcomed = false;
+  var langIdx = 0, tipIdx = 0, fi = 0;
+  var recent = {}, cooldown = {}, pending = null, loadedAt = Date.now();
+  var PRI = { tip:100, new_record:90, perfect:90, checkmate:90, new_player:80, solved:70, draw:60,
+              big_swing:55, check:50, game_over:50, queue_grew:45, growing:35, thinking:30 };
+  var CD  = { new_record:60, perfect:60, checkmate:30, new_player:30, solved:40, draw:30, big_swing:90,
+              check:45, game_over:40, queue_grew:60, growing:70, thinking:150, nobody_playing:240 };
+  var FILLERS = ["hook","how_to_join","strategy","like","fact","scan_support","hook","how_to_join","subscribe","strategy"];
+  var live = { init:false, player:null, queue:0, emptySince:Date.now(), pct:null, status:"", lastMove:"" };
+  window.MG_LIVE_ON = false; window.MG_MUSIC_ON = false; window.MG_CAPTION = "";
+
+  function clamp(v){ return Math.max(0, Math.min(1, v)); }
+  function shuffle(a){ for (var i = a.length - 1; i > 0; i--){ var j = Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+
+  /* ---- পুরনো ব্যবস্থা থামানো (প্রতি সেকেন্ডে, কারণ পুরনো কোড নিজে আবার চালু করতে পারে) ---- */
+  function quietOld(){
+    try { if (typeof commentaryTimer !== "undefined" && commentaryTimer) { clearInterval(commentaryTimer); commentaryTimer = null; } } catch(e){}
+    try { if (typeof commentaryLoopTimer !== "undefined" && commentaryLoopTimer) { clearInterval(commentaryLoopTimer); commentaryLoopTimer = null; } } catch(e){}
+    try { if (typeof commentaryList !== "undefined" && commentaryList && commentaryList.length) commentaryList.length = 0; } catch(e){}
+    try { if (typeof commentaryAudioEl !== "undefined" && !commentaryAudioEl.paused) commentaryAudioEl.pause(); } catch(e){}
+    try { if (window.MG_MUSIC_ON && typeof bgMusicEl !== "undefined" && !bgMusicEl.paused) bgMusicEl.pause(); } catch(e){}
+  }
+
+  /* ---- রিয়েল-টাইম মস্তিষ্ক (mg_brain.py) — বেঁচে থাকলে এটাই কথা বলে ---- */
+  var RTD = null, rtPlayed = {};
+  function loadRT(){
+    var s = document.createElement("script");
+    s.src = MEDIA + "/01-mindgame/_live/rt/" + GAME + ".js?t=" + Date.now();
+    s.onload = function(){ s.remove(); RTD = (window.MG_RT && window.MG_RT[GAME]) || null; onMedia(); };
+    s.onerror = function(){ s.remove(); };
+    document.head.appendChild(s);
+  }
+  function rtAlive(){ return !!(RTD && Date.now() - RTD.hb < 15000); }
+
+  /* ---- manifest (script ট্যাগে — CORS লাগে না) ---- */
+  function loadManifest(){
+    var s = document.createElement("script");
+    s.src = MEDIA + "/01-mindgame/_live/manifest.js?t=" + Date.now();
+    s.onload = function(){ s.remove(); if (window.MG_LIVE_MANIFEST){ M = window.MG_LIVE_MANIFEST; start(); } };
+    s.onerror = function(){ s.remove(); };
+    document.head.appendChild(s);
+  }
+
+  function start(){
+    if (typeof M.musicVolume === "number") musicBase = M.musicVolume;
+    window.MG_LIVE_ON = true;
+    if (!started){ started = true; startMusic(); }
+    else if (!window.MG_MUSIC_ON) startMusic();   // পরে মিউজিক যোগ হলে
+  }
+
+  /* ---- মিউজিক ---- */
+  var playlist = [], pIdx = 0;
+  function musicList(){
+    var a = (M && M.music && M.music[GAME]) || [];
+    if (!a.length && RTD && RTD.media && RTD.media.music) a = RTD.media.music;   // manifest না থাকলে মস্তিষ্কের তালিকা
+    return a;
+  }
+  function startMusic(){
+    var list = musicList();
+    if (!list.length) return;
+    playlist = shuffle(list.slice()); pIdx = 0;
+    window.MG_MUSIC_ON = true;
+    nextTrack();
+  }
+  function nextTrack(){
+    if (!playlist.length) return;
+    if (pIdx >= playlist.length){ shuffle(playlist); pIdx = 0; }
+    musicEl.src = MEDIA + "/" + enc(playlist[pIdx++]);
+    var p = musicEl.play(); if (p && p.catch) p.catch(function(){});
+  }
+  musicEl.addEventListener("ended", nextTrack);
+  musicEl.addEventListener("error", function(){ setTimeout(nextTrack, 3000); });
+  document.addEventListener("click", function(){
+    if (window.MG_MUSIC_ON && musicEl.paused) musicEl.play().catch(function(){});
+  });
+
+  function enc(p){ return String(p).split("/").map(encodeURIComponent).join("/"); }
+
+  /* ---- মস্তিষ্কের তালিকা এলে: মিউজিক চালু + কোনার ভিডিও ---- */
+  var pvEl = document.getElementById("pvVideo"), pvBox = document.getElementById("pvBox");
+  var pvHost = pvBox ? pvBox.closest(".pvHost") : null;
+  var pvList = [], pvIdx = 0, pvKey = "", pvFails = 0;
+  function onMedia(){
+    if (!window.MG_MUSIC_ON && musicList().length){ window.MG_LIVE_ON = true; started = true; startMusic(); }
+    if (!pvEl) return;
+    var list = (RTD && RTD.media && RTD.media.video) || [];
+    var key = list.join("|");
+    if (key === pvKey) return;
+    pvKey = key; pvList = shuffle(list.slice()); pvIdx = 0; pvFails = 0;
+    if (pvList.length) pvNext(); else pvHide();
+  }
+  function pvHide(){ pvEl.removeAttribute("src"); pvBox.classList.add("empty"); if (pvHost) pvHost.classList.remove("hasVideo"); }
+  function pvNext(){
+    if (!pvList.length) return pvHide();
+    if (pvIdx >= pvList.length){ shuffle(pvList); pvIdx = 0; }
+    pvEl.loop = pvList.length === 1;
+    pvEl.src = MEDIA + "/" + enc(pvList[pvIdx++]);
+    var p = pvEl.play(); if (p && p.catch) p.catch(function(){});
+  }
+  if (pvEl){
+    pvEl.addEventListener("loadeddata", function(){ pvFails = 0; pvBox.classList.remove("empty"); if (pvHost) pvHost.classList.add("hasVideo"); });
+    pvEl.addEventListener("ended", pvNext);
+    pvEl.addEventListener("error", function(){ if (++pvFails >= Math.max(3, pvList.length)) return pvHide(); setTimeout(pvNext, 1500); });
+    setInterval(function(){
+      if (pvEl.getAttribute("src") && pvEl.paused){ var p = pvEl.play(); if (p && p.catch) p.catch(function(){}); }
+      var nm = document.getElementById(GAME === "chess" ? "whiteName" : "challengerName");
+      var t = nm ? (nm.textContent || "").trim() : "";
+      if (!t || t === "—" || /No one playing/i.test(t)) t = "Grandmaster";
+      var pn = document.getElementById("pvName"); if (pn) pn.textContent = "🎮 " + t;
+    }, 2000);
+  }
+
+  /* ---- ডাকিং: নিজের কথার সময় ২৫%, টিপ-ঘোষণার ডাকিংও (duckFactor) মানা হয় ---- */
+  setInterval(function(){
+    var target = speaking ? 0.25 : 1;
+    myDuck += (target - myDuck) * 0.18;
+    var ext = (typeof duckFactor === "number") ? duckFactor : 1;
+    musicEl.volume = clamp(musicBase * myDuck * ext);
+  }, 50);
+
+  /* ---- একটা ক্লিপ বেছে বাজানো ---- */
+  function pool(ev){
+    var g = M.games && M.games[GAME] && M.games[GAME][ev];
+    return g || (M.common && M.common[ev]) || null;
+  }
+  function pick(ev, lang){
+    var g = pool(ev); if (!g || !g[lang] || !g[lang].length) return null;
+    var now = Date.now();
+    var fresh = g[lang].filter(function(c){ return !recent[c.f] || now - recent[c.f] > 1200000; });
+    var arr = fresh.length ? fresh : g[lang];
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+  function play(ev){
+    var lang, c;
+    if (ev === "tip"){
+      lang = ["hi","bn"][tipIdx % 2]; c = pick(ev, lang);
+      if (!c){ lang = ["hi","bn"][(tipIdx + 1) % 2]; c = pick(ev, lang); }
+      tipIdx++;
+    } else {
+      lang = ["hi","en"][langIdx % 2]; c = pick(ev, lang);
+      if (!c){ lang = ["hi","en"][(langIdx + 1) % 2]; c = pick(ev, lang); }
+      langIdx++;
+    }
+    if (!c) return false;
+    recent[c.f] = Date.now(); cooldown[ev] = Date.now();
+    playFile(c.f, c.t);
+    return true;
+  }
+  function playFile(f, t){
+    speaking = true; window.MG_CAPTION = t || "";
+    var done = false;
+    function fin(){ if (done) return; done = true; speaking = false; lastSpokeAt = Date.now(); window.MG_CAPTION = ""; }
+    speakEl.onended = fin; speakEl.onerror = fin;
+    setTimeout(fin, 30000);
+    speakEl.src = MEDIA + "/" + f;
+    speakEl.volume = 1;
+    var p = speakEl.play(); if (p && p.catch) p.catch(fin);
+  }
+
+  /* ---- বাইরের কোড ঘটনা জানায়:  MG.event("game_over") ---- */
+  window.MG = { event: function(ev){
+    if (!M) return;
+    var now = Date.now();
+    if (CD[ev] && cooldown[ev] && now - cooldown[ev] < CD[ev] * 1000) return;
+    var pr = PRI[ev] || 10;
+    if (!pending || pr >= pending.pr) pending = { ev: ev, pr: pr, at: now, delay: ev === "tip" ? 7000 : 0 };
+  }};
+
+  function nextFiller(){
+    var now = Date.now();
+    if (!live.player && live.queue === 0 && now - live.emptySince > 120000 &&
+        (!cooldown.nobody_playing || now - cooldown.nobody_playing > CD.nobody_playing * 1000))
+      return "nobody_playing";
+    return FILLERS[fi++ % FILLERS.length];
+  }
+
+  function tick(){
+    var alive = rtAlive();
+    if (!M && !alive) return;
+    window.MG_LIVE_ON = true;
+    quietOld();
+    if (speaking) return;
+    var now = Date.now();
+    if (alive && pending && pending.ev !== "tip") pending = null;   // মস্তিষ্ক নিজেই এসব বলে
+    if (pending && M){
+      if (now - pending.at > 45000) pending = null;
+      else if (now - pending.at >= pending.delay && now - lastSpokeAt > (pending.pr >= 80 ? 1500 : 6000)){
+        var e = pending; pending = null;
+        if (play(e.ev)) return;
+      }
+    }
+    if (alive){
+      var best = null;
+      (RTD.items || []).forEach(function(it){
+        if (rtPlayed[it.id]) return;
+        if (now - it.at > 20000){ rtPlayed[it.id] = 1; return; }
+        if (!best || it.pri > best.pri || (it.pri === best.pri && it.at < best.at)) best = it;
+      });
+      if (best){ rtPlayed[best.id] = 1; lastFillerAt = now; playFile(best.f, best.t); }
+      return;                                    // মস্তিষ্ক চালু — নিজের ফিলার বন্ধ
+    }
+    if (!M) return;
+    if (now - loadedAt < 20000) return;
+    if (!welcomed){ welcomed = true; lastFillerAt = now; play("welcome"); return; }
+    if (now - lastSpokeAt < 15000 || now - lastFillerAt < fillerGap) return;
+    lastFillerAt = now; fillerGap = 55000 + Math.random() * 40000;
+    play(nextFiller());
+  }
+
+  /* ---- খেলোয়াড়, লাইন আর খেলার ঘটনা (সার্ভারের তথ্য থেকে) ---- */
+  function onPeople(player, qn){
+    if (live.init){
+      if (player && player !== live.player) MG.event("new_player");
+      if (qn > live.queue) MG.event("queue_grew");
+    }
+    live.player = player; live.queue = qn;
+    if (player || qn > 0) live.emptySince = Date.now();
+    live.init = true;
+  }
+  function pollLive(){
+    if (!M) return;
+    if (GAME === "chess"){
+      fetch("/gaming/state/chess.json?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+        onPeople(d.mode === "challenge" ? (d.blackName || "player") : null, (d.queue || []).length);
+        var mv = d.moves && d.moves.length ? String(d.moves[d.moves.length - 1]) + "#" + d.moves.length : "";
+        if (mv && mv !== live.lastMove){
+          if (live.lastMove && mv.indexOf("+") >= 0) MG.event("check");
+          live.lastMove = mv;
+        }
+        if (d.status === "playing" && typeof d.whiteWinPct === "number"){
+          if (typeof live.pct === "number" && Math.abs(d.whiteWinPct - live.pct) >= 25) MG.event("big_swing");
+          live.pct = d.whiteWinPct;
+        } else live.pct = null;
+        if (d.status === "finished" && live.status && live.status !== "finished"){
+          var r = String(d.result || "");
+          MG.event(/Checkmate|Time out/.test(r) ? "checkmate" : "draw");
+        }
+        live.status = d.status || "";
+      }).catch(function(){});
+    } else {
+      fetch("/gaming/gq/" + GAME + "/public").then(function(r){ return r.json(); }).then(function(d){
+        onPeople(d.nowPlaying ? (d.nowPlaying.name || "player") : null,
+                 typeof d.total === "number" ? d.total : (d.queue || []).length);
+      }).catch(function(){});
+      if (GAME === "ballsort"){
+        fetch("/gaming/state/ballsort.json?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+          if (live.status && d.status !== live.status){
+            if (d.status === "solved") MG.event("solved");
+            if (d.status === "solving") MG.event("thinking");
+          }
+          live.status = d.status || "";
+        }).catch(function(){});
+      }
+    }
+  }
+
+  loadManifest();
+  setInterval(loadManifest, 600000);
+  loadRT();
+  setInterval(loadRT, 1500);   // ১০ মিনিটে একবার — নতুন ক্লিপ/মিউজিক ধরতে
+  setInterval(tick, 1000);
+  setInterval(pollLive, 4000);
+})();
 `;
 }
 
@@ -3573,7 +3888,10 @@ font-size:16px;color:#5a6a8a;transition:all 0.15s;}
 #tipQrImg{width:120px;height:120px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
 .tipLabel{color:#FFD866;font-weight:800;font-size:14px;margin-top:8px;}
 .tipSub{color:#5a6a8a;font-size:9px;margin-top:4px;line-height:1.35;}
-.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;flex:1;min-height:0;overflow-y:auto;}
+.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;flex:1;min-height:0;overflow-y:auto;} /* কোনার "কেউ খেলছে" ভিডিও — C:\\StreamHub\\01-mindgame\\<game>\\player-video থেকে (মস্তিষ্ক তালিকা পাঠায়) */ .pvBox{position:relative;border-radius:10px;overflow:hidden;background:#0c1020;border:1px solid rgba(255,216,102,0.5);box-shadow:0 6px 18px rgba(0,0,0,0.5);} .pvBox video{width:100%;height:100%;object-fit:cover;display:block;} .pvBox .pvLive{position:absolute;left:7px;top:6px;display:flex;align-items:center;gap:4px;background:#E8443D;color:#fff;font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:5px;} .pvBox .pvLive i{width:5px;height:5px;border-radius:50%;background:#fff;display:block;animation:pvBlink 1.2s ease-in-out infinite;} @keyframes pvBlink{50%{opacity:0.25;}} .pvBox .pvName{position:absolute;left:0;right:0;bottom:0;padding:12px 8px 5px;font-size:11px;font-weight:700;color:#fff;text-align:left;background:linear-gradient(transparent,rgba(0,0,0,0.78));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .pvBox.empty{display:none;} 
+.rulesBox.pvHost{display:flex;flex-direction:column;}
+.rulesBox.pvHost .pvBox{flex:0 0 50%;margin-bottom:10px;}
+.rulesBox.pvHost .altView.show{flex:1;min-height:0;overflow-y:auto;}
 .rulesBox h3{margin:0 0 8px;font-size:11px;color:#FFD866;text-transform:uppercase;letter-spacing:1px;font-weight:800;}
 .miniListRow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #202a44;font-size:11px;}
 .miniListRow:last-child{border-bottom:none;}
@@ -3648,7 +3966,8 @@ ${CELEBRATION_HTML}
     <div class="tipLabel">🙏 Help Me</div>
     <div class="tipSub">Voluntary support — not tied to the game, never required</div>
   </div>
-  <div class="rulesBox">
+  <div class="rulesBox pvHost">
+    <div class="pvBox empty" id="pvBox"><video id="pvVideo" autoplay muted playsinline preload="auto"></video><div class="pvLive"><i></i>LIVE</div><div class="pvName" id="pvName">🎮 Grandmaster</div></div>
     <div class="altView show" id="recentView">
       <h3>💛 Recent Supporters</h3>
       <div id="recentDonorList"></div>
@@ -4160,6 +4479,7 @@ function step(){
     game.food = randomFood(game.body);
     prevBody.push(prevBody[prevBody.length-1]); // দৈর্ঘ্য মিলিয়ে রাখা, যাতে interpolation-এ ঝাঁকুনি না লাগে
     playEatSound();
+    if (window.MG && score % 100 === 0) MG.event("growing");
     mouthOpenUntil = performance.now() + 420;
     document.getElementById("scoreVal").textContent = score;
   } else {
@@ -4177,13 +4497,18 @@ function step(){
   scheduleThink(); // পরের চালটা এখনই, ফ্রেমের বাইরে ভেবে রাখা হচ্ছে
 }
 function endGame(perfect){
+  if (window.MG) MG.event(perfect ? "perfect" : "game_over");
   const flashEl = document.getElementById("flash");
   flashEl.textContent = (perfect ? "🏆 Board Mastered — Score: " : "💀 Game Over — Score: ") + score;
   flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
   if (!scoreSubmitted) {
     scoreSubmitted = true;
     fetch("/gaming/snake/highscore", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ score }) })
-      .then((r) => r.json()).then((d) => { highScore = d.score; highScoreName = d.name; paintHighScore(); }).catch(() => {});
+      .then((r) => r.json()).then((d) => {
+        const isRecord = d.score === score && score > highScore && highScore > 0;
+        highScore = d.score; highScoreName = d.name; paintHighScore();
+        if (isRecord && window.MG) MG.event("new_record");
+      }).catch(() => {});
   }
   resumeAt = performance.now() + GAMEOVER_PAUSE_MS;
   setTimeout(startFreshGame, GAMEOVER_PAUSE_MS);
@@ -4416,6 +4741,7 @@ setInterval(function(){
   }).catch(function(){});
 }, 220);
 ${celebrationJS("snake")}
+${liveCommentaryJS("snake")}
 
 /* ---------------------------------------------------------------------------
    আজকের সেটআপ থেকে ভিডিও / মিউজিক / কমেন্ট্রি নেওয়া
@@ -4534,7 +4860,10 @@ color:#8BE28B;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(0,0,0,0.9)
 #tipQrImg{width:120px;height:120px;border-radius:10px;background:#fff;padding:6px;display:block;margin:0 auto;}
 .tipLabel{color:#FFD866;font-weight:800;font-size:14px;margin-top:8px;}
 .tipSub{color:#5a6a8a;font-size:9px;margin-top:4px;line-height:1.35;}
-.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;flex:1;min-height:0;overflow-y:auto;}
+.rulesBox{background:#161b2e;border:1px solid #2a3352;border-radius:14px;padding:10px;flex:1;min-height:0;overflow-y:auto;} /* কোনার "কেউ খেলছে" ভিডিও — C:\\StreamHub\\01-mindgame\\<game>\\player-video থেকে (মস্তিষ্ক তালিকা পাঠায়) */ .pvBox{position:relative;border-radius:10px;overflow:hidden;background:#0c1020;border:1px solid rgba(255,216,102,0.5);box-shadow:0 6px 18px rgba(0,0,0,0.5);} .pvBox video{width:100%;height:100%;object-fit:cover;display:block;} .pvBox .pvLive{position:absolute;left:7px;top:6px;display:flex;align-items:center;gap:4px;background:#E8443D;color:#fff;font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:5px;} .pvBox .pvLive i{width:5px;height:5px;border-radius:50%;background:#fff;display:block;animation:pvBlink 1.2s ease-in-out infinite;} @keyframes pvBlink{50%{opacity:0.25;}} .pvBox .pvName{position:absolute;left:0;right:0;bottom:0;padding:12px 8px 5px;font-size:11px;font-weight:700;color:#fff;text-align:left;background:linear-gradient(transparent,rgba(0,0,0,0.78));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .pvBox.empty{display:none;} 
+.rulesBox.pvHost{display:flex;flex-direction:column;}
+.rulesBox.pvHost .pvBox{flex:0 0 50%;margin-bottom:10px;}
+.rulesBox.pvHost .altView.show{flex:1;min-height:0;overflow-y:auto;}
 .rulesBox h3{margin:0 0 8px;font-size:11px;color:#FFD866;text-transform:uppercase;letter-spacing:1px;font-weight:800;}
 .miniListRow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #202a44;font-size:11px;}
 .miniListRow:last-child{border-bottom:none;}
@@ -4607,7 +4936,8 @@ ${CELEBRATION_HTML}
     <div class="tipLabel">🙏 Help Me</div>
     <div class="tipSub">Voluntary support — not tied to the game, never required</div>
   </div>
-  <div class="rulesBox">
+  <div class="rulesBox pvHost">
+    <div class="pvBox empty" id="pvBox"><video id="pvVideo" autoplay muted playsinline preload="auto"></video><div class="pvLive"><i></i>LIVE</div><div class="pvName" id="pvName">🎮 Grandmaster</div></div>
     <div class="altView show" id="recentView">
       <h3>💛 Recent Supporters</h3>
       <div id="recentDonorList"></div>
@@ -5018,7 +5348,7 @@ async function poll(){
     }
 
     if (data.status === "solving") {
-      statusEl.textContent = "🤔 একটা বড় পাজল — সমাধান খুঁজে বের করছে...";
+      statusEl.textContent = "🤔 Big puzzle — working out the solution...";
       statusEl.classList.remove("solved");
       // ⚠️ আসল বাগ — এই "solving" অবস্থায় টিউবগুলো কখনো রেন্ডারই হতো না, তাই বড় পাজলে
       // AI চিন্তা করার পুরোটা সময় (এখন আরও দীর্ঘ, ১৮ রঙের কারণে) টিউব একদম ফাঁকা দেখাতো
@@ -5104,6 +5434,7 @@ setInterval(function(){
   }).catch(function(){});
 }, 500);
 ${celebrationJS("ballsort")}
+${liveCommentaryJS("ballsort")}
 
 /* ---------------------------------------------------------------------------
    আজকের সেটআপ থেকে ভিডিও / মিউজিক / কমেন্ট্রি নেওয়া
