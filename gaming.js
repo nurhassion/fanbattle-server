@@ -21,6 +21,8 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_TESTENTRY_V1 — ছবিহীন (পরীক্ষামূলক) এন্ট্রি টপ প্যানেলে নয়; সেখানে নমুনা ছবি
+// MG_LIVEPREVIEW_V1 — কোড লেখার সাথে সাথে ফোনের স্ক্রিন একটু একটু করে তৈরি
 // MG_CAMFIT_V1 — কোনার ক্যামেরা ডানদিকেই, ছোট; প্রিভিউ তার জন্য জায়গা ছাড়ে — কোনার ক্যামেরা বাঁদিকে, মোবাইল প্রিভিউ আর ঢাকা পড়ে না
 // MG_CODELIVE_BIG_V1 — কোডিং প্যানেল প্রায় পুরো পর্দা জুড়ে
 // MG_SHOWCASE_V1 — ফাঁকা বাক্সে আপনার রাখা নমুনা ছবি (EXAMPLE চিহ্নসহ)
@@ -1892,6 +1894,8 @@ fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
+  // আসল সাপোর্টারকে ছবি দিতেই হয়, তাই ছবিহীন এন্ট্রি = পরীক্ষামূলক — টপ প্যানেলে দেখানো হয় না
+  if (donor && !donor.photo) donor = null;
   if (!donor) {
     var sc = showcaseHTML(idx - 1);
     photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (sc || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>');
@@ -4157,6 +4161,8 @@ function showcaseHTML(i){
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
+  // আসল সাপোর্টারকে ছবি দিতেই হয়, তাই ছবিহীন এন্ট্রি = পরীক্ষামূলক — টপ প্যানেলে দেখানো হয় না
+  if (donor && !donor.photo) donor = null;
   if (!donor) { var sc = showcaseHTML(idx - 1); photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (sc || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'); infoEl.innerHTML = sc ? ('<span style="color:#9fb0d4;">' + (showcaseAt(idx - 1).n || '') + ' · example</span>') : ('<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'); return; }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
   infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
@@ -5164,6 +5170,8 @@ function showcaseHTML(i){
 function fillTopSupporterPanel(idx, donor){
   const photoEl = document.getElementById("tsPhoto" + idx);
   const infoEl = document.getElementById("tsInfo" + idx);
+  // আসল সাপোর্টারকে ছবি দিতেই হয়, তাই ছবিহীন এন্ট্রি = পরীক্ষামূলক — টপ প্যানেলে দেখানো হয় না
+  if (donor && !donor.photo) donor = null;
   if (!donor) { var sc = showcaseHTML(idx - 1); photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (sc || '<div class="invite"><svg viewBox="0 0 64 64"><circle cx="32" cy="21" r="12" fill="#4FC3F7"/><path d="M9 62c0-14 10-23 23-23s23 9 23 23z" fill="#4FC3F7"/></svg><b>Your photo here</b><span>Scan Help Me on the left</span></div>'); infoEl.innerHTML = sc ? ('<span style="color:#9fb0d4;">' + (showcaseAt(idx - 1).n || '') + ' · example</span>') : ('<span style="color:#FFD866;">Spot #' + idx + ' is open</span>'); return; }
   photoEl.innerHTML = '<div class="tsRank">' + idx + '</div>' + (donor.photo ? '<img src="'+donor.photo+'">' : '<div class="tsFallback">'+((donor.name&&donor.name[0])||"?")+'</div>');
   infoEl.innerHTML = donor.name + ' <span class="tsAmt">₹' + Math.round(donor.amount) + '</span>';
@@ -7578,6 +7586,7 @@ border:2px solid #262d47;box-shadow:0 22px 46px rgba(0,0,0,0.7);flex-shrink:1;}
 .pscreen{width:100%;height:100%;color:#141C2E;background:#F5F7FC;border-radius:24px;overflow:hidden;
 display:flex;flex-direction:column;position:relative;}
 .pscreen.swap{animation:swapIn 0.55s ease-out;}
+.pscreen .pop{animation:swapIn 0.45s ease-out;}
 @keyframes swapIn{from{opacity:0;transform:scale(0.97) translateY(8px);}to{opacity:1;transform:none;}}
 .caption{font-size:11px;color:#8FA3CC;text-align:center;line-height:1.5;flex-shrink:0;}
 .caption b{color:#FFD866;}
@@ -8126,11 +8135,13 @@ function hl(line){
 function el(cls, html){ var d = document.createElement("div"); if (cls) d.className = cls; if (html != null) d.innerHTML = html; return d; }
 function fade(hex, a){ return hex + Math.round(a * 255).toString(16).padStart(2, "0"); }
 
-function renderPhone(ui, accent){
+function renderPhone(ui, accent, animateFrom){
   var scr = document.getElementById("pscreen");
   scr.innerHTML = "";
-  scr.classList.remove("swap"); void scr.offsetWidth; scr.classList.add("swap");
+  if (!animateFrom){ scr.classList.remove("swap"); void scr.offsetWidth; scr.classList.add("swap"); }
+  var _i = -1;
   ui.forEach(function(w){
+    _i++;
     var d;
     switch (w.t) {
       case "status":
@@ -8287,6 +8298,7 @@ function renderPhone(ui, accent){
       default:
         d = el("w", "");
     }
+    if (animateFrom && _i >= animateFrom) d.className = (d.className ? d.className + " " : "") + "pop";
     scr.appendChild(d);
   });
 }
@@ -8294,7 +8306,7 @@ function renderPhone(ui, accent){
 /* ---------- টাইপিং ইঞ্জিন ---------- */
 // গতি — "ফাস্ট, কিন্তু একটু ধীরে", যেন সত্যিই কেউ বসে টাইপ করছে
 var CHAR_MS = 28, LINE_PAUSE = 240, SCREEN_PAUSE = 4200, APP_PAUSE = 5000, MAX_LINES = 26;
-var order = [], oi = 0, app = null, si = 0, li = 0, ci = 0;
+var order = [], oi = 0, app = null, si = 0, li = 0, ci = 0, shownW = 0;
 var lineEls = [], lineNo = 0, totalChars = 0, doneChars = 0;
 
 function shuffled(n){
@@ -8336,7 +8348,7 @@ function startApp(){
 }
 function startScreen(){
   var sc = app.screens[si];
-  li = 0; ci = 0;
+  li = 0; ci = 0; shownW = 0;
   document.getElementById("tabFile").textContent = sc.file;
   document.getElementById("statusText").textContent = "Writing " + sc.file;
   pushLine();
@@ -8355,6 +8367,11 @@ function tick(){
   }
   lineEls[lineEls.length - 1].innerHTML = hl(raw) || "&nbsp;";
   li++;
+  // প্রতিটা লাইন শেষ হওয়ার সাথে সাথে ফোনের স্ক্রিনে পরের অংশটা এসে যায়
+  if (sc.ui && sc.ui.length){
+    var want = Math.max(1, Math.round(sc.ui.length * (li / sc.code.length)));
+    if (want > shownW){ renderPhone(sc.ui.slice(0, want), app.accent, shownW); shownW = want; }
+  }
   if (li < sc.code.length){
     pushLine(); ci = 0;
     setTimeout(tick, raw.trim() === "" ? 60 : LINE_PAUSE);
@@ -8363,7 +8380,8 @@ function tick(){
   // স্ক্রিনের কোড শেষ — এবার ফোনে সেই স্ক্রিনটা তৈরি হবে
   document.getElementById("statusText").textContent = "✓ " + sc.file + " compiled — rendering preview";
   setTimeout(function(){
-    renderPhone(sc.ui, app.accent);
+    renderPhone(sc.ui, app.accent, shownW);
+    shownW = sc.ui ? sc.ui.length : 0;
     document.getElementById("caption").innerHTML = "<b>" + app.name + "</b> — " + sc.label;
     si++;
     if (si < app.screens.length){
