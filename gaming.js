@@ -21,6 +21,7 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_ONEVOICE_V1 — মস্তিষ্ক চালু থাকলে ব্রাউজারের পুরনো কণ্ঠ চুপ
 // MG_SNAKEBRICKS_V1 — সাপের বোর্ডে ১০টা ইটের নকশা
 // MG_PLAYERVIDEO_V1 — কোনার ভিডিও, কালোর খাওয়া গুটি, মস্তিষ্কের মিউজিক
 const fs = require("fs");
@@ -3617,6 +3618,16 @@ function liveCommentaryJS(gameKey) {
     document.head.appendChild(s);
   }
   function rtAlive(){ return !!(RTD && Date.now() - RTD.hb < 15000); }
+  /* মস্তিষ্ক চালু থাকলে টিপের ধন্যবাদ আর টপ-সাপোর্টার ঘোষণা মস্তিষ্কই নিজের কণ্ঠে বলে —
+     তখন ব্রাউজারের পুরনো রোবোটিক কণ্ঠ চুপ থাকে (ছবি-কনফেটি আগের মতোই দেখায়), দুটো একসাথে বাজে না */
+  window.MG_BRAIN_ON = rtAlive;
+  try {
+    if (window.speechSynthesis && !window.__mgSpeakWrapped){
+      window.__mgSpeakWrapped = true;
+      var _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
+      window.speechSynthesis.speak = function(u){ if (rtAlive()) return; return _origSpeak(u); };
+    }
+  } catch(e){}
 
   /* ---- manifest (script ট্যাগে — CORS লাগে না) ---- */
   function loadManifest(){
@@ -3737,7 +3748,7 @@ function liveCommentaryJS(gameKey) {
     var done = false;
     function fin(){ if (done) return; done = true; speaking = false; lastSpokeAt = Date.now(); window.MG_CAPTION = ""; }
     speakEl.onended = fin; speakEl.onerror = fin;
-    setTimeout(fin, 30000);
+    setTimeout(fin, 60000);          // পুরো ঘোষণা (২৫-৩০ সেকেন্ড) যেন মাঝপথে না কাটে
     speakEl.src = MEDIA + "/" + f;
     speakEl.volume = 1;
     var p = speakEl.play(); if (p && p.catch) p.catch(fin);
