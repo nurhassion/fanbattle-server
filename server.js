@@ -1,3 +1,4 @@
+// SERVER_TIPCHANNEL_V1 — টিপের পরে সঠিক চ্যানেলের লাইভে ফেরা (চ্যানেল ফেরার ঠিকানাতেই থাকে)
 // Fan Battle Live — Automation Server
 // Domestic (India): dynamically creates a fresh Instamojo Payment Request per
 // visitor via the API (with our own redirect_url) — this does NOT depend on
@@ -564,7 +565,10 @@ async function createInstamojoPaymentRequest(amount, side, donorName, donorPhone
   const nameParam = donorName ? `&dn=${encodeURIComponent(donorName)}` : '';
   const phoneParam = donorPhone ? `&dp=${encodeURIComponent(donorPhone)}` : '';
   const retParam = ret ? `&ret=${encodeURIComponent(ret)}${noPhotoFlag ? '&nophoto=1' : ''}` : '';
-  const redirectUrl = `${PUBLIC_BASE_URL}/thanks?via=instamojo${nameParam}${phoneParam}${retParam}`;
+  // চ্যানেলটা ফেরার ঠিকানাতেই রাখা — Instamojo পেমেন্টের বিবরণে purpose সবসময় ফেরত দেয় না,
+  // আর তখন সার্ভার ভুল করে FanBattle-এ পাঠাত
+  const chParam = SIDE_PREFIX[side] ? `&ch=${encodeURIComponent(side)}` : '';
+  const redirectUrl = `${PUBLIC_BASE_URL}/thanks?via=instamojo${nameParam}${phoneParam}${retParam}${chParam}`;
   const body = new URLSearchParams({
     purpose, amount: String(amount), redirect_url: redirectUrl, send_email: 'False', send_sms: 'False',
     allow_repeated_payments: 'False'
@@ -1160,6 +1164,7 @@ app.get('/thanks', async (req, res) => {
         amount = payment.amount; currency = 'INR';
         const purpose = payment.purpose || '';
         side = parseSideFromPurpose(purpose);
+        if (!side && SIDE_PREFIX[req.query.ch]) side = req.query.ch;     // purpose না এলে ঠিকানার চ্যানেল
         // Record now (recordDonation's built-in duplicate-guard makes this
         // safe even if the background poller also notices this same
         // payment_id around the same time) — celebration itself is queued
@@ -1175,6 +1180,7 @@ app.get('/thanks', async (req, res) => {
         celebrationId = record.id;
       }
     }
+    if (!side && SIDE_PREFIX[req.query.ch]) side = req.query.ch;
     res.send(thanksPageHtml({ name, side, amount, currency, celebrationId, ret, noPhoto }));
   } catch (e) {
     console.error('/thanks failed:', e.message);
