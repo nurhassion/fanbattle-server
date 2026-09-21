@@ -21,6 +21,7 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_PHONEBIG_V1 — ফোন নিচের দিকে বড়, ক্যামেরার ঠিক উপরে শেষ
 // MG_CODELIVE_MID_V1 — কোডিং প্যানেল মাঝারি, পেছনের ভিডিও দেখা যায়
 // MG_TESTENTRY_V1 — ছবিহীন (পরীক্ষামূলক) এন্ট্রি টপ প্যানেলে নয়; সেখানে নমুনা ছবি
 // MG_LIVEPREVIEW_V1 — কোড লেখার সাথে সাথে ফোনের স্ক্রিন একটু একটু করে তৈরি
@@ -7581,8 +7582,8 @@ animation:blink 1.05s step-end infinite;}
 
 /* ---- ফোন ---- */
 .side{border-left:1px solid #1e2540;background:#0a0d1a;display:flex;flex-direction:column;
-align-items:center;justify-content:center;gap:12px;padding:14px 14px 150px;min-height:0;}
-.phone{width:290px;height:100%;max-height:640px;background:#000;border-radius:32px;padding:9px;
+align-items:center;justify-content:center;gap:10px;padding:12px 14px max(12px, calc(162px - 10vh));min-height:0;}
+.phone{width:300px;height:100%;max-height:720px;background:#000;border-radius:32px;padding:9px;
 border:2px solid #262d47;box-shadow:0 22px 46px rgba(0,0,0,0.7);flex-shrink:1;}
 .pscreen{width:100%;height:100%;color:#141C2E;background:#F5F7FC;border-radius:24px;overflow:hidden;
 display:flex;flex-direction:column;position:relative;}
