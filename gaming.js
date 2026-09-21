@@ -21,6 +21,7 @@
 //   system: stockfish, python3-pip + edge-tts, xvfb, ffmpeg, chromium
 // ============================================================================
 
+// MG_CODELIVE_MID_V1 — কোডিং প্যানেল মাঝারি, পেছনের ভিডিও দেখা যায়
 // MG_TESTENTRY_V1 — ছবিহীন (পরীক্ষামূলক) এন্ট্রি টপ প্যানেলে নয়; সেখানে নমুনা ছবি
 // MG_LIVEPREVIEW_V1 — কোড লেখার সাথে সাথে ফোনের স্ক্রিন একটু একটু করে তৈরি
 // MG_CAMFIT_V1 — কোনার ক্যামেরা ডানদিকেই, ছোট; প্রিভিউ তার জন্য জায়গা ছাড়ে — কোনার ক্যামেরা বাঁদিকে, মোবাইল প্রিভিউ আর ঢাকা পড়ে না
@@ -7540,13 +7541,13 @@ min-height:100vh;padding:0;position:relative;}
 /* ---- ল্যাপটপ ---- */
 /* ল্যাপটপের চারপাশে ইচ্ছে করেই ফাঁকা জায়গা রাখা — ওই ফাঁকা অংশ দিয়েই পেছনের
    ভিডিওটা দেখা যায়। প্যাডিং বাড়ানোয় দুপাশে ও উপর-নিচে ভিডিও আরও বেশি দেখা যাবে। */
-.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:12px 18px;}
-.laptop{width:100%;max-width:1880px;}
+.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:26px 70px;}
+.laptop{width:100%;max-width:1640px;}
 .lid{background:linear-gradient(180deg,#2a2f42,#171a28);border-radius:16px 16px 4px 4px;
 padding:14px 14px 10px;box-shadow:0 30px 70px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.10);}
 .cam{width:6px;height:6px;border-radius:50%;background:#3D4562;margin:0 auto 9px;}
 .screen{background:#0c1020;border-radius:8px;overflow:hidden;border:1px solid #1e2540;
-display:flex;flex-direction:column;height:90vh;min-height:520px;}
+display:flex;flex-direction:column;height:80vh;min-height:460px;}
 .base{height:14px;background:linear-gradient(180deg,#20243a,#0e1120);border-radius:0 0 18px 18px;
 margin:0 auto;width:104%;max-width:none;position:relative;left:-2%;
 box-shadow:0 16px 30px rgba(0,0,0,0.6);}
@@ -7566,7 +7567,7 @@ padding:4px 11px;border-radius:20px;}
 .langChip{font-size:10px;color:#8FA3CC;border:1px solid #1e2540;border-radius:20px;padding:4px 10px;}
 
 /* ---- কাজের জায়গা ---- */
-.work{flex:1;display:grid;grid-template-columns:1fr 440px;min-height:0;}
+.work{flex:1;display:grid;grid-template-columns:1fr 400px;min-height:0;}
 .editor{display:flex;min-height:0;overflow:hidden;position:relative;background:#0c1020;}
 .gutter{padding:14px 10px 14px 16px;text-align:right;color:#33406b;font-size:14.5px;line-height:1.62;
 font-family:ui-monospace,Menlo,Consolas,monospace;user-select:none;flex-shrink:0;}
@@ -7580,8 +7581,8 @@ animation:blink 1.05s step-end infinite;}
 
 /* ---- ফোন ---- */
 .side{border-left:1px solid #1e2540;background:#0a0d1a;display:flex;flex-direction:column;
-align-items:center;justify-content:center;gap:12px;padding:14px 14px 168px;min-height:0;}
-.phone{width:272px;height:100%;max-height:600px;background:#000;border-radius:32px;padding:9px;
+align-items:center;justify-content:center;gap:12px;padding:14px 14px 150px;min-height:0;}
+.phone{width:290px;height:100%;max-height:640px;background:#000;border-radius:32px;padding:9px;
 border:2px solid #262d47;box-shadow:0 22px 46px rgba(0,0,0,0.7);flex-shrink:1;}
 .pscreen{width:100%;height:100%;color:#141C2E;background:#F5F7FC;border-radius:24px;overflow:hidden;
 display:flex;flex-direction:column;position:relative;}
