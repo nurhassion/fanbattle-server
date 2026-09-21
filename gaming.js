@@ -22,6 +22,7 @@
 // ============================================================================
 
 // MG_PHONEBIG_V1 — ফোন নিচের দিকে বড়, ক্যামেরার ঠিক উপরে শেষ
+// MG_NOWLIVE_V1 — controller জানায় কোন খেলা লাইভ + কোন ভিডিও; জয়েন পাতায় সেই লাইভই চলে
 // MG_CODELIVE_MID_V1 — কোডিং প্যানেল মাঝারি, পেছনের ভিডিও দেখা যায়
 // MG_TESTENTRY_V1 — ছবিহীন (পরীক্ষামূলক) এন্ট্রি টপ প্যানেলে নয়; সেখানে নমুনা ছবি
 // MG_LIVEPREVIEW_V1 — কোড লেখার সাথে সাথে ফোনের স্ক্রিন একটু একটু করে তৈরি
@@ -1885,7 +1886,7 @@ async function refreshRecentDonors(){
 safeInit("leftAltPanel", () => { refreshRecentDonors(); setInterval(refreshRecentDonors, 20000); setInterval(toggleAltPanel, 9000); }); // প্রতি ৯ সেকেন্ডে নিয়ম ↔ সাম্প্রতিক সাপোর্টার পালাক্রমে দেখাবে
 
 // ---------- সরাসরি টিপস QR ----------
-fetch("/gaming/challenge/tip-info").then(r=>r.json()).then(d=>{
+fetch("/gaming/challenge/tip-info?game=chess&from=overlay").then(r=>r.json()).then(d=>{
   if (d.tipUrl) {
     document.getElementById("tipQrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(d.tipUrl);
     document.getElementById("tipBoxOverlay").style.display = "block";
@@ -2206,9 +2207,15 @@ function liveEmbedHTML(heading) {
 <div class="liveWrap">
   <h3><i></i>${heading}</h3>
   <div class="liveFrameBox">
-    <iframe src="https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1"
+    <iframe class="mgLiveFrame" src="https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1"
       allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>
   </div>
+  <script>
+  fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+    if (d && d.videoId){ var f = document.querySelector(".mgLiveFrame");
+      if (f) f.src = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=1&playsinline=1"; }
+  }).catch(function(){});
+  </script>
   <div class="liveNote">
     🔇 Sound is off. Tap the speaker inside the video to turn it on.<br>
     ⏱ Live video is a few seconds behind, so your move shows up a little later. That is normal.<br>
@@ -3703,6 +3710,9 @@ function liveCommentaryJS(gameKey) {
   /* মস্তিষ্ক চালু থাকলে টিপের ধন্যবাদ আর টপ-সাপোর্টার ঘোষণা মস্তিষ্কই নিজের কণ্ঠে বলে —
      তখন ব্রাউজারের পুরনো রোবোটিক কণ্ঠ চুপ থাকে (ছবি-কনফেটি আগের মতোই দেখায়), দুটো একসাথে বাজে না */
   window.MG_BRAIN_ON = rtAlive;
+  // এই ওভারলে খোলা আছে — সার্ভারকে জানানো (পিন লিংক আর মস্তিষ্ক এটা দেখে চলতি খেলা চেনে)
+  function livePing(){ try { fetch("/gaming/live-ping?game=" + GAME + "&t=" + Date.now()).catch(function(){}); } catch(e){} }
+  livePing(); setInterval(livePing, 15000);
   try {
     if (window.speechSynthesis && !window.__mgSpeakWrapped){
       window.__mgSpeakWrapped = true;
@@ -5753,8 +5763,8 @@ background:#0f1526;border-radius:8px;padding:10px;}
 // ===========================================================================
 const PLAY_SHELL_CSS = `
 html,body{height:100%;overflow:hidden;}
-body{padding:0;display:flex;flex-direction:column;}
-.hdr{padding:6px 12px 4px;text-align:center;flex-shrink:0;}
+body{padding:0;display:flex;flex-direction:column;max-width:none;margin:0;}
+.hdr{padding:4px 8px 2px;text-align:center;flex-shrink:0;}
 .hdr h1{font-size:14px;margin:0;}
 /* ---- ধাপ ১: নাম ও ছবি ---- */
 #joinCard{position:absolute;inset:0;z-index:30;overflow-y:auto;padding:16px;
@@ -5768,7 +5778,7 @@ text-align:center;max-width:340px;width:100%;}
 #tipModal p{font-size:12.5px;color:#B8C4D9;line-height:1.6;margin:0 0 4px;}
 #tipModal .small{font-size:11px;color:#7C8AAD;margin-top:10px;line-height:1.5;}
 /* ---- ধাপ ৩: মূল পর্দা ---- */
-#stage{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 8px 8px;gap:6px;}
+#stage{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 4px 4px;gap:5px;}
 .statusStrip{background:rgba(22,27,46,0.92);border:1px solid #2a3352;border-radius:10px;
 padding:7px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .statusStrip .pos{font-size:13px;font-weight:800;color:#FFD866;}
@@ -5777,13 +5787,13 @@ padding:7px 12px;display:flex;align-items:center;justify-content:space-between;f
 .statusStrip.myturn .pos{color:#8BE28B;}
 .boardArea{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
 .watchTag{font-size:10px;color:#7C8AAD;text-align:center;flex-shrink:0;min-height:13px;}
-.liveArea{height:30vh;flex-shrink:0;display:flex;flex-direction:column;}
+.liveArea{height:min(30vh, calc((100vw - 8px) * 0.5625 + 16px));flex-shrink:0;display:flex;flex-direction:column;}
 .liveArea .cap{font-size:9.5px;color:#FF6B5E;font-weight:800;letter-spacing:0.6px;text-align:center;
 margin-bottom:3px;display:flex;align-items:center;justify-content:center;gap:5px;}
 .liveArea .cap i{width:6px;height:6px;border-radius:50%;background:#FF3B30;display:block;
 animation:liveDot 1.4s ease-in-out infinite;}
 @keyframes liveDot{0%,100%{opacity:1;}50%{opacity:0.25;}}
-.liveArea iframe{flex:1;width:100%;border:0;border-radius:10px;background:#000;}
+.liveArea iframe{flex:1;width:100%;border:0;border-radius:8px;background:#000;}
 /* ---- পালা এলে ---- */
 #turnBanner{position:absolute;inset:0;z-index:45;background:rgba(4,7,18,0.9);display:flex;
 flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;}
@@ -6223,6 +6233,14 @@ var RAINBOW = ["#FF2D55","#FF9500","#FFCC00","#8BE28B","#34C759","#00C7BE","#30B
 // কিছু ব্রাউজার আওয়াজসহ autoplay আটকায়, তাই দর্শককে একবার চাপ দিতে হতে পারে —
 // কিন্তু সে তো "Join" বাটনে চাপ দিয়েই এসেছে, তাই সাধারণত এমনিতেই বাজবে।
 var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=0&playsinline=1";
+// controller যে ভিডিওটা এখন লাইভ চালাচ্ছে, সেটাই দেখানো — চ্যানেলের সাধারণ লিংকের চেয়ে নির্ভরযোগ্য
+fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+  if (d && d.videoId){
+    LIVE_SRC = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=0&playsinline=1";
+    var f = document.querySelector(".liveArea iframe");
+    if (f && f.getAttribute("src")) f.setAttribute("src", LIVE_SRC);
+  }
+}).catch(function(){});
 function setLiveOn(){
   var f = document.getElementById("liveFrame");
   if (f.getAttribute("src") !== LIVE_SRC) f.src = LIVE_SRC;
@@ -6451,6 +6469,14 @@ var myTurnLive = false;
 
 // আওয়াজ চালু — লাইনে দাঁড়িয়েও স্ট্রিমের কমেন্ট্রি শোনা যাবে
 var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=0&playsinline=1";
+// controller যে ভিডিওটা এখন লাইভ চালাচ্ছে, সেটাই দেখানো — চ্যানেলের সাধারণ লিংকের চেয়ে নির্ভরযোগ্য
+fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+  if (d && d.videoId){
+    LIVE_SRC = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=0&playsinline=1";
+    var f = document.querySelector(".liveArea iframe");
+    if (f && f.getAttribute("src")) f.setAttribute("src", LIVE_SRC);
+  }
+}).catch(function(){});
 function setLiveOn(){
   var f = document.getElementById("liveFrame");
   if (f.getAttribute("src") !== LIVE_SRC) f.src = LIVE_SRC;
@@ -6548,6 +6574,7 @@ function hideDragBall(){
   highlightTarget(-1);
 }
 function pointerDown(x, y){
+  lastTouchAt = Date.now(); if (autoOn) autoTag(false);
   if (finished || !myTurnLive) return;
   var idx = tubeIndexAt(x, y);
   // সবসময় ছোঁয়া বোতল থেকেই — আগে কী সিলেক্ট ছিল তাতে কিছু যায় আসে না
@@ -6597,6 +6624,41 @@ function doMove(from, to){
   render(); pushMirror();
   if (solved()) finish();
 }
+/* ⏳ পালা এসেছে কিন্তু এক মিনিট কোনো ছোঁয়া নেই — লাইভ যেন থেমে না থাকে, তাই
+   নিজে থেকে বুদ্ধি খাটিয়ে চাল দেওয়া হয়; সে ছুঁলেই আবার তার হাতে। */
+var lastTouchAt = Date.now(), autoOn = false, lastAuto = null;
+function autoTag(on){
+  autoOn = on;
+  var w = document.getElementById("watchTag");
+  if (w && on) w.textContent = "⏳ auto-play — touch the board to take over";
+}
+function pickAutoMove(){
+  var best = null, bestScore = -1e9;
+  for (var f = 0; f < tubes.length; f++){
+    var tf = tubes[f]; if (!tf.length || isDone(tf)) continue;
+    var top = tf[tf.length - 1], run = 0;
+    for (var k = tf.length - 1; k >= 0 && tf[k] === top; k--) run++;
+    var uniform = run === tf.length;
+    for (var t = 0; t < tubes.length; t++){
+      if (!canDrop(f, t)) continue;
+      var tt = tubes[t], sc = 0;
+      if (lastAuto && lastAuto[0] === t && lastAuto[1] === f) continue;      // ঠিক আগের চাল উল্টো নয়
+      if (tt.length){ if (tt[tt.length - 1] !== top) continue; sc = 10 + tt.length * 3 - (tf.length - run); }
+      else { if (uniform) continue; sc = 2 - run; }
+      if (tt.length + 1 === CAP && tt.every(function(c){ return c === top; })) sc += 30;   // একটা টিউব পূর্ণ হবে
+      sc += Math.random();
+      if (sc > bestScore){ bestScore = sc; best = [f, t]; }
+    }
+  }
+  return best;
+}
+setInterval(function(){
+  if (finished || !myTurnLive || !tubes || !tubes.length) return;
+  if (Date.now() - lastTouchAt < 60000) return;
+  autoTag(true);
+  var mv = pickAutoMove();
+  if (mv){ lastAuto = mv; doMove(mv[0], mv[1]); }
+}, 1500);
 (function bindControls(){
   var wrap = document.getElementById("tubes");
   // touchstart বোতলের উপরেই ধরা পড়ে (তখন DOM অক্ষত, তাই bubble করে wrap পর্যন্ত আসে)
@@ -6656,7 +6718,7 @@ function startGame(){
   fetch("/gaming/ballsort/new-challenge").then(function(r){ return r.json(); }).then(function(d){
     tubes = d.tubes; COLORS = d.colors; CAP = d.capacity;
     render(); pushMirror();
-    startedAt = Date.now();
+    startedAt = Date.now(); lastTouchAt = Date.now(); autoOn = false;
     clearInterval(clockTimer);
     clockTimer = setInterval(function(){
       document.getElementById("watchTag").textContent = "Your time: " + fmt(Math.round((Date.now() - startedAt)/1000));
@@ -8551,7 +8613,27 @@ module.exports = function mountGaming(app) {
     next();
   });
   const CHALLENGE_PAGE = { chess: "/gaming/challenge/join", snake: "/gaming/challenge/snake", ballsort: "/gaming/challenge/ballsort" };
+  // controller.js লাইভ শুরু/শেষে এখানে জানিয়ে দেয় — সবচেয়ে নির্ভরযোগ্য তথ্য
+  const NOWLIVE = { game: null, videoId: null, at: 0 };
+  const NOWLIVE_TOKEN = process.env.GAMING_LIVE_TOKEN || "mg-live-7f3c91";
+  app.post("/gaming/now-live", express.json(), (req, res) => {
+    const b = req.body || {};
+    if (b.token !== NOWLIVE_TOKEN) return res.status(403).json({ ok: false });
+    const g = ["chess", "snake", "ballsort"].includes(b.game) ? b.game : null;
+    const v = /^[A-Za-z0-9_-]{6,20}$/.test(b.videoId || "") ? b.videoId : null;
+    NOWLIVE.game = g; NOWLIVE.videoId = g ? v : null; NOWLIVE.at = Date.now();
+    console.log("[now-live]", g || "—", v || "");
+    res.json({ ok: true });
+  });
+  app.get("/gaming/now-live", (req, res) => res.json({ game: liveGame(), videoId: NOWLIVE.game ? NOWLIVE.videoId : null }));
+  // ওভারলে নিজেও জানায় সে খোলা আছে (OBS Referer না পাঠালেও কাজ করে)
+  app.get("/gaming/live-ping", (req, res) => {
+    const g = String(req.query.game || "");
+    if (["chess", "snake", "ballsort"].includes(g)) overlaySeen[g] = Date.now();
+    res.json({ ok: true });
+  });
   function liveGame(){
+    if (NOWLIVE.game && Date.now() - NOWLIVE.at < 8 * 3600 * 1000) return NOWLIVE.game;
     let best = null, t = 0;
     for (const g of Object.keys(overlaySeen)) if (overlaySeen[g] > t) { t = overlaySeen[g]; best = g; }
     return (best && Date.now() - t < 120000) ? best : null;    // ২ মিনিটের মধ্যে দেখা গেলে সেটাই লাইভ
@@ -8643,7 +8725,8 @@ module.exports = function mountGaming(app) {
     const channel = TIP_CHANNEL[game] || "chessbattle";
     // ⚠️ ?ret= টুকুই আসল পরিবর্তন। এটা ছাড়া টাকা দেওয়ার পর দর্শককে সোজা YouTube-এ
     // পাঠিয়ে দেওয়া হতো — অথচ সে তো লাইভ দেখছিল না, লাইনে দাঁড়াতে এসেছিল।
-    const ret = TIP_RETURN[game] || "/gaming/challenge/join";
+    // ওভারলের QR (দর্শক লাইভ দেখছে) — টিপের পরে সোজা সেই লাইভেই ফেরত, জয়েন পাতায় নয়
+    const ret = req.query.from === "overlay" ? "" : (TIP_RETURN[game] || "/gaming/challenge/join");
     // ⚠️ এখানেই সবচেয়ে বড় ভুলটা ছিল। CHALLENGE_TIP_URL সেট করা থাকলে *সব* গেমের টিপস
     // ওই এক ঠিকানাতেই যেত — অর্থাৎ Snake-এ দেওয়া টাকা chessbattle চ্যানেলে জমা হতো।
     // ফলে Snake overlay-তে সেলিব্রেশন কখনোই হতো না, টপ-৩ তেও নাম উঠত না।
@@ -8652,7 +8735,7 @@ module.exports = function mountGaming(app) {
     // এখন গেম জানা থাকলে সবসময় সেই গেমের নিজের চ্যানেলেই যায়।
     const base = TIP_CHANNEL[game] ? ("/pay/" + channel) : (TIP_URL || "/pay/" + channel);
     const sep = base.indexOf("?") >= 0 ? "&" : "?"; // ঠিকানায় আগে থেকে ? থাকলেও যেন না ভাঙে
-    res.json({ tipUrl: base + sep + "ret=" + encodeURIComponent(ret) });
+    res.json({ tipUrl: ret ? (base + sep + "ret=" + encodeURIComponent(ret)) : base });
   });
 
   // চেস overlay-তে নতুন টিপস এলে তার নাম নিয়ে real voice announcement বাজানোর জন্য —
