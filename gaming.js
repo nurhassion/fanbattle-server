@@ -22,6 +22,7 @@
 // ============================================================================
 
 // MG_PHONEBIG_V1 — ফোন নিচের দিকে বড়, ক্যামেরার ঠিক উপরে শেষ
+// MG_LIVEEMBED_V1 — জয়েন পাতার YouTube বাক্স নিঃশব্দে নিজে চলে, লাইভ বদলালে নিজেই বদলায়
 // MG_NOWLIVE_V1 — controller জানায় কোন খেলা লাইভ + কোন ভিডিও; জয়েন পাতায় সেই লাইভই চলে
 // MG_CODELIVE_MID_V1 — কোডিং প্যানেল মাঝারি, পেছনের ভিডিও দেখা যায়
 // MG_TESTENTRY_V1 — ছবিহীন (পরীক্ষামূলক) এন্ট্রি টপ প্যানেলে নয়; সেখানে নমুনা ছবি
@@ -6170,7 +6171,7 @@ ${challengeBgLayer("snake-bg.mp4", "linear-gradient(135deg,#0d2818,#0a0e1f 45%,#
   <div class="swipeHint" id="swipeHint">👆 Swipe anywhere on the board to turn</div>
   <div class="watchTag" id="watchTag"></div>
   <div class="liveArea">
-    <div class="cap"><i></i>LIVE ON YOUTUBE</div>
+    <div class="cap"><i></i>LIVE ON YOUTUBE · tap the video for sound 🔊</div>
     <iframe id="liveFrame" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
   </div>
   <button class="ghost" id="leaveBtn" style="padding:7px;font-size:12px;flex-shrink:0;">Leave the queue</button>
@@ -6232,15 +6233,20 @@ var RAINBOW = ["#FF2D55","#FF9500","#FFCC00","#8BE28B","#34C759","#00C7BE","#30B
 // ⚠️ আওয়াজ চালু (mute=0) — লাইনে দাঁড়িয়েও যেন স্ট্রিমের কমেন্ট্রি শোনা যায়।
 // কিছু ব্রাউজার আওয়াজসহ autoplay আটকায়, তাই দর্শককে একবার চাপ দিতে হতে পারে —
 // কিন্তু সে তো "Join" বাটনে চাপ দিয়েই এসেছে, তাই সাধারণত এমনিতেই বাজবে।
-var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=0&playsinline=1";
-// controller যে ভিডিওটা এখন লাইভ চালাচ্ছে, সেটাই দেখানো — চ্যানেলের সাধারণ লিংকের চেয়ে নির্ভরযোগ্য
-fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
-  if (d && d.videoId){
-    LIVE_SRC = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=0&playsinline=1";
+// ⚠️ মোবাইল ব্রাউজার আওয়াজসহ ভিডিও নিজে থেকে চালাতে দেয় না — তখন শুধু কালো বাক্সে প্লে-বোতাম দেখায়।
+// তাই নিঃশব্দে (mute=1) চালু হয়; দর্শক ভিডিও ছুঁলেই আওয়াজ আসে।
+var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1";
+// controller যে ভিডিওটা এখন লাইভ চালাচ্ছে সেটাই দেখানো; লাইভ নতুন করে তৈরি হলে (ইন্টারনেট কেটে
+// গিয়েছিল ইত্যাদি) ঠিকানা বদলায় — তাই প্রতি ৪৫ সেকেন্ডে দেখে নিয়ে নিজেই নতুনটায় চলে যায়
+function refreshLiveSrc(){
+  fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+    if (!d || !d.videoId || LIVE_SRC.indexOf(d.videoId) >= 0) return;
+    LIVE_SRC = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=1&playsinline=1";
     var f = document.querySelector(".liveArea iframe");
     if (f && f.getAttribute("src")) f.setAttribute("src", LIVE_SRC);
-  }
-}).catch(function(){});
+  }).catch(function(){});
+}
+refreshLiveSrc(); setInterval(refreshLiveSrc, 45000);
 function setLiveOn(){
   var f = document.getElementById("liveFrame");
   if (f.getAttribute("src") !== LIVE_SRC) f.src = LIVE_SRC;
@@ -6429,7 +6435,7 @@ ${challengeBgLayer("ballsort-bg.mp4", "linear-gradient(135deg,#101a3d,#0a0e1f 45
 <div id="dragBall"></div>
   <div class="watchTag" id="watchTag"></div>
   <div class="liveArea">
-    <div class="cap"><i></i>LIVE ON YOUTUBE</div>
+    <div class="cap"><i></i>LIVE ON YOUTUBE · tap the video for sound 🔊</div>
     <iframe id="liveFrame" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
   </div>
   <button class="ghost" id="leaveBtn" style="padding:7px;font-size:12px;flex-shrink:0;">Leave the queue</button>
@@ -6468,15 +6474,20 @@ var CAP = 4, COLORS = [], tubes = [], sel = -1, startedAt = 0, clockTimer = null
 var myTurnLive = false;
 
 // আওয়াজ চালু — লাইনে দাঁড়িয়েও স্ট্রিমের কমেন্ট্রি শোনা যাবে
-var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=0&playsinline=1";
-// controller যে ভিডিওটা এখন লাইভ চালাচ্ছে, সেটাই দেখানো — চ্যানেলের সাধারণ লিংকের চেয়ে নির্ভরযোগ্য
-fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
-  if (d && d.videoId){
-    LIVE_SRC = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=0&playsinline=1";
+// ⚠️ মোবাইল ব্রাউজার আওয়াজসহ ভিডিও নিজে থেকে চালাতে দেয় না — তখন শুধু কালো বাক্সে প্লে-বোতাম দেখায়।
+// তাই নিঃশব্দে (mute=1) চালু হয়; দর্শক ভিডিও ছুঁলেই আওয়াজ আসে।
+var LIVE_SRC = "https://www.youtube.com/embed/live_stream?channel=${GAMING_YT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1";
+// controller যে ভিডিওটা এখন লাইভ চালাচ্ছে সেটাই দেখানো; লাইভ নতুন করে তৈরি হলে (ইন্টারনেট কেটে
+// গিয়েছিল ইত্যাদি) ঠিকানা বদলায় — তাই প্রতি ৪৫ সেকেন্ডে দেখে নিয়ে নিজেই নতুনটায় চলে যায়
+function refreshLiveSrc(){
+  fetch("/gaming/now-live?t=" + Date.now()).then(function(r){ return r.json(); }).then(function(d){
+    if (!d || !d.videoId || LIVE_SRC.indexOf(d.videoId) >= 0) return;
+    LIVE_SRC = "https://www.youtube.com/embed/" + d.videoId + "?autoplay=1&mute=1&playsinline=1";
     var f = document.querySelector(".liveArea iframe");
     if (f && f.getAttribute("src")) f.setAttribute("src", LIVE_SRC);
-  }
-}).catch(function(){});
+  }).catch(function(){});
+}
+refreshLiveSrc(); setInterval(refreshLiveSrc, 45000);
 function setLiveOn(){
   var f = document.getElementById("liveFrame");
   if (f.getAttribute("src") !== LIVE_SRC) f.src = LIVE_SRC;
